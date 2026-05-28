@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Goodies — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:640px;text-align:center">
+    <h1 class="section-title">Goodies officiels</h1>
+    <p style="color:var(--muted);margin-bottom:2rem">Soutenez le JOY avec la boutique officielle : badges, casquettes, mugs, tee-shirts, sweatshirts…</p>
+    {% if lien %}
+    <a href="{{ lien.url }}" class="btn btn-primary" target="_blank" rel="noopener">{{ lien.label }} ↗</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

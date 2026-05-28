@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}JOY — Jazz Orchestra Yonnais{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hero {
+    background: var(--text);
+    color: #fff;
+    padding: 5rem 0 4rem;
+    text-align: center;
+    animation: hero-in .6s ease forwards;
+  }
+  .hero-tag {
+    font-size: .75rem;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    font-weight: 600;
+  }
+  .hero-title {
+    font-family: var(--font-d);
+    font-style: italic;
+    font-size: clamp(2.5rem, 6vw, 5rem);
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+  }
+  .hero-title span {
+    color: var(--accent);
+  }
+  .hero-sub {
+    color: rgba(255,255,255,.65);
+    max-width: 520px;
+    margin: 0 auto 2rem;
+    font-size: 1.05rem;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .hero-video {
+    margin-top: 3rem;
+  }
+  .hero-video iframe {
+    border: none;
+    border-radius: var(--r);
+  }
+.hero-video iframe {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: none;
+  border-radius: var(--r);
+}
+  .concerts-home {
+    background: var(--surface);
+  }
+  .event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .event-item {
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    animation: event-in .4s ease forwards;
+  }
+  .event-date {
+    font-family: var(--font-d);
+    text-align: center;
+    line-height: 1.1;
+  }
+  .event-date .day {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--accent);
+    display: block;
+  }
+  .event-date .month {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+  }
+  .event-titre {
+    font-weight: 600;
+    font-size: 1rem;
+  }
+  .event-lieu {
+    font-size: .85rem;
+    color: var(--muted);
+    margin-top: .2rem;
+  }
+  .empty {
+    color: var(--muted);
+    font-style: italic;
+    padding: 2rem 0;
+  }
+
+  .about {
+    background: var(--bg);
+  }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+  }
+  .about-text p {
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .about-photo {
+    border-radius: var(--r);
+    overflow: hidden;
+    position: relative;
+  }
+  .about-photo img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    transform: scale(1.02);
+    transition: transform .8s cubic-bezier(.16,1,.3,1);
+  }
+  .about-photo:hover img {
+    transform: scale(1.06) translateX(-4px);
+  }
+
+  @keyframes hero-in {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  @keyframes event-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  @media (max-width: 768px) {
+    .about-grid { grid-template-columns: 1fr; }
+    .event-item { grid-template-columns: 60px 1fr; }
+    .event-item .btn { display: none; }
+  }
+</style>
+{# Animations d’apparition inspirées des patterns d’intersection/scroll modernes[cite:540] #}
+{% endblock %}
+
+{% block content %}
+
+<section class="hero">
+  <div class="container">
+    <p class="hero-tag">Big Band · La Roche-sur-Yon</p>
+    <h1 class="hero-title"><span>J.O.Y</span><br>Jazz Orchestra Yonnais</h1>
+    <p class="hero-sub">
+      Un Big Band associatif qui fait vibrer la Vendée au rythme du jazz et du swing.
+    </p>
+    <div class="hero-actions">
+      <a href="{% url 'concerts' %}" class="btn btn-primary">Nos concerts</a>
+      <a href="{% url 'contact' %}" class="btn btn-outline"
+         style="border-color:rgba(255,255,255,.4);color:#fff">
+        Nous contacter
+      </a>
+    </div>
+    <div class="hero-video">
+  <div style="max-width:760px;margin:0 auto">
+    <iframe
+      width="760"
+      height="428"
+      src="https://www.youtube-nocookie.com/embed/49LYaGwuXZc?rel=0"
+      title="Jazz Orchestra Yonnais sur YouTube"
+      loading="lazy"
+      referrerpolicy="strict-origin-when-cross-origin"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowfullscreen>
+    </iframe>
+    <p style="margin-top:.75rem;color:rgba(255,255,255,.65);font-size:.9rem">
+      Si la vidéo ne s’affiche pas, la regarder directement sur
+      <a href="https://www.youtube.com/watch?v=49LYaGwuXZc" target="_blank" rel="noopener" style="color:#fff">
+        YouTube
+      </a>.
+    </p>
+  </div>
+</div> </div>
+</section>
+
+<section class="concerts-home section">
+  <div class="container">
+    <h2 class="section-title">Prochains concerts</h2>
+    {% if prochains %}
+    <div class="event-list">
+      {% for e in prochains %}
+      <div class="event-item">
+        <div class="event-date">
+          <span class="day">{{ e.date_debut|date:"d" }}</span>
+          <span class="month">{{ e.date_debut|date:"M Y" }}</span>
+        </div>
+        <div>
+          <div class="event-titre">{{ e.titre }}</div>
+          <div class="event-lieu">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
+        </div>
+        <a href="{% url 'concerts' %}" class="btn btn-outline">Détails</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">Prochains concerts à venir — revenez bientôt !</p>
+    {% endif %}
+    <div style="margin-top:1.5rem">
+      <a href="{% url 'concerts' %}" class="btn btn-primary">Voir tous les concerts</a>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="about section">
+  <div class="container">
+    <div class="about-grid">
+      <div class="about-text">
+        <h2 class="section-title">Le Big Band</h2>
+        <p>
+          JOY ou Jazz Orchestra Yonnais est un Big Band associatif basé à La Roche-sur-Yon,
+          en Vendée. Passionnés de jazz et de swing, nos musiciens partagent leur amour
+          de la musique lors de concerts, festivals et événements privés.
+        </p>
+        <p>
+          Mariages, cocktails dinatoires, soirées de gala, animations d'entreprise —
+          le JOY met l'ambiance à chaque prestation.
+        </p>
+        <a href="{% url 'contact' %}" class="btn btn-primary" style="margin-top:.5rem">
+          Demande de prestation
+        </a>
+      </div>
+      <div class="about-photo">
+        <img src="https://picsum.photos/seed/jazz/800/600"
+             alt="Le Jazz Orchestra Yonnais sur scène"
+             loading="lazy">
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

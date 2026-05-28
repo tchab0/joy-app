@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Concerts — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .event-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; margin-bottom: 1px; display: grid; grid-template-columns: 80px 1fr; gap: 1.5rem; align-items: start; }
+  .event-date .day { font-family: var(--font-d); font-size: 2rem; font-weight: 700; color: var(--accent); display: block; line-height: 1; }
+  .event-date .month { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .event-titre { font-weight: 600; font-size: 1.05rem; margin-bottom: .3rem; }
+  .event-meta { font-size: .85rem; color: var(--muted); }
+  .event-desc { margin-top: .75rem; font-size: .9rem; color: var(--muted); }
+  .section-subtitle { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 1rem; font-weight: 600; }
+  .passes { opacity: .7; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">Concerts</h1>
+    <p class="section-subtitle">À venir</p>
+    {% if prochains %}
+      {% for e in prochains %}
+      <div class="event-card">
+        <div class="event-date">
+          <span class="day">{{ e.date_debut|date:"d" }}</span>
+          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+        </div>
+        <div>
+          <div class="event-titre">{{ e.titre }}</div>
+          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }} · {{ e.date_debut|date:"H\hi" }}</div>
+          {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="color:var(--muted);font-style:italic;padding:2rem 0">Prochains concerts à venir — revenez bientôt !</p>
+    {% endif %}
+    {% if passes %}
+    <p class="section-subtitle" style="margin-top:3rem">Passés</p>
+    <div class="passes">
+      {% for e in passes %}
+      <div class="event-card">
+        <div class="event-date">
+          <span class="day">{{ e.date_debut|date:"d" }}</span>
+          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+        </div>
+        <div>
+          <div class="event-titre">{{ e.titre }}</div>
+          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

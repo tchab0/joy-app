@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Adhérer — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:640px;text-align:center">
+    <h1 class="section-title">Adhérer à l'association</h1>
+    <p style="color:var(--muted);margin-bottom:2rem">Devenez adhérent du Jazz Orchestra Yonnais en un clic grâce à notre formulaire en ligne. Adhérez n'importe quand, directement depuis ce site.</p>
+    {% if lien %}
+    <a href="{{ lien.url }}" class="btn btn-primary" target="_blank" rel="noopener">{{ lien.label }} ↗</a>
+    {% else %}
+    <a href="{% url 'contact' %}" class="btn btn-primary">Nous contacter</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Médias — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+  .media-grid img { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:var(--r); display:block; }
+  .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-top:1rem; }
+  .video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <h1 class="section-title">Médias</h1>
+    {% if videos %}
+    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin-bottom:1rem">Vidéos</h2>
+    <div class="video-grid">
+      {% for v in videos %}
+      <iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if photos %}
+    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Photos</h2>
+    <div class="media-grid">
+      {% for p in photos %}
+      <img src="{{ p.fichier.url }}" alt="{{ p.titre }}" loading="lazy">
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if not photos and not videos %}<p style="color:var(--muted);font-style:italic">Galerie en cours de construction.</p>{% endif %}
+  </div>
+</section>
+{% endblock %}

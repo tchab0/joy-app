@@ -13,8 +13,13 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-]
+    "users.apps.UsersConfig",
+    "core",
+    "orchestra",
+    "events",
+    "planning",
 
+    ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -57,3 +62,4 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = Path("/srv/jazz-orchestra-yonnais/media")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "users.User"

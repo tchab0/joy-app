@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Espace Donateur — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:700px">
+    <h1 class="section-title">Vous pouvez nous soutenir !</h1>
+    <p style="color:var(--muted);margin-bottom:1rem">Je fais un don ouvrant droit à une réduction d'impôts !</p>
+    <p style="color:var(--muted);margin-bottom:1rem">Pour les particuliers, les dons ouvrent droit à une réduction d'impôt sur le revenu égale à 66 % du montant versé dans la limite de 20 % du revenu imposable. Si vous donnez 100 €, cela ne vous « coûte » réellement que 33 €.</p>
+    <p style="color:var(--muted);margin-bottom:1rem">Les entreprises peuvent également bénéficier d'une déduction fiscale et ainsi faire partie de nos mécènes.</p>
+    <p style="color:var(--muted);margin-bottom:2rem">Nous délivrons un reçu fiscal pour chaque don reçu. Vos dons financent locaux, assurances, matériel, partitions et projets à venir.</p>
+    <a href="{% url 'contact' %}" class="btn btn-primary">Nous contacter pour un don</a>
+  </div>
+</section>
+{% endblock %}

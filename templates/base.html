@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}JOY — Jazz Orchestra Yonnais{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #f5f2ec;
+      --surface:  #faf8f4;
+      --border:   rgba(0,0,0,.10);
+      --text:     #1a1714;
+      --muted:    #6b6560;
+      --accent:   #c94f3a;
+      --accent-h: #a83c2a;
+      --gold:     #b8892a;
+      --font-d:   'Playfair Display', Georgia, serif;
+      --font-b:   'Work Sans', 'Helvetica Neue', sans-serif;
+      --r:        4px;
+      --trans:    180ms cubic-bezier(.16,1,.3,1);
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--font-b); font-size: 1rem; color: var(--text); background: var(--bg); line-height: 1.6; }
+
+    /* NAV */
+    nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
+    .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
+        .nav-logo { font-family: var(--font-d); font-style: normal; font-weight: 900; font-size: 1.2rem; color: #fff; text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 0; list-style: none; }
+    .nav-links a { display: block; padding: .75rem 1rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); }
+    .nav-links a:hover, .nav-links a.active { color: #fff; }
+    .nav-links a.active { border-bottom: 2px solid var(--accent); }
+    .nav-fb { color: rgba(255,255,255,.6); text-decoration: none; font-size: .8rem; transition: color var(--trans); }
+    .nav-fb:hover { color: #fff; }
+    .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
+    .nav-burger span { display: block; width: 22px; height: 2px; background: #fff; margin: 5px 0; transition: var(--trans); }
+    .nav-burger span { transition: transform var(--trans), opacity var(--trans); }
+
+    /* MAIN */
+    main { min-height: calc(100vh - 56px - 160px); }
+
+    /* FOOTER */
+    footer { background: var(--text); color: rgba(255,255,255,.5); text-align: center; padding: 2rem 1.5rem; font-size: .8rem; }
+    footer a { color: rgba(255,255,255,.5); text-decoration: none; margin: 0 .75rem; transition: color var(--trans); }
+    footer a:hover { color: #fff; }
+
+    /* UTILS */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
+    .section { padding: 4rem 0; }
+    .section-title { font-family: var(--font-d); font-style: italic; font-size: clamp(1.8rem, 3vw, 2.5rem); color: var(--text); margin-bottom: 2rem; }
+    .btn { display: inline-block; padding: .65rem 1.5rem; border-radius: var(--r); font-family: var(--font-b); font-size: .875rem; font-weight: 600; text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: background var(--trans), color var(--trans); cursor: pointer; border: none; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-h); }
+    .btn-outline { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+    .btn-outline:hover { background: var(--accent); color: #fff; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* RESPONSIVE NAV */
+    @media (max-width: 768px) {
+      .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
+      .nav-links.open { display: flex; }
+      .nav-links a { padding: .75rem 1.5rem; }
+      .nav-burger { display: block; }
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+<nav x-data="{ open: false }">
+  <div class="nav-inner">
+    <a class="nav-logo" href="{% url 'home' %}"><span>J.O.Y</span> Jazz Orchestra Yonnais</a>
+    <button class="nav-burger" aria-label="Menu" @click="open = !open" :aria-expanded="open.toString()">
+      <span :style="open ? 'transform:rotate(45deg) translate(5px,5px)' : ''"></span>
+      <span :style="open ? 'opacity:0' : ''"></span>
+      <span :style="open ? 'transform:rotate(-45deg) translate(5px,-5px)' : ''"></span>
+    </button>
+    <ul class="nav-links" id="nav-links" :class="open ? 'open' : ''">
+      <li><a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' %}class="active"{% endif %}>Accueil</a></li>
+      <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
+      <li><a href="{% url 'goodies' %}" {% if request.resolver_match.url_name == 'goodies' %}class="active"{% endif %}>Goodies</a></li>
+      <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
+      <li><a href="{% url 'don' %}" {% if request.resolver_match.url_name == 'don' %}class="active"{% endif %}>Espace Donateur</a></li>
+      <li><a href="{% url 'adhesion' %}" {% if request.resolver_match.url_name == 'adhesion' %}class="active"{% endif %}>Adhérer</a></li>
+      <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
+    </ul>
+    <a class="nav-fb" href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook ↗</a>
+  </div>
+</nav>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<footer>
+  <div>
+    <a href="{% url 'contact' %}">Contact</a>
+    <a href="#">Mentions légales</a>
+    <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
+  </div>
+  <p style="margin-top:.75rem">© {% now "Y" %} Jazz Orchestra Yonnais — La Roche-sur-Yon</p>
+</footer>
+</body>
+</html>
