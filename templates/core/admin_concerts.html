@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Gestion des concerts — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; }
+  .admin-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--r); overflow:hidden; }
+  .admin-table th { background:var(--text); color:rgba(255,255,255,.7); font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; text-align:left; }
+  .admin-table td { padding:.85rem 1rem; border-bottom:1px solid var(--border); font-size:.9rem; vertical-align:middle; }
+  .admin-table tr:last-child td { border-bottom:none; }
+  .admin-table tr:hover td { background:rgba(0,0,0,.02); }
+  .badge { display:inline-block; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; padding:.15rem .5rem; border-radius:var(--r); }
+  .badge-confirme  { background:rgba(60,140,60,.12);  color:#2d7a2d; }
+  .badge-tentative { background:rgba(185,135,40,.12); color:#a07020; }
+  .badge-annule    { background:rgba(180,60,60,.12);  color:#b43c3c; }
+  .badge-prive     { background:rgba(0,0,0,.07);      color:var(--muted); }
+  .row-actions { display:flex; gap:.5rem; }
+  .btn-sm { padding:.35rem .85rem; font-size:.78rem; }
+  .btn-danger { background:transparent; color:#b43c3c; border:1.5px solid #b43c3c; }
+  .btn-danger:hover { background:#b43c3c; color:#fff; }
+  .empty-state { padding:3rem; text-align:center; color:var(--muted); font-style:italic; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div class="admin-header">
+      <h1 class="section-title" style="margin-bottom:0">Gestion des concerts</h1>
+      <a href="{% url 'admin_concert_add' %}" class="btn btn-primary">+ Ajouter un concert</a>
+    </div>
+    {% if events %}
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Titre</th>
+          <th>Lieu</th>
+          <th>Type</th>
+          <th>Statut</th>
+          <th>Public</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td style="white-space:nowrap">{{ e.date_debut|date:"d/m/Y H\hi" }}</td>
+          <td><strong>{{ e.titre }}</strong></td>
+          <td>{{ e.venue.nom }}<br><span style="color:var(--muted);font-size:.8rem">{{ e.venue.ville }}</span></td>
+          <td>{{ e.type }}</td>
+          <td><span class="badge badge-{{ e.statut }}">{{ e.get_statut_display }}</span></td>
+          <td>{% if e.public %}✓{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+          <td>
+            <div class="row-actions">
+              <a href="{% url 'admin_concert_edit' e.pk %}" class="btn btn-outline btn-sm">Modifier</a>
+              <form method="post" action="{% url 'admin_concert_delete' e.pk %}" onsubmit="return confirm('Supprimer ce concert ?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Aucun concert enregistré. <a href="{% url 'admin_concert_add' %}">Ajouter le premier →</a></div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

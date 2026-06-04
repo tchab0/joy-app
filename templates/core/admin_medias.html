@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Gestion des médias — JOY{% endblock %}
+{% block extra_css %}
+<style>
+.tab-bar { display:flex; gap:.25rem; margin-bottom:2rem; border-bottom:1px solid var(--border); }
+.tab-btn { padding:.5rem 1.2rem; font-size:.82rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; border:none; background:none; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color var(--trans),border-color var(--trans); text-decoration:none; display:inline-block; }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+.media-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1.25rem; margin-bottom:1rem; display:grid; grid-template-columns:80px 1fr auto; gap:1rem; align-items:start; }
+.media-thumb { width:80px; height:60px; object-fit:cover; border-radius:var(--r); background:var(--border); display:flex; align-items:center; justify-content:center; font-size:1.5rem; overflow:hidden; }
+.media-thumb img { width:80px; height:60px; object-fit:cover; }
+.media-meta { font-size:.8rem; color:var(--muted); margin-top:.3rem; }
+.media-actions { display:flex; flex-direction:column; gap:.5rem; min-width:130px; }
+.badge { display:inline-block; padding:.2rem .6rem; border-radius:2px; font-size:.75rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+.badge-attente { background:rgba(184,137,42,.15); color:var(--gold); }
+.badge-publie  { background:rgba(50,140,80,.15); color:#328c50; }
+.badge-refuse  { background:rgba(201,79,58,.12); color:var(--accent); }
+.badge-cours   { background:rgba(0,100,200,.1); color:#0064c8; }
+.rattach-form { margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border); font-size:.82rem; }
+.rattach-form select { font-size:.82rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:var(--r); background:var(--bg); color:var(--text); width:100%; margin-top:.25rem; }
+@media(max-width:600px){ .media-card { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
+      <h1 class="section-title" style="margin-bottom:0">Gestion des médias</h1>
+      <a href="{% url 'admin:core_mediaitem_changelist' %}" class="btn btn-outline" style="font-size:.8rem">Django Admin</a>
+    </div>
+
+    <div class="tab-bar">
+      {% for val, label in statut_choices %}
+      <a href="?statut={{ val }}" class="tab-btn {% if statut_actif == val %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    {% if not medias %}
+    <p style="color:var(--muted);font-style:italic;padding:2rem 0">Aucun média dans cette catégorie.</p>
+    {% endif %}
+
+    {% for m in medias %}
+    <div class="media-card" x-data="{ open_rattach: false, saving: false }">
+
+      <div class="media-thumb">
+        {% if m.type == "photo" and m.fichier %}
+          <img src="{{ m.fichier.url }}" alt="{{ m.titre }}">
+        {% elif m.type == "video" %}<span>🎬</span>
+        {% elif m.type == "audio" %}<span>🎵</span>
+        {% else %}<span>📄</span>
+        {% endif %}
+      </div>
+
+      <div>
+        <div style="font-weight:600;margin-bottom:.25rem">{{ m.titre|default:"(sans titre)" }}</div>
+        <div class="media-meta">
+          {{ m.get_type_display }}
+          &middot; {{ m.soumis_le|date:"d/m/Y H:i" }}
+          {% if m.soumis_par_nom %}&middot; <strong>{{ m.soumis_par_nom }}</strong>{% endif %}
+          {% if m.soumis_par_email %}&lt;{{ m.soumis_par_email }}&gt;{% endif %}
+        </div>
+        {% if m.fichier %}
+        <div class="media-meta">
+          <a href="{{ m.fichier.url }}" target="_blank" style="color:var(--accent)">Fichier original ↗</a>
+          {% if m.url_compressee %}&nbsp;·&nbsp;<a href="{{ m.url_compressee }}" target="_blank" style="color:#328c50">Compressé ✓</a>{% elif m.est_compresse %}&nbsp;·&nbsp;<span style="color:#328c50">Compressé ✓</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if m.url_externe %}
+        <div class="media-meta"><a href="{{ m.url_externe }}" target="_blank" style="color:var(--accent)">{{ m.url_externe|truncatechars:60 }} ↗</a></div>
+        {% endif %}
+        {% if m.statut == 'publie' and m.nb_votes %}
+        <div class="media-meta" style="margin-top:.4rem">
+          ❤️ <strong>{{ m.nb_votes }}</strong> vote{{ m.nb_votes|pluralize }}
+        </div>
+        {% endif %}
+        {% if m.note_admin %}
+        <div class="media-meta" style="color:var(--accent)">Note : {{ m.note_admin }}</div>
+        {% endif %}
+        {% if m.page_liee %}
+        <div class="media-meta" style="margin-top:.4rem">
+          Rattaché à : <strong>{{ m.content_type.name|capfirst }} › {{ m.page_liee }}</strong>
+        </div>
+        {% endif %}
+
+        <div style="margin-top:.6rem">
+          <span class="badge {% if m.statut == 'publie' %}badge-publie{% elif m.statut == 'refuse' %}badge-refuse{% elif m.statut == 'en_cours' %}badge-cours{% else %}badge-attente{% endif %}">
+            {{ m.get_statut_display }}
+          </span>
+        </div>
+
+        <!-- Rattachement à une page -->
+        <div class="rattach-form" x-show="open_rattach" x-cloak>
+          <label style="font-weight:600">Rattacher à une page</label>
+          <select x-ref="page_{{ m.pk }}">
+            <option value="">— choisir —</option>
+            {% for p in pages_disponibles %}
+            <option value="{{ p.ct_id }}|{{ p.obj_id }}"
+              {% if m.content_type_id == p.ct_id and m.object_id == p.obj_id %}selected{% endif %}>
+              {{ p.label }} › {{ p.nom }}
+            </option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary" style="margin-top:.5rem;font-size:.78rem;padding:.4rem .9rem" :disabled="saving"
+            @click="
+              saving=true;
+              const val=$refs['page_{{ m.pk }}'].value.split('|');
+              fetch('{% url 'admin_media_action' m.pk %}', {
+                method:'POST',
+                headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},
+                body:'action=rattacher&content_type_id='+val[0]+'&object_id='+val[1]
+              }).then(()=>{ saving=false; open_rattach=false; location.reload(); })
+            ">Enregistrer</button>
+        </div>
+      </div>
+
+      <div class="media-actions">
+        {% if m.statut != 'publie' %}
+        <button class="btn btn-primary" style="font-size:.78rem;padding:.4rem .9rem"
+          @click="fetch('{% url 'admin_media_action' m.pk %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},body:'action=publier'}).then(()=>location.reload())">
+          Publier</button>
+        {% endif %}
+        {% if m.statut != 'refuse' %}
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem"
+          @click="fetch('{% url 'admin_media_action' m.pk %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},body:'action=refuser'}).then(()=>location.reload())">
+          Refuser</button>
+        {% endif %}
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem;border-color:var(--gold);color:var(--gold)"
+          @click="open_rattach=!open_rattach">Rattacher…</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

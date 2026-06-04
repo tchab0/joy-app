@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Gestion des lieux — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; }
+  .admin-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--r); overflow:hidden; }
+  .admin-table th { background:var(--text); color:rgba(255,255,255,.7); font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; text-align:left; }
+  .admin-table td { padding:.85rem 1rem; border-bottom:1px solid var(--border); font-size:.9rem; vertical-align:middle; }
+  .admin-table tr:last-child td { border-bottom:none; }
+  .admin-table tr:hover td { background:rgba(0,0,0,.02); }
+  .btn-sm { padding:.35rem .85rem; font-size:.78rem; }
+  .has-coords { color:#2d7a2d; font-size:.8rem; }
+  .no-coords  { color:var(--muted); font-size:.8rem; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div class="admin-header">
+      <h1 class="section-title" style="margin-bottom:0">Lieux</h1>
+      <a href="{% url 'admin_venue_add' %}" class="btn btn-primary">+ Ajouter un lieu</a>
+    </div>
+    <table class="admin-table">
+      <thead><tr><th>Nom</th><th>Ville</th><th>Adresse</th><th>Position</th><th></th></tr></thead>
+      <tbody>
+        {% for v in venues %}
+        <tr>
+          <td><strong>{{ v.nom }}</strong></td>
+          <td>{{ v.ville }}</td>
+          <td>{{ v.adresse|default:"—" }}</td>
+          <td>
+            {% if v.latitude %}
+            <span class="has-coords">📍 {{ v.latitude }}, {{ v.longitude }}</span>
+            {% else %}
+            <span class="no-coords">Non géolocalisé</span>
+            {% endif %}
+          </td>
+          <td><a href="{% url 'admin_venue_edit' v.pk %}" class="btn btn-outline btn-sm">Modifier</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

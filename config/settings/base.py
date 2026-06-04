@@ -1,10 +1,11 @@
 from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-SECRET_KEY = "dev-only-placeholder-change-in-prod"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-placeholder-change-in-prod")
 DEBUG = False
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["jazz-orchestra-yonnais.fr", "www.jazz-orchestra-yonnais.fr", "dev.jazz-orchestra-yonnais.fr", "127.0.0.1", "localhost"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -18,8 +19,8 @@ INSTALLED_APPS = [
     "orchestra",
     "events",
     "planning",
+]
 
-    ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -63,3 +64,13 @@ MEDIA_ROOT = Path("/srv/jazz-orchestra-yonnais/media")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.hostinger.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "admin@jazz-orchestra-yonnais.fr")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "JOY <admin@jazz-orchestra-yonnais.fr>")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr")
+SITE_URL = os.environ.get("SITE_URL", "https://jazz-orchestra-yonnais.fr")

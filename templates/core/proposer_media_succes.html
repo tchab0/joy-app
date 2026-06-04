@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Média reçu — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:600px;text-align:center;padding-top:4rem">
+    <div style="font-size:3rem;margin-bottom:1.5rem">🎷</div>
+    <h1 class="section-title" style="text-align:center">Merci !</h1>
+    <p style="color:var(--muted);margin-bottom:2rem">
+      {% if nb and nb > 1 %}
+        <strong>{{ nb }} photo{{ nb|pluralize }}</strong> reçue{{ nb|pluralize }}
+      {% else %}
+        Votre média a bien été reçu
+      {% endif %}
+      pour l'événement <strong>{{ evenement }}</strong>.<br>
+      Il sera examiné par notre équipe avant publication.
+    </p>
+    <a href="{% url 'medias' %}" class="btn btn-outline">Voir la galerie</a>
+    &nbsp;
+    <a href="{% url 'proposer_media' %}" class="btn btn-primary">Proposer d'autres médias</a>
+  </div>
+</section>
+{% endblock %}

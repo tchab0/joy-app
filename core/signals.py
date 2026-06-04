@@ -1,0 +1,33 @@
+from django.db import transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+
+from core.models import MediaItem
+
+
+def _delete_fieldfile_if_unused(model, instance, field_name):
+    field_file = getattr(instance, field_name, None)
+    if not field_file or not getattr(field_file, "name", ""):
+        return
+
+    other_refs = model._default_manager.filter(
+        **{field_name: field_file.name}
+    ).exclude(pk=instance.pk).exists()
+
+    if other_refs:
+        return
+
+    storage = field_file.storage
+    file_name = field_file.name
+
+    def _delete():
+        if storage.exists(file_name):
+            field_file.delete(save=False)
+
+    transaction.on_commit(_delete)
+
+
+@receiver(post_delete, sender=MediaItem)
+def media_files_cleanup(sender, instance, **kwargs):
+    _delete_fieldfile_if_unused(sender, instance, "fichier")
+    _delete_fieldfile_if_unused(sender, instance, "fichier_compresse")

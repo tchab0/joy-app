@@ -3,11 +3,26 @@
 {% block extra_css %}
 <style>
   .contact-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 2.5rem; max-width: 640px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .form-group { margin-bottom: 1.25rem; }
   .form-group label { display: block; font-size: .85rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: .4rem; }
   .form-group input, .form-group textarea { width: 100%; padding: .65rem .9rem; border: 1px solid var(--border); border-radius: var(--r); font-family: var(--font-b); font-size: 1rem; background: var(--bg); color: var(--text); transition: border-color 180ms; }
   .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-errors, .form-success {
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+  }
+  .form-errors {
+    background: color-mix(in srgb, #b00020 8%, var(--surface));
+    color: var(--text);
+  }
+  .form-success {
+    background: color-mix(in srgb, #0a7a32 10%, var(--surface));
+    color: var(--text);
+  }
+  .field-error { margin-top: .35rem; color: #b00020; font-size: .92rem; }
   @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -15,15 +30,51 @@
 <section class="section">
   <div class="container">
     <h1 class="section-title">Contact</h1>
-    <p style="color:var(--muted);max-width:540px;margin-bottom:2rem">Vous souhaitez nous solliciter pour une prestation musicale (mariage, cocktail dinatoire, soirée de gala, anniversaire, animation d'entreprise) ? Envoyez-nous votre demande.</p>
+    <p style="color:var(--muted);max-width:540px;margin-bottom:2rem">Vous souhaitez nous solliciter pour une prestation musicale ? Envoyez-nous votre demande, elle sera transmise directement à l'administration de JOY.</p>
+
     <div class="contact-form">
-      <form method="post" action="mailto:contact@jazz-orchestra-yonnais.fr">
-        <div class="form-row">
-          <div class="form-group"><label>Nom</label><input type="text" name="nom" required></div>
-          <div class="form-group"><label>Téléphone</label><input type="tel" name="tel"></div>
+      {% if success %}
+        <div class="form-success">Votre message a bien été envoyé.</div>
+      {% endif %}
+
+      {% if send_error %}
+        <div class="form-errors">Une erreur technique est survenue pendant l'envoi. Merci de réessayer dans quelques instants.</div>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        <div class="form-errors">
+          {{ form.non_field_errors }}
         </div>
-        <div class="form-group"><label>Email *</label><input type="email" name="email" required></div>
-        <div class="form-group"><label>Message *</label><textarea name="message" rows="6" required></textarea></div>
+      {% endif %}
+
+      <form method="post" action="{% url 'contact' %}">
+        {% csrf_token %}
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="{{ form.nom.id_for_label }}">{{ form.nom.label }}</label>
+            {{ form.nom }}
+            {% for error in form.nom.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.telephone.id_for_label }}">{{ form.telephone.label }}</label>
+            {{ form.telephone }}
+            {% for error in form.telephone.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.email.id_for_label }}">{{ form.email.label }} *</label>
+          {{ form.email }}
+          {% for error in form.email.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.message.id_for_label }}">{{ form.message.label }} *</label>
+          {{ form.message }}
+          {% for error in form.message.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+        </div>
+
         <button type="submit" class="btn btn-primary">Envoyer</button>
       </form>
     </div>

@@ -8,8 +8,15 @@
   .event-titre { font-weight: 600; font-size: 1.05rem; margin-bottom: .3rem; }
   .event-meta { font-size: .85rem; color: var(--muted); }
   .event-desc { margin-top: .75rem; font-size: .9rem; color: var(--muted); }
+  .event-map { margin-top:.85rem; width:80%; height:300px; border-radius:var(--r); border:1px solid var(--border); overflow:hidden; position:relative; }
+  .event-map iframe { height:calc(100% + 30px); margin-bottom:-30px; }
+  @media(max-width:600px){ .event-map { margin-left:calc(-80px - 1.5rem); width:calc(100% + 80px + 1.5rem); border-radius:0; } }
   .section-subtitle { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 1rem; font-weight: 600; }
   .passes { opacity: .7; }
+  .badge { display:inline-block; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; padding:.15rem .5rem; border-radius:var(--r); margin-left:.5rem; vertical-align:middle; }
+  .badge-tentative { background:rgba(185,135,40,.12); color:#a07020; }
+  .badge-annule    { background:rgba(180,60,60,.12);  color:#b43c3c; }
+  .btn-billets { display:inline-block; margin-top:.75rem; }
 </style>
 {% endblock %}
 {% block content %}
@@ -25,9 +32,38 @@
           <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
         </div>
         <div>
-          <div class="event-titre">{{ e.titre }}</div>
+          <div class="event-titre">
+            {{ e.titre }}
+            {% if e.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
+            {% if e.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
+          </div>
           <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }} · {{ e.date_debut|date:"H\hi" }}</div>
           {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
+          {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-billets">Billetterie →</a>{% endif %}
+          {% if e.venue.latitude %}
+          <div class="event-map" style="position:relative">
+            <iframe
+              src="https://www.openstreetmap.org/export/embed.html?bbox={{ e.bbox }}&layer=mapnik&mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}"
+              style="width:100%;height:100%;border:0;border-radius:var(--r)"
+              loading="lazy"
+              title="Carte du lieu"
+              referrerpolicy="no-referrer-when-downgrade">
+            </iframe>
+            <a href="https://www.openstreetmap.org/?mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}#map=15/{{ e.venue.latitude|stringformat:"f" }}/{{ e.venue.longitude|stringformat:"f" }}"
+               target="_blank" rel="noopener"
+               title="Voir en plein écran"
+               style="position:absolute;bottom:var(--space-2,8px);right:var(--space-2,8px);z-index:10;background:white;border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;display:flex;align-items:center;gap:4px;font-size:.75rem;color:#333;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              OSM
+            </a>
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);pointer-events:none;z-index:10">
+              <svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 24 14 24s14-14.25 14-24C28 6.27 21.73 0 14 0z" fill="var(--accent,#c94f3a)"/>
+                <circle cx="14" cy="14" r="6" fill="white"/>
+              </svg>
+            </div>
+          </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}

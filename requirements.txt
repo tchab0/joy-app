@@ -1,0 +1,10 @@
+asgiref==3.11.1
+Django==6.0.5
+gunicorn==26.0.0
+lxml==6.1.1
+packaging==26.2
+pikepdf==10.7.2
+pillow==12.2.0
+psycopg==3.3.4
+psycopg-binary==3.3.4
+sqlparse==0.5.5

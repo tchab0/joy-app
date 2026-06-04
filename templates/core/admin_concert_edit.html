@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{% if instance %}Modifier{% else %}Ajouter{% endif %} un concert — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .form-card { background:var(--surface); border-radius:var(--r); padding:2rem; max-width:680px; }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+  .form-group { display:flex; flex-direction:column; gap:.4rem; }
+  .form-group.full { grid-column:1/-1; }
+  label { font-size:.8rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .field-input { width:100%; padding:.6rem .85rem; border:1.5px solid var(--border); border-radius:var(--r); background:var(--bg); font-family:var(--font-b); font-size:.95rem; color:var(--text); transition:border-color var(--trans); }
+  .field-input:focus { outline:none; border-color:var(--accent); }
+  .form-actions { display:flex; gap:1rem; margin-top:1.5rem; }
+  .errorlist { list-style:none; color:#b43c3c; font-size:.82rem; margin-top:.25rem; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div style="margin-bottom:1.5rem">
+      <a href="{% url 'admin_concerts' %}" style="color:var(--muted);font-size:.85rem">← Retour à la liste</a>
+    </div>
+    <h1 class="section-title">{% if instance %}Modifier « {{ instance.titre }} »{% else %}Ajouter un concert{% endif %}</h1>
+    <div class="form-card">
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="{{ form.titre.id_for_label }}">{{ form.titre.label }}</label>
+            {{ form.titre }}
+            {{ form.titre.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.type.id_for_label }}">{{ form.type.label }}</label>
+            {{ form.type }}
+            {{ form.type.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.venue.id_for_label }}">{{ form.venue.label }}</label>
+            {{ form.venue }}
+            {{ form.venue.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.date_debut.id_for_label }}">{{ form.date_debut.label }}</label>
+            {{ form.date_debut }}
+            {{ form.date_debut.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.date_fin.id_for_label }}">{{ form.date_fin.label }}</label>
+            {{ form.date_fin }}
+            {{ form.date_fin.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.statut.id_for_label }}">{{ form.statut.label }}</label>
+            {{ form.statut }}
+            {{ form.statut.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.url_billets.id_for_label }}">{{ form.url_billets.label }}</label>
+            {{ form.url_billets }}
+            {{ form.url_billets.errors }}
+          </div>
+          <div class="form-group" style="justify-content:flex-end;padding-bottom:.25rem">
+            <label style="display:flex;align-items:center;gap:.5rem;text-transform:none;font-size:.9rem;cursor:pointer">
+              {{ form.public }} Visible sur le site public
+            </label>
+          </div>
+          <div class="form-group full">
+            <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+            {{ form.description }}
+            {{ form.description.errors }}
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">{% if instance %}Enregistrer{% else %}Créer le concert{% endif %}</button>
+          <a href="{% url 'admin_concerts' %}" class="btn btn-outline">Annuler</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

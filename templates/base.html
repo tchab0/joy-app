@@ -84,10 +84,7 @@
     <ul class="nav-links" id="nav-links" :class="open ? 'open' : ''">
       <li><a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' %}class="active"{% endif %}>Accueil</a></li>
       <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
-      <li><a href="{% url 'goodies' %}" {% if request.resolver_match.url_name == 'goodies' %}class="active"{% endif %}>Goodies</a></li>
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
-      <li><a href="{% url 'don' %}" {% if request.resolver_match.url_name == 'don' %}class="active"{% endif %}>Espace Donateur</a></li>
-      <li><a href="{% url 'adhesion' %}" {% if request.resolver_match.url_name == 'adhesion' %}class="active"{% endif %}>Adhérer</a></li>
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
     </ul>
     <a class="nav-fb" href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook ↗</a>
@@ -103,6 +100,13 @@
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
   </div>
   <p style="margin-top:.75rem">© {% now "Y" %} Jazz Orchestra Yonnais — La Roche-sur-Yon</p>
+  {% if request.user.is_staff %}
+  <p style="margin-top:.5rem">
+    <a href="/admin-concerts/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em">⚙ Concerts</a>
+    <a href="/admin-lieux/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Lieux</a>
+    <a href="/admin/" style="color:rgba(255,255,255,.15);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">Django admin</a>
+  </p>
+  {% endif %}
 </footer>
 </body>
 </html>

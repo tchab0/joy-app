@@ -2,33 +2,233 @@
 {% block title %}Médias — JOY{% endblock %}
 {% block extra_css %}
 <style>
-  .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
-  .media-grid img { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:var(--r); display:block; }
-  .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-top:1rem; }
-  .video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
+.media-groupe { margin-bottom: 3rem; }
+.media-groupe-titre { font-family:var(--font-d); font-style:italic; font-size:1.2rem; color:var(--text); margin-bottom:1rem; padding-bottom:.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
+.media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:.75rem; }
+.video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:1rem; margin-top:1rem; }
+.video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
+.audio-list { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; }
+.audio-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1rem; }
+.audio-item audio { width:100%; margin-top:.5rem; }
+.pdf-list { display:flex; flex-direction:column; gap:.5rem; margin-top:1rem; }
+.pdf-item { display:flex; align-items:center; gap:.75rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:.75rem 1rem; text-decoration:none; color:var(--text); transition:border-color var(--trans); }
+.pdf-item:hover { border-color:var(--accent); }
+
+.photo-wrap { position:relative; display:block; overflow:hidden; border-radius:var(--r); background:var(--surface); }
+.photo-wrap img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; transition:transform .4s cubic-bezier(.16,1,.3,1); }
+.photo-wrap:hover img { transform:scale(1.04); }
+.photo-vote { position:absolute; right:.45rem; bottom:.45rem; display:flex; align-items:center; gap:.3rem; background:rgba(0,0,0,.45); color:#fff; border:none; border-radius:999px; padding:.28rem .55rem; font-size:.75rem; cursor:pointer; opacity:0; transition:opacity .2s ease, background .2s ease; backdrop-filter:blur(4px); }
+.photo-wrap:hover .photo-vote { opacity:1; }
+.photo-vote.voted { background:rgba(177, 38, 62, .82); }
+.photo-vote-count { font-size:.72rem; }
+
+.lightbox { position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:2000; display:none; align-items:center; justify-content:center; }
+.lightbox.is-open { display:flex; }
+.lightbox-inner { position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:4rem 5rem; }
+.lightbox-image { max-width:100%; max-height:100%; object-fit:contain; }
+.lightbox-close,
+.lightbox-nav { position:absolute; border:none; color:#fff; background:rgba(255,255,255,.12); backdrop-filter:blur(6px); cursor:pointer; border-radius:var(--r); }
+.lightbox-close { top:1rem; right:1rem; width:42px; height:42px; font-size:1.2rem; }
+.lightbox-nav { top:50%; transform:translateY(-50%); width:52px; height:72px; font-size:2rem; }
+.lightbox-nav.prev { left:1rem; }
+.lightbox-nav.next { right:1rem; }
+.lightbox-meta { position:absolute; left:50%; bottom:1rem; transform:translateX(-50%); color:#fff; text-align:center; background:rgba(0,0,0,.35); padding:.55rem .9rem; border-radius:var(--r); backdrop-filter:blur(4px); }
+.lightbox-counter { font-size:.72rem; opacity:.75; text-transform:uppercase; letter-spacing:.06em; }
+.lightbox-title { font-size:.95rem; margin-top:.2rem; }
+.lightbox-votes { font-size:.8rem; opacity:.85; margin-top:.2rem; }
+
+@media (max-width: 720px) {
+  .lightbox-inner { padding:4rem 1rem 5rem; }
+  .lightbox-nav { width:44px; height:56px; font-size:1.5rem; }
+  .lightbox-nav.prev { left:.5rem; }
+  .lightbox-nav.next { right:.5rem; }
+}
 </style>
 {% endblock %}
+
 {% block content %}
 <section class="section">
   <div class="container">
-    <h1 class="section-title">Médias</h1>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2rem">
+      <h1 class="section-title" style="margin-bottom:0">Médias</h1>
+      <a href="{% url 'proposer_media' %}" class="btn btn-outline">+ Proposer un média</a>
+    </div>
+
     {% if videos %}
     <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin-bottom:1rem">Vidéos</h2>
-    <div class="video-grid">
+    <div class="video-grid" style="margin-bottom:3rem">
       {% for v in videos %}
       <iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
       {% endfor %}
     </div>
     {% endif %}
-    {% if photos %}
-    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Photos</h2>
-    <div class="media-grid">
-      {% for p in photos %}
-      <img src="{{ p.fichier.url }}" alt="{{ p.titre }}" loading="lazy">
+
+    {% if groupes_photos %}
+    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin-bottom:1.5rem">Photos</h2>
+    {% for groupe in groupes_photos %}
+    <div class="media-groupe">
+      <div class="media-groupe-titre">
+        <span style="font-family:var(--font-d);font-style:italic;font-size:1.2rem;color:var(--text)">{{ groupe.evenement.nom }}</span>
+        {% if groupe.evenement.date %}
+        <span style="font-family:var(--font-b);font-style:normal;font-size:.78rem;font-weight:400;color:var(--muted)">{{ groupe.evenement.date|date:"d F Y" }}</span>
+        {% endif %}
+        <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ groupe.photos|length }} photo{{ groupe.photos|length|pluralize }}</span>
+        <button type="button" class="btn btn-outline" style="margin-left:auto;font-size:.75rem;padding:.3rem .8rem"
+          onclick="openLightbox('groupe_{{ forloop.counter0 }}', 0)">
+          ▶ Diaporama
+        </button>
+      </div>
+
+      <div class="media-grid">
+        {% for p in groupe.photos %}
+        <div class="photo-wrap">
+          <a href="{{ p.fichier.url }}" onclick="openLightbox('groupe_{{ forloop.parentloop.counter0 }}', {{ forloop.counter0 }}); return false;">
+            <img src="{{ p.fichier.url }}" alt="{{ p.titre }}" loading="lazy">
+          </a>
+          <button
+            class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
+            type="button"
+            data-vote-url="{% url 'media_vote' p.pk %}"
+            data-csrf="{{ csrf_token }}"
+            onclick="toggleVote(this)">
+            <span class="photo-vote-icon">{% if p.user_a_vote %}❤️{% else %}🤍{% endif %}</span>
+            <span class="photo-vote-count">{% if p.nb_votes %}{{ p.nb_votes }}{% endif %}</span>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if audios %}
+    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Audio</h2>
+    <div class="audio-list">
+      {% for a in audios %}
+      <div class="audio-item">
+        <div style="font-weight:600;font-size:.95rem">{{ a.titre|default:"Enregistrement" }}</div>
+        <audio controls src="{{ a.fichier.url }}"></audio>
+      </div>
       {% endfor %}
     </div>
     {% endif %}
-    {% if not photos and not videos %}<p style="color:var(--muted);font-style:italic">Galerie en cours de construction.</p>{% endif %}
+
+    {% if pdfs %}
+    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Documents</h2>
+    <div class="pdf-list">
+      {% for p in pdfs %}
+      <a class="pdf-item" href="{{ p.fichier.url }}" target="_blank" rel="noopener">
+        <span style="font-size:1.4rem">📄</span>
+        <span>{{ p.titre|default:"Document PDF" }}</span>
+        <span style="margin-left:auto;font-size:.8rem;color:var(--muted)">Ouvrir ↗</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not groupes_photos and not videos and not audios and not pdfs %}
+    <p style="color:var(--muted);font-style:italic">Galerie en cours de construction.</p>
+    {% endif %}
   </div>
 </section>
+
+<div id="lightbox" class="lightbox" onclick="lightboxBackdrop(event)">
+  <div class="lightbox-inner">
+    <button type="button" class="lightbox-close" onclick="closeLightbox()">✕</button>
+    <button type="button" class="lightbox-nav prev" onclick="prevLightbox()">‹</button>
+    <img id="lightbox-image" class="lightbox-image" src="" alt="">
+    <button type="button" class="lightbox-nav next" onclick="nextLightbox()">›</button>
+    <div class="lightbox-meta">
+      <div id="lightbox-counter" class="lightbox-counter"></div>
+      <div id="lightbox-title" class="lightbox-title"></div>
+      <div id="lightbox-votes" class="lightbox-votes"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MEDIA_GROUPS = {
+  {% for groupe in groupes_photos %}
+  "groupe_{{ forloop.counter0 }}": [
+    {% for p in groupe.photos %}
+    {
+      url: "{{ p.fichier.url|escapejs }}",
+      titre: "{{ p.titre|default:groupe.evenement.nom|escapejs }}",
+      votes: {{ p.nb_votes|default:0 }}
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ]{% if not forloop.last %},{% endif %}
+  {% endfor %}
+};
+
+const lightboxState = {
+  group: null,
+  index: 0
+};
+
+function renderLightbox() {
+  const items = MEDIA_GROUPS[lightboxState.group] || [];
+  const item = items[lightboxState.index];
+  if (!item) return;
+  document.getElementById('lightbox-image').src = item.url;
+  document.getElementById('lightbox-image').alt = item.titre || '';
+  document.getElementById('lightbox-title').textContent = item.titre || '';
+  document.getElementById('lightbox-counter').textContent = (lightboxState.index + 1) + ' / ' + items.length;
+  document.getElementById('lightbox-votes').textContent = item.votes ? '❤️ ' + item.votes : '';
+}
+
+function openLightbox(group, index) {
+  lightboxState.group = group;
+  lightboxState.index = index;
+  renderLightbox();
+  document.getElementById('lightbox').classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('is-open');
+  document.body.style.overflow = '';
+}
+
+function prevLightbox() {
+  const items = MEDIA_GROUPS[lightboxState.group] || [];
+  if (!items.length) return;
+  lightboxState.index = (lightboxState.index - 1 + items.length) % items.length;
+  renderLightbox();
+}
+
+function nextLightbox() {
+  const items = MEDIA_GROUPS[lightboxState.group] || [];
+  if (!items.length) return;
+  lightboxState.index = (lightboxState.index + 1) % items.length;
+  renderLightbox();
+}
+
+function lightboxBackdrop(event) {
+  if (event.target.id === 'lightbox') closeLightbox();
+}
+
+document.addEventListener('keydown', function(event) {
+  const open = document.getElementById('lightbox').classList.contains('is-open');
+  if (!open) return;
+  if (event.key === 'Escape') closeLightbox();
+  if (event.key === 'ArrowLeft') prevLightbox();
+  if (event.key === 'ArrowRight') nextLightbox();
+});
+
+function toggleVote(button) {
+  fetch(button.dataset.voteUrl, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': button.dataset.csrf
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    button.classList.toggle('voted', data.voted);
+    button.querySelector('.photo-vote-icon').textContent = data.voted ? '❤️' : '🤍';
+    button.querySelector('.photo-vote-count').textContent = data.nb ? data.nb : '';
+  });
+}
+</script>
 {% endblock %}
