@@ -18,3 +18,29 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
+INSTALLED_APPS += [
+    "debug_toolbar",
+]
+
+MIDDLEWARE = [
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
+    *MIDDLEWARE,
+]
+
+INTERNAL_IPS = [
+    "127.0.0.1",
+]
+
+INSTALLED_APPS += [
+    "compressor",
+]
+
+STATICFILES_FINDERS = list(globals().get("STATICFILES_FINDERS", [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+])) + [
+    "compressor.finders.CompressorFinder",
+]
+
+COMPRESS_ENABLED = True
+COMPRESS_OFFLINE = False

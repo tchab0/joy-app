@@ -46,6 +46,7 @@ class MediaItem(models.Model):
 
     STATUT_CHOICES = [
         ("en_attente", "En attente"),
+        ("en_cours", "Compression en cours"),
         ("publie", "Publié"),
         ("refuse", "Refusé"),
     ]
@@ -83,57 +84,46 @@ class MediaItem(models.Model):
         return self.titre
 
     @property
-    def fichier_compresse(self):
-        return None
-
-    @property
     def fichier_actif(self):
         return self.fichier
 
-    @property
-    def est_compresse(self):
+    def chemin_compresse(self):
+        """Chemin absolu du fichier compressé sidecar, ou None."""
         if not self.fichier:
-            return False
+            return None
 
-        src = Path(self.fichier.path)
+        stem = Path(self.fichier.name).stem
         dest_dir = Path(self._media_root()) / "medias" / "compresses"
 
         if self.type == "photo":
-            cand = dest_dir / f"{src.stem}.webp"
+            cand = dest_dir / f"{stem}.webp"
         elif self.type == "video":
-            cand = dest_dir / f"{src.stem}.mp4"
+            cand = dest_dir / f"{stem}.mp4"
         elif self.type == "audio":
-            cand = dest_dir / f"{src.stem}.m4a"
+            cand = dest_dir / f"{stem}.m4a"
         elif self.type == "pdf":
-            cand = dest_dir / f"{src.stem}.pdf"
+            cand = dest_dir / f"{stem}.pdf"
         else:
-            return False
+            return None
 
-        return cand.exists()
+        return cand if cand.exists() else None
+
+    def chemin_compresse_relatif(self):
+        abs_path = self.chemin_compresse()
+        if not abs_path:
+            return ""
+        return abs_path.relative_to(Path(self._media_root())).as_posix()
+
+    @property
+    def est_compresse(self):
+        return self.chemin_compresse() is not None
 
     @property
     def url_compressee(self):
-        if not self.fichier:
+        rel = self.chemin_compresse_relatif()
+        if not rel:
             return ""
-
-        stem = Path(self.fichier.name).stem
-
-        if self.type == "photo":
-            rel = Path("medias/compresses") / f"{stem}.webp"
-        elif self.type == "video":
-            rel = Path("medias/compresses") / f"{stem}.mp4"
-        elif self.type == "audio":
-            rel = Path("medias/compresses") / f"{stem}.m4a"
-        elif self.type == "pdf":
-            rel = Path("medias/compresses") / f"{stem}.pdf"
-        else:
-            return ""
-
-        abs_path = Path(self._media_root()) / rel
-        if not abs_path.exists():
-            return ""
-
-        return f"{self._media_url()}{rel.as_posix()}"
+        return f"{self._media_url()}{rel}"
 
     @staticmethod
     def _media_root():

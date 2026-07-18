@@ -1,13 +1,14 @@
 from collections import defaultdict
 from datetime import timedelta
 
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils import timezone
 from django.views.generic import TemplateView
 
 from events.models import Event
 
 
-class PlanningUpcomingView(TemplateView):
+class PlanningUpcomingView(LoginRequiredMixin, TemplateView):
     template_name = "planning/upcoming_12_months.html"
 
     def get_context_data(self, **kwargs):
