@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Admin planning — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <header class="pl-head">
+    <h1>Admin planning</h1>
+    <p class="pl-sub">Effectifs, sondages et matériel.</p>
+  </header>
+
+  <nav class="pl-nav">
+    <a href="{% url 'planning:dashboard' %}">← Tableau de bord</a>
+    <a href="{% url 'planning:admin' %}" class="is-active">Admin</a>
+  </nav>
+
+  <section class="pl-section">
+    <h2>Prochains événements</h2>
+    {% for e in events %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:event_roster' e.pk %}">{{ e.titre }}</a>
+        <p class="pl-row__meta">
+          {{ e.date_debut|date:"d/m/Y H:i" }}
+          {% if e.venue %} · {{ e.venue.nom }}{% endif %}
+          · {{ e.n_confirmed }} oui · {{ e.n_invited }} attente
+          {% if e.n_holes %} · <strong>{{ e.n_holes }} trou{{ e.n_holes|pluralize }}</strong>{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <a class="pl-btn" href="{% url 'planning:event_roster' e.pk %}">Effectif</a>
+      </div>
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucun événement à venir.</p>
+    {% endfor %}
+  </section>
+
+  <section class="pl-section">
+    <h2>Nouveau sondage de dates</h2>
+    <form class="pl-form" method="post" action="{% url 'planning:create_poll' %}"
+          x-data="{ n: 2 }">
+      {% csrf_token %}
+      <div>
+        <label for="title">Titre</label>
+        <input type="text" name="title" id="title" required placeholder="ex. Répétition générale mars">
+      </div>
+      <div>
+        <label for="description">Description</label>
+        <textarea name="description" id="description" rows="2"></textarea>
+      </div>
+      <template x-for="i in Array.from({length: n}, (_, k) => k)" :key="i">
+        <div class="pl-form__row pl-form__row--2" style="padding:.5rem 0;border-top:1px solid var(--border)">
+          <div>
+            <label :for="'starts_'+i">Option <span x-text="i+1"></span> — début</label>
+            <input type="datetime-local" :name="'option_starts_'+i" :id="'starts_'+i" required>
+          </div>
+          <div>
+            <label :for="'label_'+i">Libellé (optionnel)</label>
+            <input type="text" :name="'option_label_'+i" :id="'label_'+i" placeholder="ex. soirée">
+          </div>
+        </div>
+      </template>
+      <button type="button" class="pl-btn" @click="n++" style="align-self:flex-start">+ Option</button>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Créer le sondage</button>
+    </form>
+  </section>
+
+  {% if open_polls %}
+  <section class="pl-section">
+    <h2>Sondages ouverts</h2>
+    {% for p in open_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}">{{ p.title }}</a>
+        <p class="pl-row__meta">{{ p.n_options }} option{{ p.n_options|pluralize }}</p>
+      </div>
+      <a class="pl-btn" href="{% url 'planning:poll_detail' p.pk %}">Ouvrir</a>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>Catalogue matériel</h2>
+    {% for item in equipment_items %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <span class="pl-row__title">{{ item.name }}</span>
+        {% if item.category %}<p class="pl-row__meta">{{ item.category }}</p>{% endif %}
+      </div>
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucun matériel au catalogue.</p>
+    {% endfor %}
+    <form class="pl-form" method="post" action="{% url 'planning:create_equipment' %}">
+      {% csrf_token %}
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="eq_name">Nouveau matériel</label>
+          <input type="text" name="name" id="eq_name" required>
+        </div>
+        <div>
+          <label for="eq_cat">Catégorie</label>
+          <input type="text" name="category" id="eq_cat" placeholder="ex. Sono, Transport">
+        </div>
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

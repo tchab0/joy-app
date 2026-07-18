@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ proposal.title }} — Sondage JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
+  <nav class="pl-nav">
+    <a href="{% url 'planning:dashboard' %}">← Planning</a>
+    {% if is_planning_staff %}
+    <a href="{% url 'planning:admin' %}">Admin</a>
+    {% endif %}
+  </nav>
+
+  <header class="pl-head">
+    <h1>{{ proposal.title }}</h1>
+    {% if proposal.description %}
+    <p class="pl-sub">{{ proposal.description }}</p>
+    {% endif %}
+    <p class="pl-row__meta" style="margin-top:.5rem">
+      {% if proposal.is_open %}Sondage ouvert{% else %}{{ proposal.get_status_display }}{% endif %}
+      {% if proposal.linked_event %}
+      · <a href="{% url 'planning:event_detail' proposal.linked_event_id %}">Voir l’événement</a>
+      {% endif %}
+    </p>
+  </header>
+
+  <section class="pl-section">
+    {% for item in options_data %}
+    <div class="pl-option"
+         x-data="{
+           choice: '{{ item.my_vote|default:'' }}',
+           counts: {{ item.counts_json|safe }},
+           busy: false,
+           async vote(c) {
+             if (!{{ proposal.is_open|yesno:'true,false' }}) return;
+             this.busy = true;
+             try {
+               const r = await fetch('{% url 'planning:vote_option' item.option.pk %}', {
+                 method: 'POST',
+                 headers: {'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'},
+                 body: JSON.stringify({choice: c})
+               });
+               const d = await r.json();
+               if (d.ok) { this.choice = d.choice; this.counts = d.counts; $dispatch('pl-toast','Vote enregistré'); }
+               else { $dispatch('pl-toast', d.error || 'Erreur'); }
+             } finally { this.busy = false; }
+           }
+         }">
+      <p class="pl-row__title">
+        {% if item.option.label %}{{ item.option.label }} — {% endif %}
+        {{ item.option.starts_at|date:"l d/m/Y H:i" }}
+        {% if item.option.ends_at %} – {{ item.option.ends_at|date:"H:i" }}{% endif %}
+      </p>
+      <p class="pl-option__counts">
+        <span x-text="counts.yes">{{ item.counts.yes }}</span> oui ·
+        <span x-text="counts.maybe">{{ item.counts.maybe }}</span> peut-être ·
+        <span x-text="counts.no">{{ item.counts.no }}</span> non
+      </p>
+      {% if proposal.is_open %}
+      <div class="pl-row__actions">
+        <button type="button" class="pl-btn pl-btn--yes" :class="choice === 'yes' && 'is-active'" :disabled="busy" @click="vote('yes')">Oui</button>
+        <button type="button" class="pl-btn pl-btn--maybe" :class="choice === 'maybe' && 'is-active'" :disabled="busy" @click="vote('maybe')">Peut-être</button>
+        <button type="button" class="pl-btn pl-btn--no" :class="choice === 'no' && 'is-active'" :disabled="busy" @click="vote('no')">Non</button>
+      </div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucune option.</p>
+    {% endfor %}
+  </section>
+
+  {% if is_planning_staff and proposal.is_open %}
+  <section class="pl-section">
+    <h2>Verrouiller une date</h2>
+    <form class="pl-form" method="post" action="{% url 'planning:lock_poll' proposal.pk %}">
+      {% csrf_token %}
+      <div>
+        <label for="option_id">Option retenue</label>
+        <select name="option_id" id="option_id" required>
+          {% for item in options_data %}
+          <option value="{{ item.option.pk }}">
+            {{ item.option.starts_at|date:"d/m/Y H:i" }}
+            ({{ item.counts.yes }} oui)
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="venue_id">Lieu</label>
+          <select name="venue_id" id="venue_id" required>
+            {% for v in venues %}
+            <option value="{{ v.pk }}">{{ v.nom }} — {{ v.ville }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="type_id">Type</label>
+          <select name="type_id" id="type_id" required>
+            {% for t in event_types %}
+            <option value="{{ t.pk }}">{{ t.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:500">
+        <input type="checkbox" name="public"> Visible sur le site public
+      </label>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Créer l’événement</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+</div>
+{% endblock %}

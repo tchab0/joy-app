@@ -1,80 +1,44 @@
 {% extends "base.html" %}
 
+{% block title %}Planning 12 mois — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
 {% block content %}
-<section class="planning-page">
-  <header class="planning-page__header">
-    <h1>Planning des concerts – 12 prochains mois</h1>
-    <p class="planning-page__subtitle">
-      Vue synthétique des concerts à venir et des musiciens associés.
-    </p>
+<div class="pl">
+  <header class="pl-head">
+    <h1>12 prochains mois</h1>
+    <p class="pl-sub">Vue synthétique des concerts à venir.</p>
   </header>
+
+  <nav class="pl-nav">
+    <a href="{% url 'planning:dashboard' %}">Tableau de bord</a>
+    <a href="{% url 'planning:upcoming_12_months' %}" class="is-active">12 mois</a>
+  </nav>
 
   {% if grouped_events %}
     {% for month, events in grouped_events.items %}
-      <section class="planning-month">
-        <h2 class="planning-month__title">
-          {{ month }}
-        </h2>
-
-        <div class="planning-month__events">
-          {% for event in events %}
-            <article class="planning-card">
-              <header class="planning-card__head">
-                <h3 class="planning-card__title">
-                  {{ event.titre }}
-                </h3>
-                <p class="planning-card__meta">
-                  <span class="planning-card__date">
-                    {{ event.date_debut|date:"d/m/Y H:i" }}
-                  </span>
-                  {% if event.venue %}
-                    <span class="planning-card__separator">•</span>
-                    <span class="planning-card__venue">{{ event.venue.nom }}</span>
-                  {% endif %}
-                  {% if event.type %}
-                    <span class="planning-card__separator">•</span>
-                    <span class="planning-card__type">{{ event.type.nom }}</span>
-                  {% endif %}
-                </p>
-              </header>
-
-              {% if event.description %}
-                <p class="planning-card__description">
-                  {{ event.description }}
-                </p>
-              {% endif %}
-
-              <div class="planning-card__body">
-                <h4 class="planning-card__participants-title">
-                  Musiciens
-                </h4>
-
-                {% if event.participations.all %}
-                  <ul class="planning-card__participants">
-                    {% for p in event.participations.all %}
-                      <li class="planning-participant">
-                        <span class="planning-participant__name">
-                          {{ p.user.first_name }} {{ p.user.last_name }}
-                        </span>
-                        <span class="planning-participant__status planning-participant__status--{{ p.status.color_token|default:'neutral' }}">
-                          {{ p.status.label }}
-                        </span>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="planning-card__empty">
-                    Aucun musicien affecté pour l’instant.
-                  </p>
-                {% endif %}
-              </div>
-            </article>
-          {% endfor %}
-        </div>
+      <section class="pl-section">
+        <h2>{{ month }}</h2>
+        {% for event in events %}
+          <div class="pl-row">
+            <div class="pl-row__main">
+              <a class="pl-row__title" href="{% url 'planning:event_detail' event.pk %}">{{ event.titre }}</a>
+              <p class="pl-row__meta">
+                {{ event.date_debut|date:"d/m/Y H:i" }}
+                {% if event.venue %} · {{ event.venue.nom }}{% endif %}
+                {% if event.type %} · {{ event.type.nom }}{% endif %}
+              </p>
+            </div>
+            <span class="pl-badge">{{ event.participations.all|length }} musicien{{ event.participations.all|length|pluralize }}</span>
+          </div>
+        {% endfor %}
       </section>
     {% endfor %}
   {% else %}
-    <p>Aucun concert prévu sur les 12 prochains mois.</p>
+    <p class="pl-empty">Aucun concert prévu sur les 12 prochains mois.</p>
   {% endif %}
-</section>
+</div>
 {% endblock %}

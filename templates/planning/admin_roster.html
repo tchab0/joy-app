@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Effectif — {{ event.titre }}{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <nav class="pl-nav">
+    <a href="{% url 'planning:admin' %}">← Admin</a>
+    <a href="{% url 'planning:event_detail' event.pk %}">Vue musicien</a>
+  </nav>
+
+  <header class="pl-head">
+    <h1>{{ event.titre }}</h1>
+    <p class="pl-sub">
+      {{ event.date_debut|date:"l d F Y · H:i" }}
+      {% if event.venue %} · {{ event.venue.nom }}{% endif %}
+    </p>
+  </header>
+
+  <section class="pl-section">
+    <h2>Effectif par pupitre</h2>
+    {% for section, parts in by_section.items %}
+    <div class="pl-section-block">
+      <h3>{{ section }}</h3>
+      {% for p in parts %}
+      <div class="pl-row">
+        <div class="pl-row__main">
+          <span class="pl-row__title">{{ p.user.get_full_name|default:p.user.username }}</span>
+        </div>
+        <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% empty %}
+    <p class="pl-empty">Personne d’invité.</p>
+    {% endfor %}
+
+    <form class="pl-form" method="post" action="{% url 'planning:invite_musician' event.pk %}">
+      {% csrf_token %}
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="user_id">Inviter un musicien</label>
+          <select name="user_id" id="user_id" required>
+            {% for m in musicians %}
+            <option value="{{ m.pk }}">{{ m.get_full_name|default:m.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="pl-section">
+    <h2>Matériel pour cette date</h2>
+    {% for g in gear %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <span class="pl-row__title">{{ g.item.name }}</span>
+        <p class="pl-row__meta">
+          {% if g.assigned_to %}{{ g.assigned_to.get_full_name|default:g.assigned_to.username }}{% else %}Non assigné{% endif %}
+          · {{ g.get_status_display }}
+        </p>
+      </div>
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucun matériel listé.</p>
+    {% endfor %}
+
+    <form class="pl-form" method="post" action="{% url 'planning:add_event_equipment' event.pk %}">
+      {% csrf_token %}
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="item_id">Matériel</label>
+          <select name="item_id" id="item_id" required>
+            {% for item in equipment_catalog %}
+            <option value="{{ item.pk }}">{{ item.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="assigned_to">Apporté par</label>
+          <select name="assigned_to" id="assigned_to">
+            <option value="">—</option>
+            {% for m in musicians %}
+            <option value="{{ m.pk }}">{{ m.get_full_name|default:m.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

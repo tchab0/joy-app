@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Planning — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
+  <header class="pl-head" x-data x-intersect="$el.style.opacity = 1" style="opacity:0; transition: opacity .4s ease">
+    <h1>Planning</h1>
+    <p class="pl-sub">Prochaines dates, réponses et matériel — l’essentiel, rien de plus.</p>
+  </header>
+
+  <nav class="pl-nav">
+    <a href="{% url 'planning:dashboard' %}" class="is-active">Tableau de bord</a>
+    <a href="{% url 'planning:upcoming_12_months' %}">12 mois</a>
+    {% if is_planning_staff %}
+    <a href="{% url 'planning:admin' %}">Admin</a>
+    {% endif %}
+  </nav>
+
+  {% if pending %}
+  <section class="pl-section">
+    <h2>À répondre</h2>
+    {% for p in pending %}
+    <div class="pl-row"
+         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}')"
+         x-show="true"
+         x-transition.opacity.duration.200ms>
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+        <p class="pl-row__meta">
+          {{ p.event.date_debut|date:"D d/m H:i" }}
+          {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
+        <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
+        <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+        <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')">Non</button>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if sub_offers %}
+  <section class="pl-section">
+    <h2>Remplacements proposés</h2>
+    {% for s in sub_offers %}
+    <div class="pl-row" x-data="{ busy: false }">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
+        <p class="pl-row__meta">
+          Remplacer {{ s.participation.user.get_full_name|default:s.participation.user.username }}
+          · {{ s.participation.event.date_debut|date:"d/m H:i" }}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <button type="button" class="pl-btn pl-btn--yes" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:claim_sub' s.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:true})}).then(r=>r.json()).then(d=>{ if(d.ok){ $dispatch('pl-toast', 'Remplacement accepté'); location.reload(); } else { busy=false; $dispatch('pl-toast', d.error||'Erreur'); } })">
+          Accepter
+        </button>
+        <button type="button" class="pl-btn pl-btn--no" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:claim_sub' s.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:false})}).then(r=>r.json()).then(d=>{ if(d.ok){ location.reload(); } else { busy=false; } })">
+          Refuser
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if open_polls %}
+  <section class="pl-section">
+    <h2>Sondages de dates</h2>
+    {% for poll in open_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:poll_detail' poll.pk %}">{{ poll.title }}</a>
+        <p class="pl-row__meta">{{ poll.options.count }} option{{ poll.options.count|pluralize }}</p>
+      </div>
+      <div class="pl-row__actions">
+        <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' poll.pk %}">Voter</a>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>Prochaines dates</h2>
+    {% if upcoming %}
+      {% for p in upcoming %}
+      <div class="pl-row">
+        <div class="pl-row__main">
+          <a class="pl-row__title" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+          <p class="pl-row__meta">
+            {{ p.event.date_debut|date:"D d/m/Y H:i" }}
+            {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
+            · {{ p.event.type.nom }}
+          </p>
+        </div>
+        <div class="pl-row__actions">
+          <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="pl-empty">Aucune date à venir pour vous.</p>
+    {% endif %}
+  </section>
+
+  {% if my_gear %}
+  <section class="pl-section">
+    <h2>À apporter</h2>
+    {% for g in my_gear %}
+    <div class="pl-row" x-data="{ status: '{{ g.status }}', busy: false }">
+      <div class="pl-row__main">
+        <span class="pl-row__title">{{ g.item.name }}</span>
+        <p class="pl-row__meta">{{ g.event.titre }} · {{ g.event.date_debut|date:"d/m" }}</p>
+      </div>
+      <div class="pl-row__actions">
+        <button type="button" class="pl-btn" :class="status === 'ok' && 'pl-btn--yes is-active'" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'ok'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='ok'; $dispatch('pl-toast','Noté'); } })">
+          OK
+        </button>
+        <button type="button" class="pl-btn" :class="status === 'missing' && 'pl-btn--no is-active'" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'missing'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='missing'; } })">
+          Manque
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>Mon pupitre</h2>
+    <form class="pl-form" method="post" action="{% url 'planning:update_profile' %}">
+      {% csrf_token %}
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="section_id">Pupitre</label>
+          <select name="section_id" id="section_id">
+            <option value="">—</option>
+            {% for s in sections %}
+            <option value="{{ s.pk }}" {% if profile.section_id == s.pk %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="instrument">Instrument</label>
+          <input type="text" name="instrument" id="instrument" value="{{ profile.instrument }}" placeholder="ex. trompette 2">
+        </div>
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Enregistrer</button>
+    </form>
+  </section>
+
+  <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+</div>
+
+<script>
+function respondButtons(pk, initialCode) {
+  const labels = {
+    invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
+    declined: 'Refusé', replacement_needed: 'Remplacement demandé'
+  };
+  return {
+    pk,
+    code: initialCode,
+    label: labels[initialCode] || initialCode,
+    busy: false,
+    async respond(response) {
+      this.busy = true;
+      try {
+        const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ response }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.code = d.status.code;
+          this.label = d.status.label;
+          window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
+        } else {
+          window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.error || 'Erreur' }));
+        }
+      } finally {
+        this.busy = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}
