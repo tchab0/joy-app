@@ -4,10 +4,28 @@
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
+{% if room %}
+{% include "chat/_room_styles.html" %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
+<div class="pl"
+     x-data="pollVotes({
+       open: {{ proposal.is_open|yesno:'true,false' }},
+       csrf: '{{ csrf_token }}',
+       choices: {
+         {% for item in options_data %}
+         {{ item.option.pk }}: '{{ item.my_vote|default:'' }}'{% if not forloop.last %},{% endif %}
+         {% endfor %}
+       },
+       urls: {
+         {% for item in options_data %}
+         {{ item.option.pk }}: '{% url 'planning:vote_option' item.option.pk %}'{% if not forloop.last %},{% endif %}
+         {% endfor %}
+       }
+     })"
+     @pl-toast.window="onToast($event.detail)">
   <nav class="pl-nav">
     <a href="{% url 'planning:dashboard' %}">← Planning</a>
     {% if is_planning_staff %}
@@ -15,106 +33,89 @@
     {% endif %}
   </nav>
 
-  <header class="pl-head">
-    <h1>{{ proposal.title }}</h1>
-    {% if proposal.description %}
-    <p class="pl-sub">{{ proposal.description }}</p>
-    {% endif %}
-    <p class="pl-row__meta" style="margin-top:.5rem">
-      {% if proposal.is_open %}Sondage ouvert{% else %}{{ proposal.get_status_display }}{% endif %}
-      {% if proposal.linked_event %}
-      · <a href="{% url 'planning:event_detail' proposal.linked_event_id %}">Voir l’événement</a>
+  <header class="pl-accept__head">
+    <h1 class="pl-accept__title">{{ proposal.title }}</h1>
+    {% if event %}
+    <p class="pl-accept__meta">
+      <span class="pl-accept__type">{{ event.type.nom }}</span>
+      {% if event.venue %}
+      <span class="pl-accept__sep" aria-hidden="true">·</span>
+      <span class="pl-accept__venue">{{ event.lieu_affiche }}</span>
       {% endif %}
     </p>
+    {% endif %}
   </header>
 
-  <section class="pl-section">
-    {% for item in options_data %}
-    <div class="pl-option"
-         x-data="{
-           choice: '{{ item.my_vote|default:'' }}',
-           counts: {{ item.counts_json|safe }},
-           busy: false,
-           async vote(c) {
-             if (!{{ proposal.is_open|yesno:'true,false' }}) return;
-             this.busy = true;
-             try {
-               const r = await fetch('{% url 'planning:vote_option' item.option.pk %}', {
-                 method: 'POST',
-                 headers: {'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'},
-                 body: JSON.stringify({choice: c})
-               });
-               const d = await r.json();
-               if (d.ok) { this.choice = d.choice; this.counts = d.counts; $dispatch('pl-toast','Vote enregistré'); }
-               else { $dispatch('pl-toast', d.error || 'Erreur'); }
-             } finally { this.busy = false; }
-           }
-         }">
-      <p class="pl-row__title">
-        {% if item.option.label %}{{ item.option.label }} — {% endif %}
-        {{ item.option.starts_at|date:"l d/m/Y H:i" }}
-        {% if item.option.ends_at %} – {{ item.option.ends_at|date:"H:i" }}{% endif %}
-      </p>
-      <p class="pl-option__counts">
-        <span x-text="counts.yes">{{ item.counts.yes }}</span> oui ·
-        <span x-text="counts.maybe">{{ item.counts.maybe }}</span> peut-être ·
-        <span x-text="counts.no">{{ item.counts.no }}</span> non
-      </p>
-      {% if proposal.is_open %}
-      <div class="pl-row__actions">
-        <button type="button" class="pl-btn pl-btn--yes" :class="choice === 'yes' && 'is-active'" :disabled="busy" @click="vote('yes')">Oui</button>
-        <button type="button" class="pl-btn pl-btn--maybe" :class="choice === 'maybe' && 'is-active'" :disabled="busy" @click="vote('maybe')">Peut-être</button>
-        <button type="button" class="pl-btn pl-btn--no" :class="choice === 'no' && 'is-active'" :disabled="busy" @click="vote('no')">Non</button>
-      </div>
-      {% endif %}
-    </div>
-    {% empty %}
-    <p class="pl-empty">Aucune option.</p>
-    {% endfor %}
-  </section>
-
-  {% if is_planning_staff and proposal.is_open %}
-  <section class="pl-section">
-    <h2>Verrouiller une date</h2>
-    <form class="pl-form" method="post" action="{% url 'planning:lock_poll' proposal.pk %}">
+  {% if is_planning_staff and proposal.is_draft %}
+  <section class="pl-section pl-accept__staff">
+    <h2>Lancer le sondage</h2>
+    <p class="pl-row__meta" style="margin-bottom:1rem">
+      Autorise les musiciens à répondre et envoie un SMS aux personnes concernées.
+    </p>
+    <form method="post" action="{% url 'planning:launch_poll' proposal.pk %}">
       {% csrf_token %}
-      <div>
-        <label for="option_id">Option retenue</label>
-        <select name="option_id" id="option_id" required>
-          {% for item in options_data %}
-          <option value="{{ item.option.pk }}">
-            {{ item.option.starts_at|date:"d/m/Y H:i" }}
-            ({{ item.counts.yes }} oui)
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="venue_id">Lieu</label>
-          <select name="venue_id" id="venue_id" required>
-            {% for v in venues %}
-            <option value="{{ v.pk }}">{{ v.nom }} — {{ v.ville }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label for="type_id">Type</label>
-          <select name="type_id" id="type_id" required>
-            {% for t in event_types %}
-            <option value="{{ t.pk }}">{{ t.nom }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <label style="display:flex;align-items:center;gap:.5rem;font-weight:500">
-        <input type="checkbox" name="public"> Visible sur le site public
-      </label>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Créer l’événement</button>
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+        Lancer le sondage de disponibilité
+      </button>
     </form>
   </section>
   {% endif %}
 
+  {% include "planning/_poll_vote_section.html" %}
+
+  {% if room %}
+  {% include "chat/_room_embed.html" %}
+  {% endif %}
+
+  {% if room and proposal.is_open and options_data %}
+  {% include "planning/_poll_vote_section.html" with poll_votes_bottom=True %}
+  {% endif %}
+
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
+<script>
+function pollVotes(cfg) {
+  cfg = cfg || {};
+  return {
+    open: !!cfg.open,
+    csrf: cfg.csrf || '',
+    choices: Object.assign({}, cfg.choices || {}),
+    urls: cfg.urls || {},
+    busy: {},
+    toast: '',
+    onToast(msg) {
+      this.toast = msg;
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => { this.toast = ''; }, 2200);
+    },
+    choiceOf(id) { return this.choices[id] || ''; },
+    isBusy(id) { return !!this.busy[id]; },
+    async vote(optionId, c) {
+      if (!this.open) return;
+      const url = this.urls[optionId];
+      if (!url) return;
+      this.busy[optionId] = true;
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.csrf,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ choice: c })
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.choices[optionId] = d.choice;
+          this.onToast('Réponse enregistrée');
+        } else {
+          this.onToast(d.error || 'Erreur');
+        }
+      } finally {
+        this.busy[optionId] = false;
+      }
+    }
+  };
+}
+</script>
 {% endblock %}

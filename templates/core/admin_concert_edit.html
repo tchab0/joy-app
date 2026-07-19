@@ -55,6 +55,16 @@
             {{ form.statut.errors }}
           </div>
           <div class="form-group">
+            <label for="{{ form.parent.id_for_label }}">{{ form.parent.label }}</label>
+            {{ form.parent }}
+            {{ form.parent.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.organisme.id_for_label }}">{{ form.organisme.label }}</label>
+            {{ form.organisme }}
+            {{ form.organisme.errors }}
+          </div>
+          <div class="form-group">
             <label for="{{ form.url_billets.id_for_label }}">{{ form.url_billets.label }}</label>
             {{ form.url_billets }}
             {{ form.url_billets.errors }}
@@ -63,6 +73,25 @@
             <label style="display:flex;align-items:center;gap:.5rem;text-transform:none;font-size:.9rem;cursor:pointer">
               {{ form.public }} Visible sur le site public
             </label>
+          </div>
+          <p class="form-group full" style="margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">
+            Coordonnées du contact
+            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)"> — hors répétitions</span>
+          </p>
+          <div class="form-group">
+            <label for="{{ form.contact_nom.id_for_label }}">{{ form.contact_nom.label }}</label>
+            {{ form.contact_nom }}
+            {{ form.contact_nom.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.contact_telephone.id_for_label }}">{{ form.contact_telephone.label }}</label>
+            {{ form.contact_telephone }}
+            {{ form.contact_telephone.errors }}
+          </div>
+          <div class="form-group full">
+            <label for="{{ form.contact_email.id_for_label }}">{{ form.contact_email.label }}</label>
+            {{ form.contact_email }}
+            {{ form.contact_email.errors }}
           </div>
           <div class="form-group full">
             <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>

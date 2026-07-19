@@ -149,3 +149,23 @@ class MemberRequiredMixin(AccessMixin):
         if not user_can_access_member_area(request.user):
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)
+
+
+def user_can_propose_event(user) -> bool:
+    """Musicien, adhérent actif ou staff peut proposer un événement."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    return user_can_access_planning(user) or user_can_access_member_area(user)
+
+
+class CanProposeEventMixin(AccessMixin):
+    permission_denied_message = "Accès réservé aux musiciens et adhérents."
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        if not user_can_propose_event(request.user):
+            return self.handle_no_permission()
+        return super().dispatch(request, *args, **kwargs)

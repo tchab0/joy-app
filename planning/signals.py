@@ -6,10 +6,20 @@ from events.models import Event
 
 @receiver(post_save, sender=Event)
 def invite_titulaires_on_new_event(sender, instance, created, **kwargs):
-    """Chaque nouvelle date convoque automatiquement tous les titulaires."""
+    """
+    Convocation auto des titulaires — désactivée par défaut.
+
+    Le flux nominal : salon staff-only à la création, invitations individuelles
+    (ou « convoquer les titulaires » côté admin). Opt-in via
+    ``event._invite_titulaires = True`` avant save.
+    """
     if not created:
         return
-    # Import local pour éviter les imports circulaires au chargement de l’app.
+    if getattr(instance, "_skip_titulaire_invite", False):
+        return
+    # Nouveau défaut : pas de convocation auto (salon staff-only).
+    if not getattr(instance, "_invite_titulaires", False):
+        return
     from planning.services import invite_titulaires_to_event
 
     invite_titulaires_to_event(instance)

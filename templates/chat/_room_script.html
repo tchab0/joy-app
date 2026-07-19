@@ -1,0 +1,189 @@
+<script>
+function chatRoom(cfg) {
+  cfg = cfg || {};
+  return {
+    messages: cfg.messages || [],
+    currentUserId: cfg.currentUserId,
+    wsUrl: cfg.wsUrl,
+    apiSendUrl: cfg.apiSendUrl || '',
+    csrfToken: cfg.csrfToken || '',
+    embedded: !!cfg.embedded,
+    body: '',
+    busy: false,
+    status: 'connecting',
+    menuOpen: false,
+    fileLabel: '',
+    ws: null,
+    _vvHandler: null,
+    get statusLabel() {
+      return {
+        connecting: 'Connexion…',
+        live: 'En direct',
+        offline: 'Hors ligne — envoi possible',
+        error: 'Connexion interrompue'
+      }[this.status] || '';
+    },
+    get statusClass() {
+      return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.status] || '';
+    },
+    init() {
+      this.scrollBottom(true);
+      this.connect();
+      if (!this.embedded) {
+        this.bindViewport();
+        this.$nextTick(() => this.measureComposer());
+        window.addEventListener('resize', () => this.measureComposer());
+      }
+    },
+    bindViewport() {
+      if (this.embedded || !window.visualViewport) return;
+      this._vvHandler = () => this.adaptToKeyboard();
+      window.visualViewport.addEventListener('resize', this._vvHandler);
+      window.visualViewport.addEventListener('scroll', this._vvHandler);
+    },
+    adaptToKeyboard() {
+      if (this.embedded) return;
+      const vv = window.visualViewport;
+      const composer = this.$refs.composer;
+      if (!vv || !composer) return;
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      composer.style.bottom = inset + 'px';
+      this.measureComposer();
+      if (inset > 40) this.scrollBottom(false);
+    },
+    measureComposer() {
+      if (this.embedded) return;
+      const composer = this.$refs.composer;
+      const room = this.$el;
+      if (!composer || !room) return;
+      const h = composer.offsetHeight || 120;
+      room.style.setProperty('--composer-h', h + 'px');
+    },
+    onFocus() {
+      this.$nextTick(() => {
+        this.adaptToKeyboard();
+        this.scrollBottom(true);
+        if (this.$refs.input) {
+          this.$refs.input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+      if (!this.embedded) {
+        setTimeout(() => { this.adaptToKeyboard(); this.scrollBottom(false); }, 350);
+      }
+    },
+    autoGrow() {
+      const el = this.$refs.input;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+      this.measureComposer();
+    },
+    onFiles() {
+      const files = this.$refs.files && this.$refs.files.files;
+      if (!files || !files.length) { this.fileLabel = ''; return; }
+      this.fileLabel = files.length === 1 ? files[0].name : (files.length + ' fichiers');
+    },
+    connect() {
+      try {
+        this.ws = new WebSocket(this.wsUrl);
+      } catch (e) {
+        this.status = 'offline';
+        return;
+      }
+      this.ws.onopen = () => { this.status = 'live'; };
+      this.ws.onclose = () => { this.status = 'offline'; };
+      this.ws.onerror = () => { this.status = 'error'; };
+      this.ws.onmessage = (ev) => {
+        let data;
+        try { data = JSON.parse(ev.data); } catch (_) { return; }
+        if (data.type === 'chat.message' && data.message) {
+          if (!this.messages.find(m => m.id === data.message.id)) {
+            this.messages.push(data.message);
+            this.$nextTick(() => this.scrollBottom(false));
+          }
+        }
+      };
+    },
+    formatTime(iso) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch (_) { return ''; }
+    },
+    scrollBottom(force) {
+      const el = this.$refs.thread;
+      if (!el) return;
+      if (this.embedded) {
+        if (force) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (force || nearBottom) el.scrollTop = el.scrollHeight;
+    },
+    async send() {
+      const text = (this.body || '').trim();
+      const files = this.$refs.files && this.$refs.files.files;
+      if (!text && (!files || !files.length)) return;
+      this.busy = true;
+      this.menuOpen = false;
+
+      if (files && files.length) {
+        const fd = new FormData();
+        fd.append('body', text);
+        for (const f of files) fd.append('files', f);
+        try {
+          const r = await fetch(this.apiSendUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': this.csrfToken },
+            body: fd,
+          });
+          const data = await r.json();
+          if (!data.ok) alert(data.error || 'Erreur');
+          else {
+            this.body = '';
+            this.$refs.files.value = '';
+            this.fileLabel = '';
+            if (this.$refs.input) { this.$refs.input.style.height = 'auto'; }
+            if (data.message && !this.messages.find(m => m.id === data.message.id)) {
+              this.messages.push(data.message);
+            }
+            this.$nextTick(() => { this.measureComposer(); this.scrollBottom(true); });
+          }
+        } catch (e) { alert('Échec d’envoi'); }
+        this.busy = false;
+        return;
+      }
+
+      if (this.ws && this.ws.readyState === 1) {
+        this.ws.send(JSON.stringify({ type: 'chat.message', body: text }));
+        this.body = '';
+        if (this.$refs.input) this.$refs.input.style.height = 'auto';
+        this.busy = false;
+        this.$nextTick(() => this.measureComposer());
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('body', text);
+      try {
+        const r = await fetch(this.apiSendUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          body: fd,
+        });
+        const data = await r.json();
+        if (!data.ok) alert(data.error || 'Erreur');
+        else {
+          this.body = '';
+          if (this.$refs.input) this.$refs.input.style.height = 'auto';
+          if (data.message && !this.messages.find(m => m.id === data.message.id)) {
+            this.messages.push(data.message);
+          }
+          this.$nextTick(() => { this.measureComposer(); this.scrollBottom(true); });
+        }
+      } catch (e) { alert('Échec d’envoi'); }
+      this.busy = false;
+    },
+  };
+}
+</script>

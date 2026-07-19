@@ -1,0 +1,46 @@
+<aside class="chat-staff-panel" aria-label="Actions staff">
+  <h2>Actions staff</h2>
+  <div class="chat-staff-panel__actions">
+    {% if draft_proposal %}
+    <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-launch" style="width:100%">
+        Lancer le sondage de disponibilité
+      </button>
+    </form>
+    {% endif %}
+    {% if open_proposal and open_proposal.is_open %}
+    <form method="post" action="{% url 'planning:lock_poll' open_proposal.pk %}">
+      {% csrf_token %}
+      {% if lock_options|length == 1 %}
+      <input type="hidden" name="option_id" value="{{ lock_options.0.pk }}">
+      {% else %}
+      <label class="visually-hidden" for="chat_lock_option">Date à valider</label>
+      <select name="option_id" id="chat_lock_option" required>
+        <option value="">Choisir la date…</option>
+        {% for opt in lock_options %}
+        <option value="{{ opt.pk }}">
+          {{ opt.starts_at|date:"D d/m/Y H:i" }}{% if opt.label %} — {{ opt.label }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      <button type="submit" class="btn-launch" style="width:100%">Valider la date</button>
+    </form>
+    {% endif %}
+    {% if invite_musicians %}
+    <form class="chat-staff-invite" method="post" action="{% url 'planning:invite_musician' room.event.pk %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <label class="visually-hidden" for="chat_invite_user">Inviter un musicien</label>
+      <select name="user_id" id="chat_invite_user" required>
+        <option value="">Inviter un musicien…</option>
+        {% for m in invite_musicians %}
+        <option value="{{ m.pk }}">{{ m.get_full_name|default:m.username }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-launch">Inviter + SMS</button>
+    </form>
+    {% endif %}
+  </div>
+</aside>

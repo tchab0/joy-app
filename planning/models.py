@@ -237,6 +237,7 @@ class EventParticipation(models.Model):
 
 class DateProposal(models.Model):
     class Status(models.TextChoices):
+        DRAFT = "draft", "Brouillon (en attente staff)"
         OPEN = "open", "Ouvert"
         LOCKED = "locked", "Verrouillé"
         CANCELLED = "cancelled", "Annulé"
@@ -246,7 +247,7 @@ class DateProposal(models.Model):
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.OPEN,
+        default=Status.DRAFT,
         verbose_name="Statut",
     )
     created_by = models.ForeignKey(
@@ -272,6 +273,20 @@ class DateProposal(models.Model):
         related_name="from_proposals",
         verbose_name="Événement lié",
     )
+    launched_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Lancé le",
+        help_text="Date à laquelle le staff a ouvert le sondage aux musiciens.",
+    )
+    launched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="date_proposals_launched",
+        verbose_name="Lancé par",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Modifié le")
 
@@ -282,6 +297,10 @@ class DateProposal(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def is_draft(self) -> bool:
+        return self.status == self.Status.DRAFT
 
     @property
     def is_open(self) -> bool:

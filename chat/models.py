@@ -111,6 +111,11 @@ class ChatMembership(models.Model):
 
 
 class ChatMessage(models.Model):
+    class Kind(models.TextChoices):
+        NORMAL = "normal", "Message"
+        POLL_LAUNCH = "poll_launch", "Lancement de sondage"
+        SYSTEM = "system", "Système"
+
     room = models.ForeignKey(
         ChatRoom,
         on_delete=models.CASCADE,
@@ -124,7 +129,22 @@ class ChatMessage(models.Model):
         related_name="chat_messages",
         verbose_name="Auteur",
     )
+    kind = models.CharField(
+        "Type",
+        max_length=20,
+        choices=Kind.choices,
+        default=Kind.NORMAL,
+        db_index=True,
+    )
     body = models.TextField("Message", blank=True)
+    related_proposal = models.ForeignKey(
+        "planning.DateProposal",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_messages",
+        verbose_name="Sondage lié",
+    )
     created_at = models.DateTimeField("Envoyé le", auto_now_add=True, db_index=True)
     deleted_at = models.DateTimeField("Supprimé le", null=True, blank=True)
 
@@ -140,6 +160,10 @@ class ChatMessage(models.Model):
     @property
     def is_deleted(self) -> bool:
         return self.deleted_at is not None
+
+    @property
+    def is_highlight(self) -> bool:
+        return self.kind == self.Kind.POLL_LAUNCH
 
 
 def chat_attachment_upload_to(instance: "ChatAttachment", filename: str) -> str:

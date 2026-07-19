@@ -17,9 +17,77 @@
     <h1>{{ event.titre }}</h1>
     <p class="pl-sub">
       {{ event.date_debut|date:"l d F Y · H:i" }}
-      {% if event.venue %} · {{ event.venue.nom }}{% endif %}
+      {% if event.venue %} · {{ event.lieu_affiche }}{% endif %}
+      {% if event.parent %}<br>Dans : {{ event.parent.titre }}{% endif %}
+      {% if event.organisme %}<br>Organisé par {{ event.organisme }}{% endif %}
+      {% if event.show_contact %}
+      <br>
+      Contact{% if event.contact_nom %} : {{ event.contact_nom }}{% endif %}
+      {% if event.contact_telephone %}
+        · <a href="tel:{{ event.contact_telephone }}" style="color:var(--accent)">{{ event.contact_telephone }}</a>
+      {% endif %}
+      {% if event.contact_email %}
+        · <a href="mailto:{{ event.contact_email }}" style="color:var(--accent)">{{ event.contact_email }}</a>
+      {% endif %}
+      {% endif %}
     </p>
   </header>
+
+  {% if draft_proposal %}
+  <section class="pl-section" style="border:2px solid var(--accent);border-radius:var(--r);padding:1rem;background:var(--surface)">
+    <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
+    <p class="pl-row__meta" style="margin-bottom:1rem">
+      Lancez le sondage pour que les musiciens invités indiquent leur disponibilité
+      (message mis en évidence dans le salon + SMS).
+    </p>
+    <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+        Lancer le sondage de disponibilité
+      </button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>Publication sur le site</h2>
+    <p class="pl-row__meta" style="margin-bottom:1rem">
+      {% if event.public %}
+        Actuellement <strong style="color:var(--ok)">visible</strong> sur l’accueil et la page Concerts.
+      {% else %}
+        Actuellement <strong>privé</strong> (invisible sur le site public).
+      {% endif %}
+      Vérifiez le lieu exact (adresse) dans
+      <a href="{% url 'admin_concert_edit' event.pk %}" style="color:var(--accent)">l’édition du concert</a>
+      avant de publier.
+    </p>
+    <form class="pl-form" method="post" action="{% url 'planning:event_publication' event.pk %}">
+      {% csrf_token %}
+      <div>
+        <label for="pub_organisme">Organisme organisateur</label>
+        <input type="text" name="organisme" id="pub_organisme" value="{{ event.organisme }}"
+               placeholder="ex. Mairie, festival…">
+      </div>
+      <div>
+        <label for="pub_parent">Événement parent</label>
+        <select name="parent_id" id="pub_parent">
+          <option value="">— Aucun —</option>
+          {% for p in parent_events %}
+          <option value="{{ p.pk }}" {% if event.parent_id == p.pk %}selected{% endif %}>
+            {{ p.titre }} ({{ p.date_debut|date:"d/m/Y" }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <label style="display:flex;align-items:center;gap:.5rem;font-weight:500;min-height:44px">
+        <input type="checkbox" name="public" {% if event.public %}checked{% endif %}>
+        Visible sur le site public
+      </label>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">
+        Enregistrer la publication
+      </button>
+    </form>
+  </section>
 
   <section class="pl-section">
     <h2>Effectif par pupitre</h2>

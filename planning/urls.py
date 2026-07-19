@@ -18,6 +18,7 @@ urlpatterns = [
         views.PlanningYearCalendarView.as_view(),
         name="upcoming_12_months",
     ),
+    path("proposer/", views.ProposeEventView.as_view(), name="propose_event"),
     path("events/<int:pk>/", views.EventDetailView.as_view(), name="event_detail"),
     path(
         "participations/<int:pk>/respond/",
@@ -58,7 +59,17 @@ urlpatterns = [
         views.EventRosterView.as_view(),
         name="event_roster",
     ),
+    path(
+        "admin/events/<int:pk>/publication/",
+        views.UpdateEventPublicationView.as_view(),
+        name="event_publication",
+    ),
     path("admin/polls/create/", views.CreatePollView.as_view(), name="create_poll"),
+    path(
+        "admin/polls/<int:pk>/launch/",
+        views.LaunchPollView.as_view(),
+        name="launch_poll",
+    ),
     path(
         "admin/polls/<int:pk>/lock/",
         views.LockPollView.as_view(),

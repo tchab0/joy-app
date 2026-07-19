@@ -91,6 +91,23 @@
   @media (min-width: 640px) {
     .pl-form__row--2 { grid-template-columns: 1fr 1fr; }
   }
+  .pl-mode-toggle {
+    display: flex; gap: .35rem; margin: .35rem 0 .6rem; flex-wrap: wrap;
+  }
+  .pl-mode-toggle__btn {
+    flex: 1 1 auto; min-height: 44px; min-width: 5.5rem;
+    padding: .45rem .7rem; border: 1px solid var(--border);
+    border-radius: var(--r); background: var(--surface); color: var(--text);
+    font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+  }
+  .pl-mode-toggle__btn.is-active {
+    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    color: var(--accent);
+  }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
   .pl-option {
     padding: 1rem 0; border-bottom: 1px solid var(--border);
   }
@@ -257,6 +274,100 @@
   .pl-event-stats__split { color: var(--muted); white-space: nowrap; }
   .pl-event-stats dd.is-warn { color: var(--accent); font-weight: 600; }
   .pl-event-stats dd.is-ok { color: var(--ok); }
+  .pl-day-events__salon {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: .65rem;
+    padding: .7rem .85rem;
+    min-height: 2.75rem;
+    border-radius: var(--r);
+    border: 1px solid rgba(var(--accent-rgb), .35);
+    background: rgba(var(--accent-rgb), .08);
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: .9rem;
+  }
+  .pl-day-events__salon:hover { background: rgba(var(--accent-rgb), .14); }
+
+  /* Page acceptation / sondage — mobile first */
+  .pl-accept__head { margin-bottom: 1.25rem; }
+  .pl-accept__title {
+    font-family: var(--font-d); font-size: 1.65rem; font-weight: 700;
+    line-height: 1.2; margin: 0 0 .75rem; color: var(--text);
+  }
+  .pl-accept__when {
+    display: flex; flex-direction: column; gap: .15rem;
+    margin: 0 0 .75rem; color: var(--text);
+  }
+  .pl-accept__day {
+    font-size: .85rem; font-weight: 600; color: var(--muted);
+    text-transform: capitalize; letter-spacing: .02em;
+  }
+  .pl-accept__fulldate {
+    font-family: var(--font-d); font-size: 1.35rem; font-weight: 700;
+    line-height: 1.25; text-transform: capitalize;
+  }
+  .pl-accept__time {
+    font-size: 1.15rem; font-weight: 600; color: var(--accent);
+  }
+  .pl-accept__meta {
+    margin: 0; font-size: .95rem; color: var(--muted); line-height: 1.45;
+  }
+  .pl-accept__type { color: var(--text); font-weight: 600; }
+  .pl-accept__sep { margin: 0 .35rem; color: var(--muted); }
+  .pl-accept__venue { color: var(--text); }
+  .pl-accept__dates { display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1.5rem; }
+  .pl-accept__date {
+    padding: 1.15rem 0; border-top: 1px solid var(--border);
+  }
+  .pl-accept__date:first-child { border-top: none; padding-top: 0; }
+  .pl-accept__actions {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem;
+    width: 100%;
+  }
+  .pl-accept__actions .pl-btn { min-height: 48px; width: 100%; justify-content: center; }
+  .pl-accept__response { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+  .pl-accept__staff {
+    margin-top: 2rem; padding: 1rem; border: 1px solid var(--border);
+    border-radius: var(--r); background: var(--surface);
+  }
+  .pl-accept__staff summary {
+    cursor: pointer; font-weight: 600; min-height: 44px;
+    display: flex; align-items: center; color: var(--text);
+  }
+  .pl-accept__staff[open] summary { margin-bottom: .75rem; }
+  .pl-chat-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    min-height: 2.75rem;
+  }
+  .pl-chat-link:hover { text-decoration: underline; }
+  .pl-chat-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0 .4rem;
+    border-radius: var(--r);
+    background: var(--accent);
+    color: #fff;
+    font-size: .75rem;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .pl-nav .pl-chat-badge {
+    margin-left: .25rem;
+    vertical-align: middle;
+  }
 
   .pl-modal-root {
     position: fixed; inset: 0; z-index: 200;

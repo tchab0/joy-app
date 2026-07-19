@@ -1,0 +1,86 @@
+<div class="chat-room__bar">
+  <a class="chat-room__back" href="{% url 'chat:list' %}" aria-label="Retour aux salons">←</a>
+  <div class="chat-room__titles">
+    <h1>{{ room.title }}</h1>
+    <p class="chat-room__sub">
+      {% if room.kind == 'orchestra' %}
+        Salon orchestre
+      {% elif room.event %}
+        {{ room.event.date_debut|date:"D d/m · H:i" }}{% if room.event.venue %} · {{ room.event.venue.nom }}{% endif %}
+      {% else %}
+        Salon événement
+      {% endif %}
+    </p>
+  </div>
+  <div class="chat-menu" @click.stop>
+    <button type="button" class="chat-menu__btn" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen.toString()" aria-label="Options du salon">⋯</button>
+    <div class="chat-menu__panel" x-show="menuOpen" x-cloak x-transition.opacity.duration.150ms>
+      {% if membership.subscribed %}
+      <form method="post" action="{% url 'chat:room' room.pk %}">
+        {% csrf_token %}<input type="hidden" name="action" value="unsubscribe">
+        <button type="submit" class="chat-menu__item chat-menu__item--ok">Alertes SMS : activées ✓</button>
+      </form>
+      {% else %}
+      <form method="post" action="{% url 'chat:room' room.pk %}">
+        {% csrf_token %}<input type="hidden" name="action" value="subscribe">
+        <button type="submit" class="chat-menu__item">Activer les alertes SMS</button>
+      </form>
+      {% endif %}
+      {% if room.kind == 'event' %}
+      <form method="post" action="{% url 'chat:room' room.pk %}" onsubmit="return confirm('Quitter ce salon ? Vous pourrez le rejoindre plus tard.');">
+        {% csrf_token %}<input type="hidden" name="action" value="leave">
+        <button type="submit" class="chat-menu__item chat-menu__item--warn">Quitter le salon</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if room.event %}
+<aside class="chat-event-intro" aria-label="Infos de l’événement">
+  {% if room.event.type %}<p class="chat-event-intro__type">{{ room.event.type.nom }}</p>{% endif %}
+  <dl class="chat-event-intro__list">
+    <div>
+      <dt>Date</dt>
+      <dd>
+        {{ room.event.date_debut|date:"l d F Y · H:i" }}
+        {% if room.event.date_fin %} – {{ room.event.date_fin|date:"H:i" }}{% endif %}
+      </dd>
+    </div>
+    <div>
+      <dt>Lieu</dt>
+      <dd>{% if room.event.venue %}{{ room.event.lieu_affiche }}{% else %}—{% endif %}</dd>
+    </div>
+    {% if room.event.organisme %}
+    <div>
+      <dt>Organisme</dt>
+      <dd>{{ room.event.organisme }}</dd>
+    </div>
+    {% endif %}
+    {% if room.event.parent %}
+    <div>
+      <dt>Dans</dt>
+      <dd>{{ room.event.parent.titre }}</dd>
+    </div>
+    {% endif %}
+    {% if room.event.show_contact %}
+    <div>
+      <dt>Contact</dt>
+      <dd>
+        {% if room.event.contact_nom %}{{ room.event.contact_nom }}{% endif %}
+        {% if room.event.contact_telephone %}
+          {% if room.event.contact_nom %} · {% endif %}
+          <a href="tel:{{ room.event.contact_telephone }}" style="color:var(--accent)">{{ room.event.contact_telephone }}</a>
+        {% endif %}
+        {% if room.event.contact_email %}
+          · <a href="mailto:{{ room.event.contact_email }}" style="color:var(--accent)">{{ room.event.contact_email }}</a>
+        {% endif %}
+      </dd>
+    </div>
+    {% endif %}
+  </dl>
+  <a class="chat-event-intro__link" href="{% url 'planning:event_detail' room.event.pk %}">
+    Voir le détail planning →
+  </a>
+</aside>
+{% endif %}

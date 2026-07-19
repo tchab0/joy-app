@@ -243,8 +243,10 @@
             {% if e.statut == 'tentative' %}<span class="badge-tentative">Date à confirmer</span>{% endif %}
             {% if e.statut == 'annule' %}<span class="badge-annule">Annulé</span>{% endif %}
           </div>
-          <div class="event-lieu">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
-          {% if e.date_debut %}<div class="event-heure">{{ e.date_debut|date:"H\hi" }}</div>{% endif %}
+          {% if e.parent %}<div class="event-lieu">Dans : {{ e.parent.titre }}</div>{% endif %}
+          {% if e.organisme %}<div class="event-lieu">Organisé par {{ e.organisme }}</div>{% endif %}
+          <div class="event-lieu">{{ e.lieu_affiche }}</div>
+          {% if e.date_debut %}<div class="event-heure">{{ e.horaires_affiches }}</div>{% endif %}
         </div>
         {% if e.url_billets %}
         <a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary">Billets</a>

@@ -1,0 +1,60 @@
+<p class="chat-status" :class="statusClass" x-text="statusLabel"></p>
+
+<div class="chat-thread" x-ref="thread">
+  <template x-for="msg in messages" :key="msg.id">
+    <div class="chat-msg"
+         :class="{
+           'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
+           'chat-msg--highlight': msg.highlight
+         }">
+      <p class="chat-msg__meta">
+        <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
+        · <span x-text="formatTime(msg.created_at)"></span>
+      </p>
+      <template x-if="msg.deleted">
+        <p class="chat-msg__body chat-msg__body--deleted">Message supprimé</p>
+      </template>
+      <template x-if="!msg.deleted && msg.body">
+        <p class="chat-msg__body" x-text="msg.body"></p>
+      </template>
+      <template x-if="msg.highlight && msg.poll_url">
+        <a class="chat-msg__poll-link" :href="msg.poll_url">Répondre au sondage →</a>
+      </template>
+      <ul class="chat-atts" x-show="msg.attachments && msg.attachments.length">
+        <template x-for="att in msg.attachments" :key="att.id">
+          <li>
+            <template x-if="att.is_image">
+              <a :href="att.url" target="_blank" rel="noopener"><img :src="att.url" :alt="att.name" loading="lazy"></a>
+            </template>
+            <template x-if="!att.is_image">
+              <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
+            </template>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </template>
+</div>
+
+<form class="chat-composer" x-ref="composer" @submit.prevent="send()">
+  <div class="chat-composer__inner">
+    <textarea x-model="body" x-ref="input"
+              placeholder="Écrire un message…"
+              rows="1"
+              enterkeyhint="send"
+              @focus="onFocus()"
+              @input="autoGrow()"
+              @keydown.enter.exact.prevent="send()"></textarea>
+    <div class="chat-composer__row">
+      <label class="chat-attach" aria-label="Joindre un fichier">
+        📎
+        <input type="file" x-ref="files" multiple
+               accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.zip,.mp3,.wav,.m4a"
+               @change="onFiles()">
+      </label>
+      <span class="chat-attach__name" x-text="fileLabel" x-show="fileLabel"></span>
+      <span class="chat-attach__name" x-show="!fileLabel" style="visibility:hidden">.</span>
+      <button type="submit" class="chat-send" :disabled="busy">Envoyer</button>
+    </div>
+  </div>
+</form>

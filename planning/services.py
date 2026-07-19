@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 
 from planning.models import (
@@ -18,6 +21,11 @@ from planning.models import (
     ParticipationStatus,
     SubstituteRequest,
 )
+from users.notify_sms import notify_users_sms
+
+logger = logging.getLogger(__name__)
+
+User = get_user_model()
 
 
 STATUS_CODES = {
@@ -82,9 +90,6 @@ def set_participation_response(
 
 def titulaires_queryset():
     """Musiciens actifs ayant un poste titulaire renseigné."""
-    from django.contrib.auth import get_user_model
-
-    User = get_user_model()
     return User.objects.filter(
         is_musician=True,
         is_active=True,
@@ -92,7 +97,7 @@ def titulaires_queryset():
     )
 
 
-def invite_titulaires_to_event(event) -> int:
+def invite_titulaires_to_event(event, *, send_sms: bool = False) -> int:
     """Convoque tous les titulaires à une date (ignore les déjà inscrits)."""
     invited = get_status("invited")
     musicians = list(titulaires_queryset())
@@ -111,11 +116,195 @@ def invite_titulaires_to_event(event) -> int:
         # bulk_create ne déclenche pas post_save → sync chat manuelle
         from chat.services import sync_participation_to_chat
 
-        for part in EventParticipation.objects.filter(
-            event=event, user_id__in=[p.user_id for p in to_create]
-        ):
+        created_parts = list(
+            EventParticipation.objects.filter(
+                event=event, user_id__in=[p.user_id for p in to_create]
+            ).select_related("user")
+        )
+        for part in created_parts:
             sync_participation_to_chat(part)
+        if send_sms:
+            notify_event_invite_sms(event, [p.user for p in created_parts])
     return len(to_create)
+
+
+def notify_event_invite_sms(event, users) -> int:
+    """SMS instantané d’invitation au salon / événement."""
+    users = list(users)
+    if not users:
+        return 0
+    local = timezone.localtime(event.date_debut)
+    date_label = local.strftime("%d/%m/%Y %H:%M")
+    body = (
+        f"JOY — Invitation : « {event.titre} » ({date_label}). "
+        f"Ouvrez le salon de discussion pour répondre."
+    )
+    return notify_users_sms(users, body)
+
+
+@transaction.atomic
+def invite_musician_to_event(
+    event,
+    musician,
+    *,
+    send_sms: bool = True,
+) -> tuple[EventParticipation, bool]:
+    """
+    Invite un musicien individuellement (roster + salon) + SMS optionnel.
+
+    Retourne (participation, created).
+    """
+    if not getattr(musician, "is_musician", False) or not musician.is_active:
+        raise ValueError("Utilisateur non musicien ou inactif")
+    invited = get_status("invited")
+    part, created = EventParticipation.objects.get_or_create(
+        event=event,
+        user=musician,
+        defaults={"status": invited},
+    )
+    from chat.services import sync_participation_to_chat
+
+    sync_participation_to_chat(part)
+    if created and send_sms:
+        notify_event_invite_sms(event, [musician])
+    return part, created
+
+
+@transaction.atomic
+def propose_event(
+    *,
+    proposer,
+    titre: str,
+    event_type,
+    venue,
+    date_debut,
+    date_fin=None,
+    description: str = "",
+    organisme: str = "",
+    parent=None,
+    public: bool = False,
+    contact_nom: str = "",
+    contact_telephone: str = "",
+    contact_email: str = "",
+):
+    """
+    Proposition d’événement par un musicien / adhérent / staff.
+
+    Crée l’Event (tentative), un sondage brouillon lié, et laisse le signal
+    chat créer un salon staff-only (pas de convocation auto des titulaires).
+    """
+    from events.models import Event
+
+    titre = (titre or "").strip()
+    if not titre:
+        raise ValueError("Titre requis")
+
+    event = Event(
+        titre=titre,
+        type=event_type,
+        venue=venue,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        description=(description or "").strip(),
+        statut=Event.Statut.TENTATIVE,
+        public=public,
+        parent=parent,
+        organisme=(organisme or "").strip(),
+        contact_nom=(contact_nom or "").strip(),
+        contact_telephone=(contact_telephone or "").strip(),
+        contact_email=(contact_email or "").strip(),
+        proposed_by=proposer,
+    )
+    # Pas de convocation auto : le staff invite individuellement.
+    event._skip_titulaire_invite = True
+    event.save()
+
+    proposal = DateProposal.objects.create(
+        title=titre,
+        description=(description or "").strip(),
+        status=DateProposal.Status.DRAFT,
+        created_by=proposer,
+        linked_event=event,
+    )
+    DateOption.objects.create(
+        proposal=proposal,
+        starts_at=date_debut,
+        ends_at=date_fin,
+        label="",
+        sort_order=0,
+    )
+    return event, proposal
+
+
+@transaction.atomic
+def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProposal:
+    """
+    Autorise / lance le sondage : statut OPEN, message mis en évidence dans
+    le salon, SMS instantané aux musiciens déjà invités au salon.
+    """
+    if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
+        raise ValueError("Sondage déjà lancé")
+    if proposal.status not in (
+        DateProposal.Status.DRAFT,
+        DateProposal.Status.OPEN,
+    ):
+        raise ValueError("Sondage non lançable")
+    if not proposal.options.exists():
+        raise ValueError("Ajoutez au moins une option de date")
+
+    proposal.status = DateProposal.Status.OPEN
+    proposal.launched_at = timezone.now()
+    proposal.launched_by = launched_by
+    proposal.save(
+        update_fields=["status", "launched_at", "launched_by", "updated_at"]
+    )
+
+    event = proposal.linked_event
+    poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
+
+    if event is not None:
+        from chat.models import ChatMembership, ChatMessage
+        from chat.services import ensure_event_room, post_message
+
+        room = ensure_event_room(event)
+        local = timezone.localtime(event.date_debut)
+        body = (
+            f"Sondage de disponibilité lancé pour « {proposal.title} » "
+            f"({local.strftime('%d/%m/%Y %H:%M')}).\n"
+            f"Répondez au sondage : {poll_path}"
+        )
+        post_message(
+            room=room,
+            author=launched_by,
+            body=body,
+            kind=ChatMessage.Kind.POLL_LAUNCH,
+            related_proposal=proposal,
+        )
+
+        member_ids = ChatMembership.objects.filter(
+            room=room,
+            left_at__isnull=True,
+            user__is_musician=True,
+            user__is_active=True,
+        ).values_list("user_id", flat=True)
+        recipients = list(User.objects.filter(pk__in=member_ids))
+        part_users = list(
+            User.objects.filter(
+                event_participations__event=event,
+                is_musician=True,
+                is_active=True,
+            ).distinct()
+        )
+        by_id = {u.pk: u for u in recipients + part_users}
+        if launched_by:
+            by_id.pop(launched_by.pk, None)
+        sms_body = (
+            f"JOY — Sondage dispo : « {proposal.title} ». "
+            f"Répondez dans l’app planning / salon."
+        )
+        notify_users_sms(by_id.values(), sms_body)
+
+    return proposal
 
 
 def eligible_substitutes_for(participation: EventParticipation):
@@ -350,3 +539,86 @@ def attach_calendar_summaries(events) -> list:
     for event in events:
         event.cal_summary = summaries.get(event.pk, {})
     return list(events)
+
+
+def calendar_chat_links_for_user(events, user) -> dict[int, dict]:
+    """
+    Liens salon + non lus pour le calendrier / détail événement.
+
+    - Membre actif → ``room_id`` + ``unread``
+    - Staff sans membership → ``room_id`` + ``unread`` 0 si le salon existe
+    Tolère l’absence des tables chat (migration pas encore appliquée).
+    """
+    events = list(events)
+    if not events or user is None or not getattr(user, "is_authenticated", False):
+        return {}
+
+    event_ids = [e.pk for e in events]
+    is_staff = bool(
+        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+    )
+    try:
+        from django.db import OperationalError, ProgrammingError
+
+        from chat.models import ChatMembership, ChatRoom
+        from chat.services import unread_count
+
+        memberships = list(
+            ChatMembership.objects.filter(
+                user=user,
+                left_at__isnull=True,
+                room__is_active=True,
+                room__event_id__in=event_ids,
+            ).select_related("room")
+        )
+    except (ProgrammingError, OperationalError, ImportError):
+        return {}
+
+    links: dict[int, dict] = {}
+    for m in memberships:
+        event_id = m.room.event_id
+        if event_id is None:
+            continue
+        links[event_id] = {
+            "room_id": m.room_id,
+            "unread": unread_count(m),
+        }
+
+    if is_staff:
+        missing_ids = [eid for eid in event_ids if eid not in links]
+        if missing_ids:
+            try:
+                rooms = ChatRoom.objects.filter(
+                    event_id__in=missing_ids, is_active=True
+                ).only("pk", "event_id")
+            except (ProgrammingError, OperationalError):
+                rooms = []
+            for room in rooms:
+                links[room.event_id] = {"room_id": room.pk, "unread": 0}
+
+    return links
+
+
+def attach_calendar_chat_links(events, user) -> list:
+    """Attache ``event.cal_chat`` (dict ou None) à chaque événement."""
+    links = calendar_chat_links_for_user(events, user)
+    for event in events:
+        event.cal_chat = links.get(event.pk)
+    return list(events)
+
+
+def chat_link_for_event(event, user) -> dict | None:
+    """Salon + non lus pour un événement, ou None si pas d’accès."""
+    return calendar_chat_links_for_user([event], user).get(event.pk)
+
+
+def draft_proposal_for_event(event) -> DateProposal | None:
+    """Sondage brouillon lié à l’événement (en attente de lancement staff)."""
+    return (
+        DateProposal.objects.filter(
+            linked_event=event,
+            status=DateProposal.Status.DRAFT,
+        )
+        .order_by("-created_at")
+        .first()
+    )

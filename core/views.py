@@ -28,9 +28,15 @@ PAGE_LABELS = {
 }
 
 
+def _public_events_qs():
+    return Event.objects.filter(public=True).select_related(
+        "venue", "type", "parent", "parent__venue"
+    )
+
+
 @cache_page(settings.CACHE_TTL_HOME)
 def home(request):
-    qs = Event.objects.filter(public=True, date_debut__gte=timezone.now()).order_by("date_debut")[:3]
+    qs = _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")[:3]
     prochains = []
     for e in qs:
         e.bbox = None
@@ -56,8 +62,10 @@ def _add_bbox(qs):
 
 @cache_page(settings.CACHE_TTL_CONCERTS)
 def concerts(request):
-    prochains = _add_bbox(Event.objects.filter(public=True, date_debut__gte=timezone.now()).order_by("date_debut"))
-    passes = Event.objects.filter(public=True, date_debut__lt=timezone.now()).order_by("-date_debut")[:10]
+    prochains = _add_bbox(
+        _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")
+    )
+    passes = _public_events_qs().filter(date_debut__lt=timezone.now()).order_by("-date_debut")[:10]
     return render(request, "core/concerts.html", {"prochains": prochains, "passes": passes})
 
 

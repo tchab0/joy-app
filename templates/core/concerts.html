@@ -37,7 +37,24 @@
             {% if e.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
             {% if e.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
           </div>
-          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }} · {{ e.date_debut|date:"H\hi" }}</div>
+          {% if e.parent %}
+          <div class="event-meta" style="margin-top:.25rem">Dans : {{ e.parent.titre }}</div>
+          {% endif %}
+          {% if e.organisme %}
+          <div class="event-meta">Organisé par {{ e.organisme }}</div>
+          {% endif %}
+          <div class="event-meta">{{ e.lieu_affiche }} · {{ e.horaires_affiches }}</div>
+          {% if e.show_contact %}
+          <div class="event-meta" style="margin-top:.35rem">
+            Contact{% if e.contact_nom %} : {{ e.contact_nom }}{% endif %}
+            {% if e.contact_telephone %}
+              · <a href="tel:{{ e.contact_telephone }}" style="color:var(--accent)">{{ e.contact_telephone }}</a>
+            {% endif %}
+            {% if e.contact_email %}
+              · <a href="mailto:{{ e.contact_email }}" style="color:var(--accent)">{{ e.contact_email }}</a>
+            {% endif %}
+          </div>
+          {% endif %}
           {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
           {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-billets">Billetterie →</a>{% endif %}
           {% if e.venue.latitude %}
@@ -81,7 +98,9 @@
         </div>
         <div>
           <div class="event-titre">{{ e.titre }}</div>
-          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
+          {% if e.parent %}<div class="event-meta">Dans : {{ e.parent.titre }}</div>{% endif %}
+          {% if e.organisme %}<div class="event-meta">Organisé par {{ e.organisme }}</div>{% endif %}
+          <div class="event-meta">{{ e.lieu_affiche }}</div>
         </div>
       </div>
       {% endfor %}

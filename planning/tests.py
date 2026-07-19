@@ -5,6 +5,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from chat.models import ChatRoom
+from chat.services import post_message
 from events.models import Event, EventType, Venue
 from planning.models import (
     DateProposal,
@@ -16,6 +18,7 @@ from planning.models import (
     SubstituteRequest,
 )
 from planning.services import (
+    calendar_chat_links_for_user,
     calendar_summaries_for_events,
     ensure_participation_statuses,
     propose_substitute,
@@ -72,10 +75,11 @@ class PlanningBaseTestCase(TestCase):
             statut=Event.Statut.CONFIRME,
             public=False,
         )
-        # Signal : les titulaires sont déjà convoqués à la création.
-        self.participation = EventParticipation.objects.get(
-            event=self.event,
-            user=self.musician,
+        # Invitation individuelle (plus de convocation auto à la création).
+        from planning.services import invite_musician_to_event
+
+        self.participation, _ = invite_musician_to_event(
+            self.event, self.musician, send_sms=False
         )
         self.client = Client()
 
@@ -112,16 +116,69 @@ class DashboardTests(PlanningBaseTestCase):
                 "titre": "Nouveau concert",
                 "date": day,
                 "time": "19:30",
+                "venue_mode": "existing",
                 "venue_id": self.venue.pk,
                 "type_id": self.event_type.pk,
             },
         )
         self.assertEqual(r.status_code, 302)
         event = Event.objects.get(titre="Nouveau concert")
-        self.assertTrue(
+        # Salon staff-only : pas de convocation auto.
+        self.assertFalse(
             EventParticipation.objects.filter(
                 event=event, user=self.musician
             ).exists()
+        )
+        draft = DateProposal.objects.filter(
+            linked_event=event, status=DateProposal.Status.DRAFT
+        )
+        self.assertTrue(draft.exists())
+        from chat.models import ChatMembership, ChatRoom
+
+        room = ChatRoom.objects.get(event=event)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.staff, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_staff_can_create_event_with_new_venue_and_parent(self):
+        self.client.login(username="staff1", password="pass12345")
+        day = (timezone.localdate() + timedelta(days=21)).isoformat()
+        before_venues = Venue.objects.count()
+        before_events = Event.objects.count()
+        r = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "titre": "Concert festival",
+                "date": day,
+                "time": "20:00",
+                "venue_mode": "new",
+                "venue_nom": "Place Napoléon",
+                "venue_ville": "La Roche-sur-Yon",
+                "venue_adresse": "Place Napoléon",
+                "parent_mode": "new",
+                "parent_titre": "Festival d’été JOY",
+                "type_id": self.event_type.pk,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Venue.objects.count(), before_venues + 1)
+        # Parent + date créée
+        self.assertEqual(Event.objects.count(), before_events + 2)
+        venue = Venue.objects.get(nom="Place Napoléon")
+        parent = Event.objects.get(titre="Festival d’été JOY")
+        event = Event.objects.get(titre="Concert festival")
+        self.assertEqual(event.venue_id, venue.pk)
+        self.assertEqual(event.parent_id, parent.pk)
+        self.assertEqual(parent.venue_id, venue.pk)
+        # Le parent (conteneur) ne convoque pas les titulaires
+        self.assertFalse(
+            EventParticipation.objects.filter(event=parent).exists()
+        )
+        # La date créée non plus (salon staff-only).
+        self.assertFalse(
+            EventParticipation.objects.filter(event=event).exists()
         )
 
 
@@ -161,7 +218,14 @@ class PollTests(PlanningBaseTestCase):
         )
         self.assertEqual(r.status_code, 302)
         proposal = DateProposal.objects.get(title="Choix date mars")
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
         option = proposal.options.get()
+
+        # Lancement staff requis avant vote.
+        r = self.client.post(reverse("planning:launch_poll", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.OPEN)
 
         self.client.login(username="musi", password="pass12345")
         r = self.client.post(
@@ -178,6 +242,7 @@ class PollTests(PlanningBaseTestCase):
             reverse("planning:lock_poll", args=[proposal.pk]),
             {
                 "option_id": option.pk,
+                "venue_mode": "existing",
                 "venue_id": self.venue.pk,
                 "type_id": self.event_type.pk,
             },
@@ -187,18 +252,100 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
         self.assertIsNotNone(proposal.linked_event)
         event = proposal.linked_event
-        self.assertTrue(
+        # Verrouillage ne convoque plus automatiquement.
+        self.assertFalse(
             EventParticipation.objects.filter(
                 event=event, user=self.musician
             ).exists()
         )
-        self.assertFalse(
-            EventParticipation.objects.filter(event=event, user=self.sub).exists()
+
+    def test_lock_linked_event_validates_date(self):
+        """Sondage lié à un événement : option_id seul, pas de 2e Event."""
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        starts = timezone.now() + timedelta(days=30)
+        proposal = DateProposal.objects.create(
+            title="Dispo répète",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
         )
+        option = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=starts,
+            ends_at=starts + timedelta(hours=2),
+            label="Option A",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        before_count = Event.objects.count()
+
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:lock_poll", args=[proposal.pk]),
+            {"option_id": option.pk},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Event.objects.count(), before_count)
+        proposal.refresh_from_db()
+        self.event.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
+        self.assertEqual(proposal.locked_option_id, option.pk)
+        self.assertEqual(proposal.linked_event_id, self.event.pk)
+        self.assertEqual(self.event.date_debut, starts)
+        self.assertEqual(self.event.statut, Event.Statut.CONFIRME)
+
+    def test_poll_detail_embeds_salon_for_member(self):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="Salon embed",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=10),
+            label="Date 1",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, f"Salon « {self.event.titre} »")
+        self.assertContains(r, "chat-room--embedded")
+        self.assertContains(r, "Oui")
+        # Plus de lien-only vers le salon.
+        self.assertNotContains(r, 'class="pl-day-events__salon"')
+        # Boutons dupliqués (haut + bas) quand salon présent.
+        html = r.content.decode()
+        self.assertEqual(html.count("@click=\"vote("), 6)  # 3 choices × 2 sections
+        self.assertIn('aria-label="Dates proposées (bas de page)"', html)
+
+    def test_launch_poll_redirects_to_poll_detail(self):
+        from planning.models import DateOption
+
+        proposal = DateProposal.objects.create(
+            title="Redirect poll",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=12),
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(reverse("planning:launch_poll", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.url, reverse("planning:poll_detail", args=[proposal.pk]))
 
 
 class RosterStatusTests(PlanningBaseTestCase):
-    def test_new_event_invites_titulaires_only(self):
+    def test_new_event_does_not_auto_invite(self):
         event = Event.objects.create(
             titre="Nouvelle date",
             type=self.event_type,
@@ -207,13 +354,9 @@ class RosterStatusTests(PlanningBaseTestCase):
             statut=Event.Statut.TENTATIVE,
             public=False,
         )
-        invited_ids = set(
-            EventParticipation.objects.filter(event=event).values_list(
-                "user_id", flat=True
-            )
+        self.assertFalse(
+            EventParticipation.objects.filter(event=event).exists()
         )
-        self.assertIn(self.musician.pk, invited_ids)
-        self.assertNotIn(self.sub.pk, invited_ids)
 
     def test_invite_titulaires_endpoint(self):
         # Retirer le titulaire pour retester la convocation manuelle.
@@ -408,6 +551,8 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertIn("Saxophones altos", summary["instruments_manquants"])
 
     def test_calendar_shows_concert_and_presence_stats(self):
+        from planning.services import invite_musician_to_event
+
         concert_type = EventType.objects.create(nom="Concert")
         concert = Event.objects.create(
             titre="Concert d’été",
@@ -417,7 +562,7 @@ class CalendarSummaryTests(PlanningBaseTestCase):
             statut=Event.Statut.CONFIRME,
             public=True,
         )
-        part = EventParticipation.objects.get(event=concert, user=self.musician)
+        part, _ = invite_musician_to_event(concert, self.musician, send_sms=False)
         set_participation_response(part, "yes")
 
         self.client.login(username="musi", password="pass12345")
@@ -429,3 +574,41 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertContains(r, "Présents")
         self.assertContains(r, "Instruments manquants")
         self.assertContains(r, "(1 tit. · 0 remp.)")
+
+    def test_calendar_shows_chat_link_with_unread(self):
+        room = ChatRoom.objects.get(event=self.event)
+        post_message(room=room, author=self.staff, body="Coucou orchestre")
+        post_message(room=room, author=self.staff, body="Rappel pupitre")
+
+        links = calendar_chat_links_for_user([self.event], self.musician)
+        self.assertEqual(links[self.event.pk]["room_id"], room.pk)
+        self.assertEqual(links[self.event.pk]["unread"], 2)
+
+        self.client.login(username="musi", password="pass12345")
+        year = timezone.localtime(self.event.date_debut).year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, f"Salon « {self.event.titre} »")
+        self.assertContains(r, reverse("chat:room", args=[room.pk]))
+        self.assertContains(r, 'aria-label="2 non lus"')
+
+        detail = self.client.get(reverse("planning:event_detail", args=[self.event.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, f"Salon « {self.event.titre} »")
+        self.assertContains(detail, 'aria-label="2 non lus"')
+
+    def test_calendar_shows_chat_link_for_staff(self):
+        room = ChatRoom.objects.get(event=self.event)
+        # Staff seedé dans le salon à la création.
+        self.assertTrue(
+            room.memberships.filter(user=self.staff, left_at__isnull=True).exists()
+        )
+        links = calendar_chat_links_for_user([self.event], self.staff)
+        self.assertEqual(links[self.event.pk]["room_id"], room.pk)
+
+        self.client.login(username="staff1", password="pass12345")
+        year = timezone.localtime(self.event.date_debut).year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, f"Salon « {self.event.titre} »")
+        self.assertContains(r, reverse("chat:room", args=[room.pk]))

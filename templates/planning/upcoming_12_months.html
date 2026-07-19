@@ -9,7 +9,7 @@
 {% block content %}
 <div class="pl"
      x-data="yearCalendar({
-       canCreate: {{ is_planning_staff|yesno:'true,false' }},
+       canCreate: {{ can_propose_event|yesno:'true,false' }},
        year: {{ calendar_year }}
      })"
      @keydown.escape.window="closeModal(); hoverDay = null">
@@ -19,7 +19,7 @@
     <p class="pl-sub">
       Concerts et répétitions de l’année.
       Survolez une date pour l’aperçu ; touchez-la pour le détail.
-      {% if is_planning_staff %}Jour vide : clic pour ajouter un événement.{% endif %}
+      {% if can_propose_event %}Jour vide : clic pour proposer un événement.{% endif %}
     </p>
   </header>
 
@@ -55,14 +55,14 @@
                  @mouseenter="onDayHover('{{ day.iso }}', {{ day.events|length }})"
                  @mouseleave="onDayLeave('{{ day.iso }}')">
               <button type="button"
-                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% for e in day.events %}{% if e.cal_summary.is_concert %} has-concert{% endif %}{% endfor %}{% if is_planning_staff %} can-add{% endif %}"
+                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% for e in day.events %}{% if e.cal_summary.is_concert %} has-concert{% endif %}{% endfor %}{% if can_propose_event %} can-add{% endif %}"
                       role="gridcell"
-                      aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if is_planning_staff %} — ajouter un événement{% endif %}"
+                      aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if can_propose_event %} — proposer un événement{% endif %}"
                       @click="onDayClick('{{ day.iso }}', {{ day.events|length }})"
                       @focus="onDayHover('{{ day.iso }}', {{ day.events|length }})"
                       @blur="onDayLeave('{{ day.iso }}')">
                 <span class="pl-cal__num">{{ day.day }}</span>
-                {% if is_planning_staff %}
+                {% if can_propose_event %}
                 <span class="pl-cal__add" aria-hidden="true">+</span>
                 {% endif %}
               </button>
@@ -135,12 +135,20 @@
                   </dd>
                 </div>
               </dl>
+              {% if event.cal_chat %}
+              <a class="pl-day-events__salon" href="{% url 'chat:room' event.cal_chat.room_id %}">
+                <span>Salon « {{ event.titre }} »</span>
+                {% if event.cal_chat.unread %}
+                <span class="pl-chat-badge" aria-label="{{ event.cal_chat.unread }} non lus">{{ event.cal_chat.unread }}</span>
+                {% endif %}
+              </a>
+              {% endif %}
             </article>
             {% endwith %}
             {% endfor %}
-            {% if is_planning_staff %}
+            {% if can_propose_event %}
             <button type="button" class="pl-btn pl-btn--primary" @click="openCreate('{{ day.iso }}')">
-              Ajouter un événement
+              Proposer un événement
             </button>
             {% endif %}
           </div>
@@ -151,17 +159,17 @@
     {% endfor %}
   </div>
 
-  {% if is_planning_staff %}
+  {% if can_propose_event %}
   <div class="pl-modal-root" x-show="modalOpen" x-cloak
        x-transition.opacity
        role="dialog" aria-modal="true" aria-labelledby="pl-create-title">
     <div class="pl-modal-backdrop" @click="closeModal()"></div>
     <div class="pl-modal" @click.stop>
       <header class="pl-modal__head">
-        <h2 id="pl-create-title">Nouvel événement</h2>
+        <h2 id="pl-create-title">Proposer un événement</h2>
         <button type="button" class="pl-btn" @click="closeModal()" aria-label="Fermer">✕</button>
       </header>
-      <form class="pl-form" method="post" action="{% url 'planning:create_event' %}">
+      <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}">
         {% csrf_token %}
         <input type="hidden" name="date" :value="formDate">
         <div>
@@ -179,7 +187,8 @@
           </div>
           <div>
             <label for="ev_type">Type</label>
-            <select name="type_id" id="ev_type" required>
+            <select name="type_id" id="ev_type" required
+                    @change="typeLabel = $event.target.selectedOptions[0]?.text || ''">
               <option value="">Choisir…</option>
               {% for t in event_types %}
               <option value="{{ t.pk }}">{{ t.nom }}</option>
@@ -187,23 +196,41 @@
             </select>
           </div>
         </div>
+        {% include "planning/_venue_parent_fields.html" with id_prefix="ev" show_parent=is_planning_staff %}
+        {% if is_planning_staff %}
         <div>
-          <label for="ev_venue">Lieu</label>
-          <select name="venue_id" id="ev_venue" required>
-            <option value="">Choisir…</option>
-            {% for v in venues %}
-            <option value="{{ v.pk }}">{{ v.nom }} — {{ v.ville }}</option>
-            {% endfor %}
-          </select>
+          <label for="ev_organisme">Organisme organisateur</label>
+          <input type="text" name="organisme" id="ev_organisme" placeholder="ex. Mairie, festival…">
         </div>
+        {% endif %}
         <div>
           <label for="ev_desc">Description</label>
           <textarea name="description" id="ev_desc" rows="2"></textarea>
         </div>
-        <label style="display:flex;align-items:center;gap:.5rem;font-weight:500">
-          <input type="checkbox" name="public"> Visible sur le site public
-        </label>
-        <button type="submit" class="pl-btn pl-btn--primary">Créer l’événement</button>
+        {% if is_planning_staff %}
+        <div x-show="typeLabel && !/r[eé]p[eé]tition/i.test(typeLabel)" x-cloak style="display:grid;gap:.75rem">
+          <p class="pl-row__meta" style="margin:0">Coordonnées du contact</p>
+          <div>
+            <label for="ev_contact_nom">Contact</label>
+            <input type="text" name="contact_nom" id="ev_contact_nom" placeholder="Nom de la personne">
+          </div>
+          <div class="pl-form__row pl-form__row--2">
+            <div>
+              <label for="ev_contact_tel">Téléphone</label>
+              <input type="tel" name="contact_telephone" id="ev_contact_tel">
+            </div>
+            <div>
+              <label for="ev_contact_email">E-mail</label>
+              <input type="email" name="contact_email" id="ev_contact_email">
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        <p class="pl-row__meta" style="margin:0">
+          Un salon réservé au staff sera créé. Le sondage de disponibilité
+          devra être lancé par un membre du staff.
+        </p>
+        <button type="submit" class="pl-btn pl-btn--primary">Proposer l’événement</button>
       </form>
     </div>
   </div>
@@ -220,6 +247,9 @@ function yearCalendar({ canCreate, year }) {
     modalOpen: false,
     formDate: '',
     formDateLabel: '',
+    typeLabel: '',
+    venueMode: 'existing',
+    parentMode: 'none',
     finePointer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     onDayHover(iso, eventCount) {
       if (!this.finePointer || !eventCount) return;
@@ -238,16 +268,26 @@ function yearCalendar({ canCreate, year }) {
     openCreate(iso) {
       if (!canCreate) return;
       this.formDate = iso;
+      this.typeLabel = '';
+      this.venueMode = 'existing';
+      this.parentMode = 'none';
       const [y, m, d] = iso.split('-').map(Number);
       const dt = new Date(y, m - 1, d);
       this.formDateLabel = dt.toLocaleDateString('fr-FR', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
       });
       this.modalOpen = true;
-      this.$nextTick(() => document.getElementById('ev_titre')?.focus());
+      this.$nextTick(() => {
+        const typeSel = document.getElementById('ev_type');
+        if (typeSel) typeSel.value = '';
+        document.getElementById('ev_titre')?.focus();
+      });
     },
     closeModal() {
       this.modalOpen = false;
+      this.typeLabel = '';
+      this.venueMode = 'existing';
+      this.parentMode = 'none';
     },
   };
 }

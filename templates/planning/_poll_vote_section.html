@@ -1,0 +1,37 @@
+<section class="pl-accept__dates{% if poll_votes_bottom %} pl-accept__dates--bottom{% endif %}"
+         aria-label="{% if poll_votes_bottom %}Dates proposées (bas de page){% else %}Dates proposées{% endif %}">
+  {% for item in options_data %}
+  <div class="pl-accept__date">
+    <p class="pl-accept__when">
+      <span class="pl-accept__day">{{ item.option.starts_at|date:"l" }}</span>
+      <span class="pl-accept__fulldate">{{ item.option.starts_at|date:"j F Y" }}</span>
+      <span class="pl-accept__time">{{ item.option.starts_at|date:"H:i" }}{% if item.option.ends_at %} – {{ item.option.ends_at|date:"H:i" }}{% endif %}</span>
+    </p>
+    {% if item.option.label %}
+    <p class="pl-row__meta" style="margin:0 0 .75rem">{{ item.option.label }}</p>
+    {% endif %}
+    {% if proposal.is_open %}
+    <div class="pl-row__actions pl-accept__actions">
+      <button type="button" class="pl-btn pl-btn--yes"
+              :class="choiceOf({{ item.option.pk }}) === 'yes' && 'is-active'"
+              :disabled="isBusy({{ item.option.pk }})"
+              @click="vote({{ item.option.pk }}, 'yes')">Oui</button>
+      <button type="button" class="pl-btn pl-btn--maybe"
+              :class="choiceOf({{ item.option.pk }}) === 'maybe' && 'is-active'"
+              :disabled="isBusy({{ item.option.pk }})"
+              @click="vote({{ item.option.pk }}, 'maybe')">Peut-être</button>
+      <button type="button" class="pl-btn pl-btn--no"
+              :class="choiceOf({{ item.option.pk }}) === 'no' && 'is-active'"
+              :disabled="isBusy({{ item.option.pk }})"
+              @click="vote({{ item.option.pk }}, 'no')">Non</button>
+    </div>
+    {% elif proposal.is_draft %}
+    <p class="pl-row__meta">En attente de lancement par le staff.</p>
+    {% endif %}
+  </div>
+  {% empty %}
+  {% if not poll_votes_bottom %}
+  <p class="pl-empty">Aucune date proposée.</p>
+  {% endif %}
+  {% endfor %}
+</section>

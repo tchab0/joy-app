@@ -1,21 +1,26 @@
-{% extends "base.html" %}
-{% block title %}{{ room.title }} — Chat JOY{% endblock %}
-{% block extra_css %}
-{% include "chat/_room_styles.html" %}
-{% endblock %}
-{% block content %}
-<div class="chat-room"
+{% comment %}
+Embedded chat salon. Expects: room, membership, messages_json, ws_url, api_send_url,
+current_user_id, is_planning_staff, draft_proposal, invite_musicians, open_proposal,
+embedded (True), show_chat_chrome (False on poll).
+{% endcomment %}
+{% if room %}
+<div class="chat-room{% if embedded %} chat-room--embedded{% endif %}"
      x-data="chatRoom({
        messages: {{ messages_json|safe }},
        currentUserId: {{ current_user_id }},
        wsUrl: '{{ ws_url|escapejs }}',
        apiSendUrl: '{{ api_send_url|escapejs }}',
        csrfToken: '{{ csrf_token }}',
-       embedded: false
+       embedded: {{ embedded|yesno:'true,false' }}
      })"
      x-init="init()"
      @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
+
+  {% if show_chat_chrome %}
   {% include "chat/_room_chrome.html" %}
+  {% else %}
+  <p class="chat-room__embed-title">Salon « {{ room.title }} »</p>
+  {% endif %}
 
   {% if is_planning_staff and room.event %}
   {% include "chat/_room_staff_panel.html" %}
@@ -25,7 +30,7 @@
   <div class="chat-leave-hint">
     <strong>Vous êtes indisponible pour cet événement</strong>
     Vous pouvez suivre les messages, ou quitter le salon pour ne plus le voir dans votre liste.
-    <form method="post" class="chat-leave-cta" onsubmit="return confirm('Quitter ce salon ?');">
+    <form method="post" class="chat-leave-cta" action="{% url 'chat:room' room.pk %}" onsubmit="return confirm('Quitter ce salon ?');">
       {% csrf_token %}<input type="hidden" name="action" value="leave">
       <button type="submit">Quitter le salon</button>
     </form>
@@ -34,5 +39,7 @@
 
   {% include "chat/_room_thread_composer.html" %}
 </div>
+{% if not chat_room_script_included %}
 {% include "chat/_room_script.html" %}
-{% endblock %}
+{% endif %}
+{% endif %}

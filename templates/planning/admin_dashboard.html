@@ -72,6 +72,24 @@
     </form>
   </section>
 
+  {% if draft_polls %}
+  <section class="pl-section">
+    <h2>Sondages à lancer</h2>
+    {% for p in draft_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}" style="color:var(--accent)">{{ p.title }}</a>
+        <p class="pl-row__meta">{{ p.n_options }} option{{ p.n_options|pluralize }} · brouillon</p>
+      </div>
+      <form method="post" action="{% url 'planning:launch_poll' p.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--primary">Lancer</button>
+      </form>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if open_polls %}
   <section class="pl-section">
     <h2>Sondages ouverts</h2>

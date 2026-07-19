@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -68,6 +69,15 @@ class Event(models.Model):
     )
     contact_telephone = models.CharField("Téléphone", max_length=40, blank=True)
     contact_email = models.EmailField("E-mail", blank=True)
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="events_proposed",
+        verbose_name="Proposé par",
+        help_text="Musicien ou adhérent ayant proposé cet événement.",
+    )
 
     class Meta:
         verbose_name = "Événement"

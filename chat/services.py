@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import json
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
+from django.http import HttpRequest
+from django.urls import reverse
 from django.utils import timezone
 
 from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 
 ORCHESTRA_ROOM_TITLE = "Orchestre"
+User = get_user_model()
 
 
 def ensure_orchestra_room() -> ChatRoom:
@@ -20,6 +27,19 @@ def ensure_orchestra_room() -> ChatRoom:
         room.title = ORCHESTRA_ROOM_TITLE
         room.save(update_fields=["title"])
     return room
+
+
+def seed_staff_members(room: ChatRoom) -> int:
+    """Ajoute tous les comptes staff actifs au salon (salon staff-only initial)."""
+    staff_users = User.objects.filter(
+        Q(is_staff=True) | Q(is_superuser=True),
+        is_active=True,
+    )
+    n = 0
+    for user in staff_users:
+        add_member(room, user, subscribed=False)
+        n += 1
+    return n
 
 
 def ensure_event_room(event) -> ChatRoom:
@@ -40,6 +60,8 @@ def ensure_event_room(event) -> ChatRoom:
         updates.append("title")
     if updates:
         room.save(update_fields=updates)
+    if created:
+        seed_staff_members(room)
     return room
 
 
@@ -107,8 +129,16 @@ def serialize_attachment(att: ChatAttachment) -> dict:
 
 def serialize_message(message: ChatMessage) -> dict:
     author = message.author
+    poll_url = ""
+    if message.related_proposal_id and message.kind == ChatMessage.Kind.POLL_LAUNCH:
+        poll_url = reverse(
+            "planning:poll_detail", kwargs={"pk": message.related_proposal_id}
+        )
     return {
         "id": message.pk,
+        "kind": message.kind,
+        "highlight": message.kind == ChatMessage.Kind.POLL_LAUNCH,
+        "poll_url": poll_url,
         "body": "" if message.is_deleted else message.body,
         "deleted": message.is_deleted,
         "created_at": message.created_at.isoformat(),
@@ -140,6 +170,8 @@ def post_message(
     author,
     body: str = "",
     files: list | None = None,
+    kind: str = ChatMessage.Kind.NORMAL,
+    related_proposal=None,
 ) -> ChatMessage:
     body = (body or "").strip()
     files = list(files or [])
@@ -147,7 +179,13 @@ def post_message(
         raise ValueError("Message vide.")
 
     max_bytes = getattr(settings, "CHAT_ATTACHMENT_MAX_BYTES", 25 * 1024 * 1024)
-    message = ChatMessage.objects.create(room=room, author=author, body=body)
+    message = ChatMessage.objects.create(
+        room=room,
+        author=author,
+        body=body,
+        kind=kind,
+        related_proposal=related_proposal,
+    )
     for f in files:
         if f.size > max_bytes:
             name = getattr(f, "name", "fichier")
@@ -160,7 +198,7 @@ def post_message(
             size=f.size,
         )
     message = (
-        ChatMessage.objects.select_related("author")
+        ChatMessage.objects.select_related("author", "related_proposal")
         .prefetch_related("attachments")
         .get(pk=message.pk)
     )
@@ -172,6 +210,104 @@ def mark_room_read(room: ChatRoom, user) -> None:
     ChatMembership.objects.filter(room=room, user=user, left_at__isnull=True).update(
         last_read_at=timezone.now()
     )
+
+
+def ensure_staff_membership(room: ChatRoom, user) -> ChatMembership:
+    """Staff sans membership : crée / réintègre (non abonné SMS par défaut)."""
+    membership, _ = ChatMembership.objects.get_or_create(
+        room=room,
+        user=user,
+        defaults={"subscribed": False},
+    )
+    if membership.left_at:
+        membership.rejoin(subscribed=False)
+    return membership
+
+
+def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
+    """
+    Contexte partagé salon chat (page dédiée ou embed poll).
+    Prérequis : l'utilisateur a déjà accès (membre actif ou staff).
+    """
+    user = request.user
+    is_staff = user.is_staff or user.is_superuser
+    membership = active_membership(room, user)
+    if membership is None and is_staff:
+        membership = ensure_staff_membership(room, user)
+
+    mark_room_read(room, user)
+    history = list(
+        ChatMessage.objects.filter(room=room)
+        .select_related("author", "related_proposal")
+        .prefetch_related("attachments")
+        .order_by("created_at")
+    )
+
+    participation = None
+    show_leave_hint = False
+    draft_proposal = None
+    invite_musicians: list = []
+    open_proposal = None
+    lock_options: list = []
+
+    if room.event_id:
+        participation = (
+            user.event_participations.filter(event_id=room.event_id)
+            .select_related("status")
+            .first()
+        )
+        if participation and participation.status.code == "declined":
+            show_leave_hint = True
+        if is_staff:
+            from planning.models import DateProposal
+            from planning.services import draft_proposal_for_event
+
+            draft_proposal = draft_proposal_for_event(room.event)
+            open_proposal = (
+                DateProposal.objects.filter(
+                    linked_event_id=room.event_id,
+                    status=DateProposal.Status.OPEN,
+                )
+                .prefetch_related("options")
+                .first()
+            )
+            if open_proposal:
+                lock_options = list(
+                    open_proposal.options.order_by("sort_order", "starts_at")
+                )
+            already = set(
+                room.event.participations.values_list("user_id", flat=True)
+            )
+            invite_musicians = list(
+                User.objects.filter(is_musician=True, is_active=True)
+                .exclude(pk__in=already)
+                .order_by("last_name", "first_name")[:200]
+            )
+
+    ws_scheme = "wss" if request.is_secure() else "ws"
+    ws_url = f"{ws_scheme}://{request.get_host()}/ws/chat/{room.pk}/"
+    api_send_url = reverse("chat:api_send", kwargs={"room_id": room.pk})
+
+    return {
+        "room": room,
+        "membership": membership,
+        "messages": history,
+        "messages_json": json.dumps(
+            [serialize_message(m) for m in history], ensure_ascii=False
+        ),
+        "participation": participation,
+        "show_leave_hint": show_leave_hint,
+        "ws_url": ws_url,
+        "api_send_url": api_send_url,
+        "current_user_id": user.pk,
+        "is_planning_staff": is_staff,
+        "draft_proposal": draft_proposal,
+        "invite_musicians": invite_musicians,
+        "open_proposal": open_proposal,
+        "lock_options": lock_options,
+        "embedded": True,
+        "show_chat_chrome": False,
+    }
 
 
 def unread_count(membership: ChatMembership) -> int:
