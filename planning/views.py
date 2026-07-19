@@ -29,6 +29,7 @@ from planning.models import (
     SubstituteRequest,
 )
 from planning.services import (
+    attach_calendar_summaries,
     cast_date_vote,
     eligible_substitutes_for,
     ensure_participation_statuses,
@@ -216,11 +217,12 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         end = timezone.make_aware(
             datetime.combine(date(year, 12, 31), time.max), tz
         )
-        events = (
+        events = list(
             Event.objects.filter(date_debut__gte=start, date_debut__lte=end)
             .select_related("type", "venue")
             .order_by("date_debut", "titre")
         )
+        attach_calendar_summaries(events)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
             events_by_day[timezone.localtime(event.date_debut).date()].append(event)

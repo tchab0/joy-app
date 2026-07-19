@@ -131,11 +131,12 @@
     letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
     padding: .2rem 0 .35rem;
   }
+  .pl-cal__cell { position: relative; min-width: 0; }
   .pl-cal__day {
     appearance: none; border: none; background: rgba(0,0,0,.03);
-    position: relative;
+    position: relative; width: 100%;
     min-height: 2.75rem; padding: .25rem .1rem;
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: .15rem; border-radius: var(--r); cursor: pointer; font: inherit;
     color: var(--text); transition: background var(--trans), color var(--trans), transform var(--trans);
   }
@@ -147,16 +148,33 @@
     background: rgba(201,79,58,.08);
   }
   .pl-cal__day.is-past { color: var(--muted); }
-  .pl-cal__day.has-events { font-weight: 600; }
+  .pl-cal__day.has-events {
+    font-weight: 700;
+    background: rgba(201, 79, 58, .22);
+    color: var(--text);
+  }
+  .pl-cal__day.has-events:hover {
+    background: rgba(201, 79, 58, .32);
+  }
+  .pl-cal__day.has-concert {
+    background: rgba(138, 106, 26, .28);
+    color: var(--text);
+  }
+  .pl-cal__day.has-concert:hover {
+    background: rgba(138, 106, 26, .38);
+  }
+  .pl-cal__day.is-past.has-events {
+    background: rgba(201, 79, 58, .12);
+    color: var(--muted);
+  }
+  .pl-cal__day.is-past.has-concert {
+    background: rgba(138, 106, 26, .16);
+  }
+  .pl-cal__day.is-today.has-events,
+  .pl-cal__day.is-today.has-concert {
+    outline-width: 2px;
+  }
   .pl-cal__num { font-size: .85rem; line-height: 1.2; }
-  .pl-cal__dots {
-    display: flex; gap: 2px; min-height: 5px; align-items: center;
-    transition: opacity var(--trans);
-  }
-  .pl-cal__dot {
-    display: block; width: 4px; height: 4px; border-radius: 50%;
-    background: var(--accent);
-  }
   .pl-cal__add {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 1.15rem; font-weight: 700; line-height: 1; color: var(--accent);
@@ -165,35 +183,80 @@
     transition: opacity var(--trans);
   }
   @media (hover: hover) and (pointer: fine) {
-    .pl-cal__day.can-add:hover .pl-cal__add,
-    .pl-cal__day.can-add:focus-visible .pl-cal__add {
+    .pl-cal__day.can-add:not(.has-events):hover .pl-cal__add,
+    .pl-cal__day.can-add:not(.has-events):focus-visible .pl-cal__add {
       opacity: 1;
     }
-    .pl-cal__day.can-add:hover .pl-cal__dots,
-    .pl-cal__day.can-add:focus-visible .pl-cal__dots {
-      opacity: 0;
-    }
   }
-  .pl-cal__day.can-add:focus-visible .pl-cal__add {
+  .pl-cal__day.can-add:not(.has-events):focus-visible .pl-cal__add {
     opacity: 1;
   }
+  .pl-cal-tip {
+    position: absolute; z-index: 40; left: 50%; top: calc(100% + 4px);
+    transform: translateX(-50%);
+    width: max-content; max-width: min(16.5rem, 70vw);
+    padding: .65rem .75rem;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r);
+    box-shadow: 0 10px 28px rgba(0,0,0,.14);
+    pointer-events: none; text-align: left;
+  }
+  .pl-cal-tip__event + .pl-cal-tip__event {
+    margin-top: .55rem; padding-top: .55rem;
+    border-top: 1px solid var(--border);
+  }
+  .pl-cal-tip__event.is-concert .pl-cal-tip__title { color: var(--accent); }
+  .pl-cal-tip__title {
+    font-weight: 600; font-size: .82rem; margin: 0 0 .2rem; line-height: 1.25;
+  }
+  .pl-cal-tip__line {
+    margin: 0; font-size: .72rem; color: var(--muted); line-height: 1.35;
+  }
+  .pl-cal-tip__line span { white-space: nowrap; }
+  .pl-cal-tip__line.is-warn { color: var(--accent); font-weight: 600; }
+  .pl-cal-tip__line.is-ok { color: var(--ok); }
   .pl-day-events {
     margin-top: .75rem; padding: .75rem 0 0;
     border-top: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: .5rem;
+    display: flex; flex-direction: column; gap: .65rem;
   }
   .pl-day-events__label {
     font-size: .75rem; font-weight: 600; letter-spacing: .04em;
     text-transform: uppercase; color: var(--muted);
   }
-  .pl-day-events__item {
-    display: flex; flex-direction: column; gap: .1rem;
-    text-decoration: none; color: var(--text); padding: .45rem 0;
-    border-bottom: 1px solid var(--border); font-size: .9rem;
+  .pl-day-events__card {
+    padding: .65rem .75rem;
+    background: rgba(0,0,0,.03);
+    border-radius: var(--r);
+    border-left: 3px solid var(--muted);
   }
-  .pl-day-events__item:last-of-type { border-bottom: none; }
-  .pl-day-events__item span { font-size: .8rem; color: var(--muted); }
+  .pl-day-events__card.is-concert { border-left-color: var(--accent); }
+  .pl-day-events__item {
+    display: flex; flex-direction: column; gap: .15rem;
+    text-decoration: none; color: var(--text); font-size: .95rem;
+    min-height: 2.5rem; justify-content: center;
+  }
+  .pl-day-events__type {
+    font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .pl-day-events__card.is-concert .pl-day-events__type { color: var(--accent); }
   .pl-day-events__item:hover strong { color: var(--accent); }
+  .pl-event-stats {
+    display: grid; gap: .35rem; margin: .55rem 0 0; padding: 0;
+  }
+  .pl-event-stats > div {
+    display: grid; grid-template-columns: 7.5rem 1fr; gap: .35rem .5rem;
+    font-size: .8rem; align-items: baseline;
+  }
+  .pl-event-stats dt {
+    margin: 0; color: var(--muted); font-weight: 600; font-size: .72rem;
+    letter-spacing: .03em; text-transform: uppercase;
+  }
+  .pl-event-stats dd { margin: 0; color: var(--text); }
+  .pl-event-stats__split { color: var(--muted); white-space: nowrap; }
+  .pl-event-stats dd.is-warn { color: var(--accent); font-weight: 600; }
+  .pl-event-stats dd.is-ok { color: var(--ok); }
 
   .pl-modal-root {
     position: fixed; inset: 0; z-index: 200;

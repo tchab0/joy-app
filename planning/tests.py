@@ -16,6 +16,7 @@ from planning.models import (
     SubstituteRequest,
 )
 from planning.services import (
+    calendar_summaries_for_events,
     ensure_participation_statuses,
     propose_substitute,
     respond_substitute_request,
@@ -306,3 +307,61 @@ class StaffAdminTests(PlanningBaseTestCase):
         self.client.login(username="staff1", password="pass12345")
         r = self.client.get(reverse("planning:admin"))
         self.assertEqual(r.status_code, 200)
+
+
+class CalendarSummaryTests(PlanningBaseTestCase):
+    def test_summary_counts_titulaire_and_remplacant(self):
+        set_participation_response(self.participation, "yes")
+        EventParticipation.objects.create(
+            event=self.event,
+            user=self.sub,
+            status=self.statuses["confirmed"],
+            comment="Remplaçant",
+        )
+        summary = calendar_summaries_for_events([self.event])[self.event.pk]
+        self.assertEqual(summary["n_titulaires"], 1)
+        self.assertEqual(summary["n_remplacants"], 1)
+        self.assertEqual(summary["n_presents"], 2)
+        self.assertEqual(summary["instruments_manquants"], [])
+        self.assertEqual(summary["lieu"], "Salle Test — La Roche-sur-Yon")
+
+    def test_summary_missing_section_when_no_confirmed(self):
+        sax = OrchestraSection.objects.create(
+            code="sax", name="Saxophones", sort_order=20
+        )
+        sax_player = User.objects.create_user(
+            username="sax1",
+            password="pass12345",
+            is_musician=True,
+        )
+        MusicianProfile.objects.create(
+            user=sax_player,
+            section=sax,
+            roster_status=MusicianProfile.RosterStatus.TITULAIRE,
+        )
+        summary = calendar_summaries_for_events([self.event])[self.event.pk]
+        self.assertIn("Trompettes", summary["instruments_manquants"])
+        self.assertIn("Saxophones", summary["instruments_manquants"])
+
+    def test_calendar_shows_concert_and_presence_stats(self):
+        concert_type = EventType.objects.create(nom="Concert")
+        concert = Event.objects.create(
+            titre="Concert d’été",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=21),
+            statut=Event.Statut.CONFIRME,
+            public=True,
+        )
+        part = EventParticipation.objects.get(event=concert, user=self.musician)
+        set_participation_response(part, "yes")
+
+        self.client.login(username="musi", password="pass12345")
+        year = timezone.localtime(concert.date_debut).year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Concert d’été")
+        self.assertContains(r, "has-concert")
+        self.assertContains(r, "Présents")
+        self.assertContains(r, "Instruments manquants")
+        self.assertContains(r, "(1 tit. · 0 remp.)")

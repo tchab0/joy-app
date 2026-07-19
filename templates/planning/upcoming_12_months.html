@@ -12,13 +12,14 @@
        canCreate: {{ is_planning_staff|yesno:'true,false' }},
        year: {{ calendar_year }}
      })"
-     @keydown.escape.window="closeModal()">
+     @keydown.escape.window="closeModal(); hoverDay = null">
 
   <header class="pl-head">
     <h1>Planning {{ calendar_year }}</h1>
     <p class="pl-sub">
-      Tous les jours de l’année.
-      {% if is_planning_staff %}Cliquez un jour pour ajouter un événement.{% endif %}
+      Concerts et répétitions de l’année.
+      Survolez une date pour l’aperçu ; touchez-la pour le détail.
+      {% if is_planning_staff %}Jour vide : clic pour ajouter un événement.{% endif %}
     </p>
   </header>
 
@@ -50,23 +51,45 @@
         <div class="pl-cal__week" role="row">
           {% for day in week %}
             {% if day %}
-            <button type="button"
-                    class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if is_planning_staff %} can-add{% endif %}"
-                    role="gridcell"
-                    aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if is_planning_staff %} — ajouter un événement{% endif %}"
-                    @click="onDayClick('{{ day.iso }}', {{ day.events|length }})">
-              <span class="pl-cal__num">{{ day.day }}</span>
+            <div class="pl-cal__cell"
+                 @mouseenter="onDayHover('{{ day.iso }}', {{ day.events|length }})"
+                 @mouseleave="onDayLeave('{{ day.iso }}')">
+              <button type="button"
+                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% for e in day.events %}{% if e.cal_summary.is_concert %} has-concert{% endif %}{% endfor %}{% if is_planning_staff %} can-add{% endif %}"
+                      role="gridcell"
+                      aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if is_planning_staff %} — ajouter un événement{% endif %}"
+                      @click="onDayClick('{{ day.iso }}', {{ day.events|length }})"
+                      @focus="onDayHover('{{ day.iso }}', {{ day.events|length }})"
+                      @blur="onDayLeave('{{ day.iso }}')">
+                <span class="pl-cal__num">{{ day.day }}</span>
+                {% if is_planning_staff %}
+                <span class="pl-cal__add" aria-hidden="true">+</span>
+                {% endif %}
+              </button>
               {% if day.events %}
-              <span class="pl-cal__dots" aria-hidden="true">
-                {% for e in day.events|slice:":3" %}
-                <i class="pl-cal__dot"></i>
+              <div class="pl-cal-tip"
+                   x-show="finePointer && hoverDay === '{{ day.iso }}' && selectedDay !== '{{ day.iso }}'"
+                   x-cloak
+                   role="tooltip">
+                {% for event in day.events %}
+                {% with s=event.cal_summary %}
+                <div class="pl-cal-tip__event{% if s.is_concert %} is-concert{% endif %}">
+                  <p class="pl-cal-tip__title">{{ event.titre }}</p>
+                  <p class="pl-cal-tip__line">{{ s.date_label }} · {{ s.time_label }}</p>
+                  {% if s.lieu %}<p class="pl-cal-tip__line">{{ s.lieu }}</p>{% endif %}
+                  <p class="pl-cal-tip__line">
+                    Présents : {{ s.n_presents }}
+                    <span>({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)</span>
+                  </p>
+                  <p class="pl-cal-tip__line {% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
+                    Manquants : {{ s.instruments_manquants_label }}
+                  </p>
+                </div>
+                {% endwith %}
                 {% endfor %}
-              </span>
+              </div>
               {% endif %}
-              {% if is_planning_staff %}
-              <span class="pl-cal__add" aria-hidden="true">+</span>
-              {% endif %}
-            </button>
+            </div>
             {% else %}
             <span class="pl-cal__day pl-cal__day--empty" role="gridcell" aria-hidden="true"></span>
             {% endif %}
@@ -81,10 +104,39 @@
           <div class="pl-day-events" x-show="selectedDay === '{{ day.iso }}'" x-cloak>
             <p class="pl-day-events__label">{{ day.date|date:"l d F" }}</p>
             {% for event in day.events %}
-            <a class="pl-day-events__item" href="{% url 'planning:event_detail' event.pk %}">
-              <strong>{{ event.titre }}</strong>
-              <span>{{ event.date_debut|date:"H:i" }}{% if event.venue %} · {{ event.venue.nom }}{% endif %}</span>
-            </a>
+            {% with s=event.cal_summary %}
+            <article class="pl-day-events__card{% if s.is_concert %} is-concert{% endif %}">
+              <a class="pl-day-events__item" href="{% url 'planning:event_detail' event.pk %}">
+                <strong>{{ event.titre }}</strong>
+                {% if s.type_nom %}<span class="pl-day-events__type">{{ s.type_nom }}</span>{% endif %}
+              </a>
+              <dl class="pl-event-stats">
+                <div>
+                  <dt>Date</dt>
+                  <dd>{{ s.date_label }} · {{ s.time_label }}</dd>
+                </div>
+                <div>
+                  <dt>Lieu</dt>
+                  <dd>{% if s.lieu %}{{ s.lieu }}{% else %}—{% endif %}</dd>
+                </div>
+                <div>
+                  <dt>Présents</dt>
+                  <dd>
+                    {{ s.n_presents }}
+                    <span class="pl-event-stats__split">
+                      ({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Instruments manquants</dt>
+                  <dd class="{% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
+                    {{ s.instruments_manquants_label }}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+            {% endwith %}
             {% endfor %}
             {% if is_planning_staff %}
             <button type="button" class="pl-btn pl-btn--primary" @click="openCreate('{{ day.iso }}')">
@@ -164,11 +216,21 @@ function yearCalendar({ canCreate, year }) {
     canCreate,
     year,
     selectedDay: null,
+    hoverDay: null,
     modalOpen: false,
     formDate: '',
     formDateLabel: '',
+    finePointer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    onDayHover(iso, eventCount) {
+      if (!this.finePointer || !eventCount) return;
+      this.hoverDay = iso;
+    },
+    onDayLeave(iso) {
+      if (this.hoverDay === iso) this.hoverDay = null;
+    },
     onDayClick(iso, eventCount) {
       this.selectedDay = this.selectedDay === iso ? null : iso;
+      this.hoverDay = null;
       if (canCreate && eventCount === 0) {
         this.openCreate(iso);
       }

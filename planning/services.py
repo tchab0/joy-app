@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from planning.models import (
     DateOption,
@@ -12,6 +15,7 @@ from planning.models import (
     DateVote,
     EventParticipation,
     MusicianProfile,
+    OrchestraSection,
     ParticipationStatus,
     SubstituteRequest,
 )
@@ -243,3 +247,104 @@ def require_participation(event, user) -> EventParticipation:
         event=event,
         user=user,
     )
+
+
+def _is_concert_type(event) -> bool:
+    nom = (getattr(getattr(event, "type", None), "nom", None) or "").strip().lower()
+    return "concert" in nom
+
+
+def _expected_sections() -> list[OrchestraSection]:
+    """Pupitres actifs pour lesquels au moins un titulaire est en roster."""
+    return list(
+        OrchestraSection.objects.filter(
+            is_active=True,
+            musicians__roster_status=MusicianProfile.RosterStatus.TITULAIRE,
+            musicians__user__is_active=True,
+            musicians__user__is_musician=True,
+        )
+        .distinct()
+        .order_by("sort_order", "name")
+    )
+
+
+def calendar_summaries_for_events(events) -> dict[int, dict]:
+    """
+    Résumés calendrier (présence + pupitres manquants), indexés par event.pk.
+
+    Présents = participations confirmées, ventilées titulaire / remplaçant.
+    Instruments manquants = pupitres attendus sans aucun confirmé.
+    """
+    events = list(events)
+    if not events:
+        return {}
+
+    expected = _expected_sections()
+    expected_ids = {s.pk for s in expected}
+    by_event_confirmed: dict[int, list] = defaultdict(list)
+
+    parts = (
+        EventParticipation.objects.filter(
+            event_id__in=[e.pk for e in events],
+            status__code="confirmed",
+        )
+        .select_related("user__musician_profile__section")
+        .order_by("pk")
+    )
+    for p in parts:
+        by_event_confirmed[p.event_id].append(p)
+
+    summaries: dict[int, dict] = {}
+    for event in events:
+        confirmed = by_event_confirmed.get(event.pk, [])
+        n_tit = 0
+        n_rem = 0
+        covered_section_ids: set[int] = set()
+        for p in confirmed:
+            try:
+                profile = p.user.musician_profile
+            except MusicianProfile.DoesNotExist:
+                profile = None
+            roster = (
+                profile.roster_status
+                if profile is not None
+                else MusicianProfile.RosterStatus.TITULAIRE
+            )
+            if roster == MusicianProfile.RosterStatus.REMPLACANT:
+                n_rem += 1
+            else:
+                n_tit += 1
+            if profile is not None and profile.section_id in expected_ids:
+                covered_section_ids.add(profile.section_id)
+
+        missing = [s.name for s in expected if s.pk not in covered_section_ids]
+        local_start = timezone.localtime(event.date_debut)
+        venue = event.venue
+        lieu = ""
+        if venue is not None:
+            lieu = f"{venue.nom} — {venue.ville}" if venue.ville else venue.nom
+
+        summaries[event.pk] = {
+            "titre": event.titre,
+            "is_concert": _is_concert_type(event),
+            "type_nom": getattr(getattr(event, "type", None), "nom", "") or "",
+            "date_label": local_start.strftime("%d/%m/%Y"),
+            "time_label": local_start.strftime("%H:%M"),
+            "lieu": lieu,
+            "n_titulaires": n_tit,
+            "n_remplacants": n_rem,
+            "n_presents": n_tit + n_rem,
+            "instruments_manquants": missing,
+            "instruments_manquants_label": (
+                ", ".join(missing) if missing else "Aucun"
+            ),
+        }
+    return summaries
+
+
+def attach_calendar_summaries(events) -> list:
+    """Attache ``event.cal_summary`` à chaque événement (mutates in place)."""
+    summaries = calendar_summaries_for_events(events)
+    for event in events:
+        event.cal_summary = summaries.get(event.pk, {})
+    return list(events)
