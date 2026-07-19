@@ -77,8 +77,38 @@ def set_participation_response(
     return participation
 
 
+def titulaires_queryset():
+    """Musiciens titulaires actifs (sans profil = titulaire par défaut)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    return User.objects.filter(is_musician=True, is_active=True).filter(
+        Q(musician_profile__roster_status=MusicianProfile.RosterStatus.TITULAIRE)
+        | Q(musician_profile__isnull=True)
+    )
+
+
+def invite_titulaires_to_event(event) -> int:
+    """Convoque tous les titulaires à une date (ignore les déjà inscrits)."""
+    invited = get_status("invited")
+    musicians = list(titulaires_queryset())
+    existing = set(
+        EventParticipation.objects.filter(event=event).values_list(
+            "user_id", flat=True
+        )
+    )
+    to_create = [
+        EventParticipation(event=event, user=u, status=invited)
+        for u in musicians
+        if u.pk not in existing
+    ]
+    if to_create:
+        EventParticipation.objects.bulk_create(to_create, ignore_conflicts=True)
+    return len(to_create)
+
+
 def eligible_substitutes_for(participation: EventParticipation):
-    """Musiciens du même pupitre (ou pool) non déjà inscrits confirmés."""
+    """Remplaçants du même pupitre non déjà inscrits confirmés / invités."""
     try:
         profile = participation.user.musician_profile
         section = profile.section
@@ -88,12 +118,11 @@ def eligible_substitutes_for(participation: EventParticipation):
     qs = MusicianProfile.objects.select_related("user", "section").filter(
         user__is_active=True,
         user__is_musician=True,
+        roster_status=MusicianProfile.RosterStatus.REMPLACANT,
     ).exclude(user_id=participation.user_id)
 
     if section is not None:
-        qs = qs.filter(Q(section=section) | Q(is_substitute_pool=True))
-    else:
-        qs = qs.filter(is_substitute_pool=True)
+        qs = qs.filter(section=section)
 
     taken_ids = set(
         EventParticipation.objects.filter(

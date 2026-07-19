@@ -53,6 +53,10 @@ class OrchestraSection(models.Model):
 
 
 class MusicianProfile(models.Model):
+    class RosterStatus(models.TextChoices):
+        TITULAIRE = "titulaire", "Titulaire"
+        REMPLACANT = "remplacant", "Remplaçant"
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -73,10 +77,13 @@ class MusicianProfile(models.Model):
         verbose_name="Instrument",
         help_text="Précision libre (ex. trompette 2, batterie).",
     )
-    is_substitute_pool = models.BooleanField(
-        default=False,
-        verbose_name="Pool de remplaçants",
-        help_text="Peut être sollicité pour remplacer un musicien du même pupitre.",
+    roster_status = models.CharField(
+        max_length=20,
+        choices=RosterStatus.choices,
+        default=RosterStatus.TITULAIRE,
+        verbose_name="Statut",
+        help_text="Les titulaires sont convoqués à chaque nouvelle date ; "
+        "les remplaçants sont sollicités uniquement en cas de besoin.",
     )
 
     class Meta:
@@ -86,6 +93,14 @@ class MusicianProfile(models.Model):
 
     def __str__(self):
         return f"{self.user} — {self.section or 'sans pupitre'}"
+
+    @property
+    def is_titulaire(self) -> bool:
+        return self.roster_status == self.RosterStatus.TITULAIRE
+
+    @property
+    def is_remplacant(self) -> bool:
+        return self.roster_status == self.RosterStatus.REMPLACANT
 
 
 class EventParticipation(models.Model):

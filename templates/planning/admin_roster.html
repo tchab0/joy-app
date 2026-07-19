@@ -39,6 +39,11 @@
     <p class="pl-empty">Personne d’invité.</p>
     {% endfor %}
 
+    <form class="pl-form" method="post" action="{% url 'planning:invite_titulaires' event.pk %}" style="margin-bottom:1rem">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--primary">Convoquer tous les titulaires</button>
+    </form>
+
     <form class="pl-form" method="post" action="{% url 'planning:invite_musician' event.pk %}">
       {% csrf_token %}
       <div class="pl-form__row pl-form__row--2">
@@ -46,7 +51,12 @@
           <label for="user_id">Inviter un musicien</label>
           <select name="user_id" id="user_id" required>
             {% for m in musicians %}
-            <option value="{{ m.pk }}">{{ m.get_full_name|default:m.username }}</option>
+            <option value="{{ m.pk }}">
+              {{ m.get_full_name|default:m.username }}
+              {% if m.musician_profile %}
+                · {{ m.musician_profile.get_roster_status_display }}
+              {% endif %}
+            </option>
             {% endfor %}
           </select>
         </div>

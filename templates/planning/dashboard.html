@@ -157,6 +157,19 @@
           <input type="text" name="instrument" id="instrument" value="{{ profile.instrument }}" placeholder="ex. trompette 2">
         </div>
       </div>
+      {% if is_planning_staff %}
+      <div class="pl-form__row">
+        <div>
+          <label for="roster_status">Statut</label>
+          <select name="roster_status" id="roster_status">
+            <option value="titulaire" {% if profile.roster_status == "titulaire" %}selected{% endif %}>Titulaire</option>
+            <option value="remplacant" {% if profile.roster_status == "remplacant" %}selected{% endif %}>Remplaçant</option>
+          </select>
+        </div>
+      </div>
+      {% else %}
+      <p class="pl-row__meta">Statut : {{ profile.get_roster_status_display }}</p>
+      {% endif %}
       <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Enregistrer</button>
     </form>
   </section>

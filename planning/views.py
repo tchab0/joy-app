@@ -32,6 +32,7 @@ from planning.services import (
     ensure_participation_statuses,
     get_or_create_profile,
     get_participation_for,
+    invite_titulaires_to_event,
     lock_date_proposal,
     propose_substitute,
     respond_substitute_request,
@@ -489,8 +490,10 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
         gear = EventEquipmentAssignment.objects.filter(event=event).select_related(
             "item", "assigned_to"
         )
-        musicians = User.objects.filter(is_musician=True, is_active=True).order_by(
-            "last_name", "first_name"
+        musicians = (
+            User.objects.filter(is_musician=True, is_active=True)
+            .select_related("musician_profile")
+            .order_by("last_name", "first_name")
         )
         context.update(
             {
@@ -583,19 +586,15 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             statut=Event.Statut.TENTATIVE,
             public=public,
         )
+        # Les titulaires sont convoqués automatiquement (signal post_save).
         lock_date_proposal(proposal, option, event=event)
-
-        # Invite all musicians
-        invited = ensure_participation_statuses()["invited"]
-        musicians = User.objects.filter(is_musician=True, is_active=True)
-        EventParticipation.objects.bulk_create(
-            [
-                EventParticipation(event=event, user=u, status=invited)
-                for u in musicians
-            ],
-            ignore_conflicts=True,
+        n_invited = EventParticipation.objects.filter(event=event).count()
+        messages.success(
+            request,
+            f"Date verrouillée — événement « {event.titre} » créé "
+            f"({n_invited} titulaire{'s' if n_invited != 1 else ''} "
+            f"convoqué{'s' if n_invited != 1 else ''}).",
         )
-        messages.success(request, f"Date verrouillée — événement « {event.titre} » créé.")
         return redirect("planning:event_roster", pk=event.pk)
 
 
@@ -611,6 +610,18 @@ class InviteMusicianView(PlanningStaffRequiredMixin, View):
             defaults={"status": invited},
         )
         messages.success(request, f"{user} invité.")
+        return redirect("planning:event_roster", pk=pk)
+
+
+class InviteTitulairesView(PlanningStaffRequiredMixin, View):
+    def post(self, request, pk):
+        event = get_object_or_404(Event, pk=pk)
+        n = invite_titulaires_to_event(event)
+        messages.success(
+            request,
+            f"{n} titulaire{'s' if n != 1 else ''} "
+            f"convoqué{'s' if n != 1 else ''}.",
+        )
         return redirect("planning:event_roster", pk=pk)
 
 
@@ -659,8 +670,10 @@ class UpdateProfileSectionView(MusicianRequiredMixin, View):
         else:
             profile.section = None
         profile.instrument = (request.POST.get("instrument") or "").strip()
-        if request.user.is_staff:
-            profile.is_substitute_pool = request.POST.get("is_substitute_pool") == "on"
+        if request.user.is_staff or request.user.is_superuser:
+            status = request.POST.get("roster_status")
+            if status in MusicianProfile.RosterStatus.values:
+                profile.roster_status = status
         profile.save()
         messages.success(request, "Profil mis à jour.")
         return redirect("planning:dashboard")

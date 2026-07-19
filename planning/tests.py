@@ -54,7 +54,7 @@ class PlanningBaseTestCase(TestCase):
             user=self.sub,
             section=self.section,
             instrument="trompette 2",
-            is_substitute_pool=True,
+            roster_status=MusicianProfile.RosterStatus.REMPLACANT,
         )
         self.staff = User.objects.create_user(
             username="staff1",
@@ -70,10 +70,10 @@ class PlanningBaseTestCase(TestCase):
             statut=Event.Statut.CONFIRME,
             public=False,
         )
-        self.participation = EventParticipation.objects.create(
+        # Signal : les titulaires sont déjà convoqués à la création.
+        self.participation = EventParticipation.objects.get(
             event=self.event,
             user=self.musician,
-            status=self.statuses["invited"],
         )
         self.client = Client()
 
@@ -153,6 +153,55 @@ class PollTests(PlanningBaseTestCase):
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
         self.assertIsNotNone(proposal.linked_event)
+        event = proposal.linked_event
+        self.assertTrue(
+            EventParticipation.objects.filter(
+                event=event, user=self.musician
+            ).exists()
+        )
+        self.assertFalse(
+            EventParticipation.objects.filter(event=event, user=self.sub).exists()
+        )
+
+
+class RosterStatusTests(PlanningBaseTestCase):
+    def test_new_event_invites_titulaires_only(self):
+        event = Event.objects.create(
+            titre="Nouvelle date",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=21),
+            statut=Event.Statut.TENTATIVE,
+            public=False,
+        )
+        invited_ids = set(
+            EventParticipation.objects.filter(event=event).values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertIn(self.musician.pk, invited_ids)
+        self.assertNotIn(self.sub.pk, invited_ids)
+
+    def test_invite_titulaires_endpoint(self):
+        # Retirer le titulaire pour retester la convocation manuelle.
+        EventParticipation.objects.filter(
+            event=self.event, user=self.musician
+        ).delete()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:invite_titulaires", args=[self.event.pk])
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            EventParticipation.objects.filter(
+                event=self.event, user=self.musician
+            ).exists()
+        )
+        self.assertFalse(
+            EventParticipation.objects.filter(
+                event=self.event, user=self.sub
+            ).exists()
+        )
 
 
 class SubstituteTests(PlanningBaseTestCase):

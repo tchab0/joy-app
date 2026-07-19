@@ -58,6 +58,11 @@ urlpatterns = [
         name="invite_musician",
     ),
     path(
+        "admin/events/<int:pk>/invite-titulaires/",
+        views.InviteTitulairesView.as_view(),
+        name="invite_titulaires",
+    ),
+    path(
         "admin/events/<int:pk>/equipment/",
         views.AddEventEquipmentView.as_view(),
         name="add_event_equipment",
