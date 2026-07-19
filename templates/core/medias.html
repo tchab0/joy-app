@@ -17,9 +17,8 @@
 .photo-wrap { position:relative; display:block; overflow:hidden; border-radius:var(--r); background:var(--surface); }
 .photo-wrap img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; transition:transform .4s cubic-bezier(.16,1,.3,1); }
 .photo-wrap:hover img { transform:scale(1.04); }
-.photo-vote { position:absolute; right:.45rem; bottom:.45rem; display:flex; align-items:center; gap:.3rem; background:rgba(0,0,0,.45); color:#fff; border:none; border-radius:999px; padding:.28rem .55rem; font-size:.75rem; cursor:pointer; opacity:0; transition:opacity .2s ease, background .2s ease; backdrop-filter:blur(4px); }
-.photo-wrap:hover .photo-vote { opacity:1; }
-.photo-vote.voted { background:rgba(177, 38, 62, .82); }
+.photo-vote { position:absolute; right:.45rem; bottom:.45rem; display:flex; align-items:center; gap:.3rem; background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:var(--r); padding:.28rem .55rem; font-size:.75rem; cursor:pointer; min-height:36px; transition:background .2s ease; backdrop-filter:blur(4px); }
+.photo-vote.voted { background:rgba(var(--accent-rgb),.88); }
 .photo-vote-count { font-size:.72rem; }
 
 .lightbox { position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:2000; display:none; align-items:center; justify-content:center; }

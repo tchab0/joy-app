@@ -1,0 +1,36 @@
+---
+description: Respecter le thème JOY (tokens) et le contraste texte/fond
+alwaysApply: true
+---
+
+# Thème visuel & contraste
+
+Toute nouvelle page ou style doit **réutiliser le thème défini dans `templates/base.html`** (`:root`), pas inventer une autre palette.
+
+## Tokens obligatoires
+
+| Token | Usage |
+|-------|--------|
+| `--bg` / `--surface` | Fonds page / panneaux |
+| `--text` / `--muted` | Texte principal / secondaire |
+| `--accent` / `--accent-h` | CTA, liens, accents terracotta |
+| `--gold` | Décoratif (bordures, étoiles) — **pas** comme couleur de texte |
+| `--gold-text` (`#8a6a1a`) | Texte sur fond cream/or clair |
+| `--ok` | Succès / traité |
+| `--font-d` / `--font-b` | Titres (Playfair) / corps (Work Sans) |
+| `--r` | Rayons (pas de pills `999px` hors exception justifiée) |
+
+## Contraste (lisibilité)
+
+- Texte sur fond clair (`--bg`, `--surface`) → `--text`, `--muted`, `--accent`, `--gold-text` ou `--ok`.
+- **Jamais** `var(--gold)` ni blanc semi-transparent sur fond cream.
+- Surfaces sombres (nav, footer, hero) → texte blanc / blanc atténué **explicite** ; remonter l’opacité si illisible (&lt; ~.5).
+- Tout overlay / modale sur fond clair doit forcer `color: var(--text)` (ne pas hériter du footer/nav).
+- Vérifier mentalement le contraste avant de livrer (WCAG ~4.5:1 pour le texte courant).
+
+## À éviter
+
+- Couleurs Tailwind / hors-thème (`sky`, `indigo`, `#0ea5e9`, etc.).
+- Liens nus sans couleur (bleu navigateur) — utiliser `var(--accent)` ou `.btn`.
+- Contenu critique en `opacity: 0` sans fallback si JS échoue.
+- UI tactile masquée jusqu’au `:hover`.
