@@ -169,6 +169,9 @@
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
       {% if request.user.is_authenticated %}
+      {% if request.user.is_musician or request.user.is_staff %}
+      <li><a href="{% url 'chat:list' %}" {% if request.resolver_match and request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Chat</a></li>
+      {% endif %}
       <li><a href="{% url 'account_home' %}" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' %}class="active"{% endif %}>{{ request.user.get_full_name|default:request.user.username }}</a></li>
       {% else %}
       <li><a href="{% url 'account_login' %}">Mon compte</a></li>

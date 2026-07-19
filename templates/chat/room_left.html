@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Salon quitté — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .chat-left {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem calc(2rem + env(safe-area-inset-bottom));
+    color: var(--text);
+    text-align: center;
+  }
+  .chat-left h1 {
+    font-family: var(--font-d);
+    font-size: 1.45rem;
+    margin: 0 0 .5rem;
+  }
+  .chat-left p { color: var(--muted); margin: 0 0 1.5rem; line-height: 1.4; }
+  .chat-left__actions {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+  }
+  .chat-left__actions .btn,
+  .chat-left__actions button {
+    min-height: 48px;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chat-left__actions form { margin: 0; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="chat-left">
+  <h1>{{ room.title }}</h1>
+  <p>Vous avez quitté ce salon. Vous pouvez le rejoindre à tout moment.</p>
+  <div class="chat-left__actions">
+    <form method="post" action="{% url 'chat:rejoin' room.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">Rejoindre le salon</button>
+    </form>
+    <a class="btn btn-outline" href="{% url 'chat:list' %}">Retour aux salons</a>
+  </div>
+</section>
+{% endblock %}

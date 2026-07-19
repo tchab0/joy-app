@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+{% block title %}{{ room.title }} — Chat JOY{% endblock %}
+{% block extra_css %}
+<style>
+  /* Full-viewport mobile chat shell */
+  body:has(.chat-room) nav { position: sticky; top: 0; z-index: 20; }
+  body:has(.chat-room) footer { display: none; }
+  body:has(.chat-room) main { padding: 0; }
+
+  .chat-room {
+    --composer-h: 7.5rem;
+    max-width: 720px;
+    margin: 0 auto;
+    height: calc(100dvh - 56px);
+    max-height: calc(100dvh - 56px);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chat-room__bar {
+    flex-shrink: 0;
+    z-index: 5;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: .55rem .75rem;
+    padding-left: max(.75rem, env(safe-area-inset-left));
+    padding-right: max(.75rem, env(safe-area-inset-right));
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    min-height: 52px;
+  }
+  .chat-room__back {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--r);
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 1.25rem;
+    font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chat-room__titles { flex: 1; min-width: 0; }
+  .chat-room__titles h1 {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat-room__sub {
+    margin: 0;
+    font-size: .7rem;
+    color: var(--muted);
+  }
+
+  .chat-menu { position: relative; flex-shrink: 0; }
+  .chat-menu__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .chat-menu__panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + .35rem);
+    min-width: 13.5rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    box-shadow: 0 8px 24px rgba(26, 23, 20, .12);
+    padding: .35rem;
+    z-index: 30;
+  }
+  .chat-menu__panel form { margin: 0; }
+  .chat-menu__item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: .55rem .75rem;
+    border: 0;
+    border-radius: calc(var(--r) - 2px);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: .95rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .chat-menu__item:active { background: rgba(var(--accent-rgb), .08); }
+  .chat-menu__item--warn { color: var(--accent); font-weight: 600; }
+  .chat-menu__item--ok { color: var(--ok); }
+
+  .chat-leave-hint {
+    flex-shrink: 0;
+    margin: 0;
+    padding: .85rem 1rem;
+    border-bottom: 1px solid rgba(var(--accent-rgb), .35);
+    background: rgba(var(--accent-rgb), .1);
+    color: var(--text);
+    font-size: .92rem;
+    line-height: 1.4;
+  }
+  .chat-leave-hint strong { color: var(--accent); display: block; margin-bottom: .2rem; font-size: 1rem; }
+  .chat-leave-hint .chat-leave-cta {
+    display: flex;
+    margin-top: .65rem;
+  }
+  .chat-leave-hint button {
+    flex: 1;
+    min-height: 44px;
+    border-radius: var(--r);
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .chat-status {
+    flex-shrink: 0;
+    font-size: .72rem;
+    color: var(--muted);
+    padding: .25rem 1rem 0;
+  }
+  .chat-status.is-live { color: var(--ok); }
+  .chat-status.is-err { color: var(--accent); }
+
+  .chat-thread {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: .75rem 1rem;
+    padding-bottom: calc(var(--composer-h) + .75rem);
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+  }
+  .chat-msg {
+    max-width: 88%;
+    padding: .7rem .85rem;
+    border-radius: var(--r);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .chat-msg--mine {
+    align-self: flex-end;
+    border-color: rgba(var(--accent-rgb), .35);
+    background: rgba(var(--accent-rgb), .07);
+  }
+  .chat-msg__meta { font-size: .72rem; color: var(--muted); margin: 0 0 .3rem; }
+  .chat-msg__body { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: .98rem; line-height: 1.4; }
+  .chat-msg__body--deleted { color: var(--muted); font-style: italic; }
+  .chat-atts { margin: .5rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .4rem; }
+  .chat-atts a {
+    color: var(--accent);
+    word-break: break-all;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .chat-atts img {
+    max-width: min(100%, 280px);
+    border-radius: calc(var(--r) - 2px);
+    display: block;
+  }
+
+  .chat-composer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 15;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: .55rem .75rem;
+    padding-bottom: calc(.55rem + env(safe-area-inset-bottom));
+    padding-left: max(.75rem, env(safe-area-inset-left));
+    padding-right: max(.75rem, env(safe-area-inset-right));
+    /* visualViewport JS may override bottom */
+  }
+  .chat-composer__inner {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+  .chat-composer textarea {
+    width: 100%;
+    min-height: 44px;
+    max-height: 110px;
+    resize: none;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: .7rem .8rem;
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.35;
+  }
+  .chat-composer__row {
+    display: flex;
+    gap: .45rem;
+    align-items: center;
+  }
+  .chat-attach {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .chat-attach input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 0;
+  }
+  .chat-attach__name {
+    flex: 1;
+    min-width: 0;
+    font-size: .78rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat-send {
+    flex-shrink: 0;
+    min-width: 5.5rem;
+    min-height: 44px;
+    padding: 0 .9rem;
+    border-radius: var(--r);
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chat-send:disabled { opacity: .55; }
+
+  @media (min-width: 768px) {
+    .chat-room {
+      height: calc(100dvh - 64px);
+      max-height: calc(100dvh - 64px);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+    .chat-room__titles h1 { font-size: 1.2rem; }
+    .chat-msg { max-width: 72%; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="chat-room"
+     x-data="chatRoom()"
+     x-init="init()"
+     @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
+  <div class="chat-room__bar">
+    <a class="chat-room__back" href="{% url 'chat:list' %}" aria-label="Retour aux salons">←</a>
+    <div class="chat-room__titles">
+      <h1>{{ room.title }}</h1>
+      <p class="chat-room__sub">{% if room.kind == 'orchestra' %}Salon orchestre{% else %}Salon événement{% endif %}</p>
+    </div>
+    <div class="chat-menu" @click.stop>
+      <button type="button" class="chat-menu__btn" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen.toString()" aria-label="Options du salon">⋯</button>
+      <div class="chat-menu__panel" x-show="menuOpen" x-cloak x-transition.opacity.duration.150ms>
+        {% if membership.subscribed %}
+        <form method="post">
+          {% csrf_token %}<input type="hidden" name="action" value="unsubscribe">
+          <button type="submit" class="chat-menu__item chat-menu__item--ok">Alertes SMS : activées ✓</button>
+        </form>
+        {% else %}
+        <form method="post">
+          {% csrf_token %}<input type="hidden" name="action" value="subscribe">
+          <button type="submit" class="chat-menu__item">Activer les alertes SMS</button>
+        </form>
+        {% endif %}
+        {% if room.kind == 'event' %}
+        <form method="post" onsubmit="return confirm('Quitter ce salon ? Vous pourrez le rejoindre plus tard.');">
+          {% csrf_token %}<input type="hidden" name="action" value="leave">
+          <button type="submit" class="chat-menu__item chat-menu__item--warn">Quitter le salon</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if show_leave_hint %}
+  <div class="chat-leave-hint">
+    <strong>Vous êtes indisponible pour cet événement</strong>
+    Vous pouvez suivre les messages, ou quitter le salon pour ne plus le voir dans votre liste.
+    <form method="post" class="chat-leave-cta" onsubmit="return confirm('Quitter ce salon ?');">
+      {% csrf_token %}<input type="hidden" name="action" value="leave">
+      <button type="submit">Quitter le salon</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <p class="chat-status" :class="statusClass" x-text="statusLabel"></p>
+
+  <div class="chat-thread" x-ref="thread">
+    <template x-for="msg in messages" :key="msg.id">
+      <div class="chat-msg" :class="msg.author_id === currentUserId && 'chat-msg--mine'">
+        <p class="chat-msg__meta">
+          <span x-text="msg.author_name"></span>
+          · <span x-text="formatTime(msg.created_at)"></span>
+        </p>
+        <template x-if="msg.deleted">
+          <p class="chat-msg__body chat-msg__body--deleted">Message supprimé</p>
+        </template>
+        <template x-if="!msg.deleted && msg.body">
+          <p class="chat-msg__body" x-text="msg.body"></p>
+        </template>
+        <ul class="chat-atts" x-show="msg.attachments && msg.attachments.length">
+          <template x-for="att in msg.attachments" :key="att.id">
+            <li>
+              <template x-if="att.is_image">
+                <a :href="att.url" target="_blank" rel="noopener"><img :src="att.url" :alt="att.name" loading="lazy"></a>
+              </template>
+              <template x-if="!att.is_image">
+                <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
+              </template>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </template>
+  </div>
+
+  <form class="chat-composer" x-ref="composer" @submit.prevent="send()">
+    <div class="chat-composer__inner">
+      <textarea x-model="body" x-ref="input"
+                placeholder="Écrire un message…"
+                rows="1"
+                enterkeyhint="send"
+                @focus="onFocus()"
+                @input="autoGrow()"
+                @keydown.enter.exact.prevent="send()"></textarea>
+      <div class="chat-composer__row">
+        <label class="chat-attach" aria-label="Joindre un fichier">
+          📎
+          <input type="file" x-ref="files" multiple
+                 accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.zip,.mp3,.wav,.m4a"
+                 @change="onFiles()">
+        </label>
+        <span class="chat-attach__name" x-text="fileLabel" x-show="fileLabel"></span>
+        <span class="chat-attach__name" x-show="!fileLabel" style="visibility:hidden">.</span>
+        <button type="submit" class="chat-send" :disabled="busy">Envoyer</button>
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+function chatRoom() {
+  return {
+    messages: {{ messages_json|safe }},
+    currentUserId: {{ current_user_id }},
+    wsUrl: "{{ ws_url|escapejs }}",
+    body: '',
+    busy: false,
+    status: 'connecting',
+    menuOpen: false,
+    fileLabel: '',
+    ws: null,
+    _vvHandler: null,
+    get statusLabel() {
+      return {
+        connecting: 'Connexion…',
+        live: 'En direct',
+        offline: 'Hors ligne — envoi possible',
+        error: 'Connexion interrompue'
+      }[this.status] || '';
+    },
+    get statusClass() {
+      return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.status] || '';
+    },
+    init() {
+      this.scrollBottom(true);
+      this.connect();
+      this.bindViewport();
+      this.$nextTick(() => this.measureComposer());
+      window.addEventListener('resize', () => this.measureComposer());
+    },
+    bindViewport() {
+      if (!window.visualViewport) return;
+      this._vvHandler = () => this.adaptToKeyboard();
+      window.visualViewport.addEventListener('resize', this._vvHandler);
+      window.visualViewport.addEventListener('scroll', this._vvHandler);
+    },
+    adaptToKeyboard() {
+      const vv = window.visualViewport;
+      const composer = this.$refs.composer;
+      if (!vv || !composer) return;
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      composer.style.bottom = inset + 'px';
+      this.measureComposer();
+      if (inset > 40) this.scrollBottom(false);
+    },
+    measureComposer() {
+      const composer = this.$refs.composer;
+      const room = this.$el;
+      if (!composer || !room) return;
+      const h = composer.offsetHeight || 120;
+      room.style.setProperty('--composer-h', h + 'px');
+    },
+    onFocus() {
+      this.$nextTick(() => {
+        this.adaptToKeyboard();
+        this.scrollBottom(true);
+        if (this.$refs.input) {
+          this.$refs.input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+      // iOS often settles keyboard after a beat
+      setTimeout(() => { this.adaptToKeyboard(); this.scrollBottom(false); }, 350);
+    },
+    autoGrow() {
+      const el = this.$refs.input;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+      this.measureComposer();
+    },
+    onFiles() {
+      const files = this.$refs.files && this.$refs.files.files;
+      if (!files || !files.length) { this.fileLabel = ''; return; }
+      this.fileLabel = files.length === 1 ? files[0].name : (files.length + ' fichiers');
+    },
+    connect() {
+      try {
+        this.ws = new WebSocket(this.wsUrl);
+      } catch (e) {
+        this.status = 'offline';
+        return;
+      }
+      this.ws.onopen = () => { this.status = 'live'; };
+      this.ws.onclose = () => { this.status = 'offline'; };
+      this.ws.onerror = () => { this.status = 'error'; };
+      this.ws.onmessage = (ev) => {
+        let data;
+        try { data = JSON.parse(ev.data); } catch (_) { return; }
+        if (data.type === 'chat.message' && data.message) {
+          if (!this.messages.find(m => m.id === data.message.id)) {
+            this.messages.push(data.message);
+            this.$nextTick(() => this.scrollBottom(false));
+          }
+        }
+      };
+    },
+    formatTime(iso) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch (_) { return ''; }
+    },
+    scrollBottom(force) {
+      const el = this.$refs.thread;
+      if (!el) return;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (force || nearBottom) el.scrollTop = el.scrollHeight;
+    },
+    async send() {
+      const text = (this.body || '').trim();
+      const files = this.$refs.files && this.$refs.files.files;
+      if (!text && (!files || !files.length)) return;
+      this.busy = true;
+      this.menuOpen = false;
+
+      if (files && files.length) {
+        const fd = new FormData();
+        fd.append('body', text);
+        for (const f of files) fd.append('files', f);
+        try {
+          const r = await fetch('{% url "chat:api_send" room.pk %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: fd,
+          });
+          const data = await r.json();
+          if (!data.ok) alert(data.error || 'Erreur');
+          else {
+            this.body = '';
+            this.$refs.files.value = '';
+            this.fileLabel = '';
+            if (this.$refs.input) { this.$refs.input.style.height = 'auto'; }
+            if (data.message && !this.messages.find(m => m.id === data.message.id)) {
+              this.messages.push(data.message);
+            }
+            this.$nextTick(() => { this.measureComposer(); this.scrollBottom(true); });
+          }
+        } catch (e) { alert('Échec d’envoi'); }
+        this.busy = false;
+        return;
+      }
+
+      if (this.ws && this.ws.readyState === 1) {
+        this.ws.send(JSON.stringify({ type: 'chat.message', body: text }));
+        this.body = '';
+        if (this.$refs.input) this.$refs.input.style.height = 'auto';
+        this.busy = false;
+        this.$nextTick(() => this.measureComposer());
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('body', text);
+      try {
+        const r = await fetch('{% url "chat:api_send" room.pk %}', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+          body: fd,
+        });
+        const data = await r.json();
+        if (!data.ok) alert(data.error || 'Erreur');
+        else {
+          this.body = '';
+          if (this.$refs.input) this.$refs.input.style.height = 'auto';
+          if (data.message && !this.messages.find(m => m.id === data.message.id)) {
+            this.messages.push(data.message);
+          }
+          this.$nextTick(() => { this.measureComposer(); this.scrollBottom(true); });
+        }
+      } catch (e) { alert('Échec d’envoi'); }
+      this.busy = false;
+    },
+  };
+}
+</script>
+{% endblock %}

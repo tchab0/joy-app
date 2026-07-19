@@ -8,17 +8,21 @@ DEBUG = False
 ALLOWED_HOSTS = ["jazz-orchestra-yonnais.fr", "www.jazz-orchestra-yonnais.fr", "dev.jazz-orchestra-yonnais.fr", "127.0.0.1", "localhost"]
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
     "users.apps.UsersConfig",
     "core",
     "orchestra",
     "events",
-    "planning",
+    "planning.apps.PlanningConfig",
+    "feedback.apps.FeedbackConfig",
+    "chat.apps.ChatConfig",
 ]
 
 MIDDLEWARE = [
@@ -43,6 +47,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "feedback.context_processors.page_feedback",
             ],
         },
     },
@@ -50,6 +55,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
+
+CHAT_ATTACHMENT_MAX_BYTES = int(
+    os.environ.get("CHAT_ATTACHMENT_MAX_BYTES", str(25 * 1024 * 1024))
+)
+CHAT_DIGEST_INTERVAL_MINUTES = int(os.environ.get("CHAT_DIGEST_INTERVAL_MINUTES", "30"))
 
 LANGUAGE_CODE = "fr-fr"
 TIME_ZONE = "Europe/Paris"
@@ -65,8 +85,20 @@ MEDIA_ROOT = Path("/srv/jazz-orchestra-yonnais/media")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 
-LOGIN_URL = "/admin/login/"
-LOGIN_REDIRECT_URL = "/"
+LOGIN_URL = "/compte/connexion/"
+LOGIN_REDIRECT_URL = "/compte/"
+LOGOUT_REDIRECT_URL = "/"
+
+# Auth OTP / SMS
+OTP_PEPPER = os.environ.get("OTP_PEPPER", "")
+TOTP_ISSUER = os.environ.get("TOTP_ISSUER", "Jazz Orchestra Yonnais")
+SMS_BACKEND = os.environ.get("SMS_BACKEND", "console")
+SMS_HTTP_URL = os.environ.get("SMS_HTTP_URL", "")
+SMS_HTTP_METHOD = os.environ.get("SMS_HTTP_METHOD", "POST")
+SMS_HTTP_TO_FIELD = os.environ.get("SMS_HTTP_TO_FIELD", "to")
+SMS_HTTP_BODY_FIELD = os.environ.get("SMS_HTTP_BODY_FIELD", "message")
+SMS_HTTP_API_KEY = os.environ.get("SMS_HTTP_API_KEY", "")
+SMS_HTTP_API_KEY_HEADER = os.environ.get("SMS_HTTP_API_KEY_HEADER", "Authorization")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

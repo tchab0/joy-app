@@ -108,6 +108,13 @@ def invite_titulaires_to_event(event) -> int:
     ]
     if to_create:
         EventParticipation.objects.bulk_create(to_create, ignore_conflicts=True)
+        # bulk_create ne déclenche pas post_save → sync chat manuelle
+        from chat.services import sync_participation_to_chat
+
+        for part in EventParticipation.objects.filter(
+            event=event, user_id__in=[p.user_id for p in to_create]
+        ):
+            sync_participation_to_chat(part)
     return len(to_create)
 
 

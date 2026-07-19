@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Chat — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  /* Mobile-first room list */
+  .chat-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+  }
+  .chat-wrap h1 {
+    font-family: var(--font-d);
+    font-size: 1.6rem;
+    margin: 0 0 .25rem;
+    color: var(--text);
+  }
+  .chat-lead {
+    color: var(--muted);
+    margin: 0 0 1rem;
+    font-size: .95rem;
+    line-height: 1.4;
+  }
+  .chat-toolbar {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1rem;
+  }
+  .chat-toolbar a {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: .5rem .75rem;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--accent);
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 600;
+  }
+  .chat-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+  }
+  .chat-list a {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: .75rem;
+    align-items: center;
+    padding: .9rem 1rem;
+    min-height: 72px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chat-list a:active { background: rgba(var(--accent-rgb), .06); }
+  .chat-list__title {
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin: .15rem 0 .3rem;
+    line-height: 1.25;
+  }
+  .chat-list__meta {
+    color: var(--muted);
+    font-size: .85rem;
+    margin: 0;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .chat-kind {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--gold-text);
+  }
+  .chat-badge {
+    align-self: start;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    padding: 0 .45rem;
+    border-radius: var(--r);
+    background: var(--accent);
+    color: #fff;
+    font-size: .8rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chat-empty {
+    color: var(--muted);
+    padding: 2rem 0;
+    text-align: center;
+  }
+  @media (min-width: 640px) {
+    .chat-wrap { padding-top: 1.5rem; }
+    .chat-wrap h1 { font-size: 1.85rem; }
+    .chat-toolbar a { flex: 0 0 auto; min-width: 10rem; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="chat-wrap">
+  <h1>Chat</h1>
+  <p class="chat-lead">Salons de l’orchestre et des événements — messages et documents.</p>
+  <div class="chat-toolbar">
+    <a href="{% url 'chat:prefs' %}">Notifications SMS</a>
+  </div>
+
+  {% if rooms %}
+  <ul class="chat-list">
+    {% for item in rooms %}
+    <li>
+      <a href="{% url 'chat:room' item.room.pk %}">
+        <div>
+          <div class="chat-kind">{% if item.room.kind == 'orchestra' %}Orchestre{% else %}Événement{% endif %}</div>
+          <p class="chat-list__title">{{ item.room.title }}</p>
+          {% if item.last_message %}
+          <p class="chat-list__meta">
+            {{ item.last_message.author.get_full_name|default:item.last_message.author.username|default:"—" }}
+            · {{ item.last_message.created_at|date:"d/m H:i" }}
+            {% if item.last_message.body %} — {{ item.last_message.body|truncatechars:70 }}{% else %} — pièce jointe{% endif %}
+          </p>
+          {% else %}
+          <p class="chat-list__meta">Aucun message pour l’instant</p>
+          {% endif %}
+        </div>
+        {% if item.unread %}<span class="chat-badge" aria-label="{{ item.unread }} non lus">{{ item.unread }}</span>{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="chat-empty">Aucun salon pour le moment.</p>
+  {% endif %}
+</div>
+{% endblock %}

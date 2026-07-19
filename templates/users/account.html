@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Mon compte — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:720px">
+    <h1 class="section-title">Mon compte</h1>
+
+    <p style="margin-bottom:1rem">Bonjour <strong>{{ request.user.get_full_name|default:request.user.username }}</strong>.</p>
+    {% if roles %}
+      <p style="color:var(--muted);margin-bottom:1.5rem">Rôles : {{ roles|join:", " }}</p>
+    {% endif %}
+
+    <p style="display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:2rem">
+      {% if can_planning %}
+        <a class="btn btn-primary" href="{% url 'planning:dashboard' %}">Planning musiciens</a>
+      {% endif %}
+      {% if can_members %}
+        <a class="btn btn-outline" href="{% url 'account_member_area' %}">Espace adhérent</a>
+      {% endif %}
+      <a class="btn btn-outline" href="{% url 'account_security' %}">Sécurité &amp; 2FA</a>
+      {% if can_planning %}
+        <a class="btn btn-outline" href="{% url 'chat:list' %}">Chat</a>
+        <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Notifications chat</a>
+      {% endif %}
+      {% if request.user.is_staff %}
+        <a class="btn btn-outline" href="{% url 'admin_feedback' %}">Retours utilisateurs</a>
+      {% endif %}
+      <form method="post" action="{% url 'account_logout' %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline">Déconnexion</button>
+      </form>
+    </p>
+
+    {% include "feedback/_account_feedback.html" %}
+  </div>
+</section>
+{% endblock %}

@@ -21,19 +21,29 @@ class VenueForm(forms.ModelForm):
 class EventForm(forms.ModelForm):
     class Meta:
         model = Event
-        fields = ['titre', 'type', 'venue', 'date_debut', 'date_fin',
-                  'statut', 'public', 'url_billets', 'description']
+        fields = [
+            'titre', 'type', 'venue', 'date_debut', 'date_fin',
+            'statut', 'public', 'parent', 'organisme', 'url_billets',
+            'contact_nom', 'contact_telephone', 'contact_email',
+            'description',
+        ]
         widgets = {
             'date_debut':  forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
             'date_fin':    forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
             'description': forms.Textarea(attrs={'rows': 3}),
+            'organisme': forms.TextInput(attrs={'placeholder': 'ex. Mairie de La Roche-sur-Yon'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for f in self.fields.values():
             f.widget.attrs.setdefault('class', 'field-input')
+        parents = Event.objects.all().order_by('-date_debut')
         if self.instance and self.instance.pk:
+            parents = parents.exclude(pk=self.instance.pk)
             self.fields['date_debut'].initial = self.instance.date_debut.strftime('%Y-%m-%dT%H:%M')
             if self.instance.date_fin:
                 self.fields['date_fin'].initial = self.instance.date_fin.strftime('%Y-%m-%dT%H:%M')
+        self.fields['parent'].queryset = parents
+        self.fields['parent'].required = False
+        self.fields['parent'].empty_label = "— Aucun —"

@@ -1,10 +1,15 @@
 asgiref==3.11.1
+channels==4.3.2
+channels-redis==4.3.0
+daphne==4.2.2
 Django==6.0.5
 gunicorn==26.0.0
 lxml==6.1.1
+msgpack==1.2.1
 packaging==26.2
 pikepdf==10.7.2
 pillow==12.2.0
 psycopg==3.3.4
 psycopg-binary==3.3.4
+redis==8.0.1
 sqlparse==0.5.5

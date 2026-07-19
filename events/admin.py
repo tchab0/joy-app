@@ -15,11 +15,16 @@ class EventTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display   = ("date_debut", "titre", "type", "venue", "statut", "public")
+    list_display   = ("date_debut", "titre", "type", "venue", "organisme", "statut", "public")
     list_editable  = ("statut", "public")
     list_filter    = ("statut", "type", "public")
-    search_fields  = ("titre", "venue__nom", "venue__ville")
+    search_fields  = ("titre", "venue__nom", "venue__ville", "organisme")
+    autocomplete_fields = ("parent", "venue")
     date_hierarchy = "date_debut"
     ordering       = ("date_debut",)
-    fields         = ("titre", "type", "venue", "date_debut", "date_fin",
-                      "statut", "public", "url_billets", "description")
+    fields         = (
+        "titre", "type", "venue", "date_debut", "date_fin",
+        "statut", "public", "parent", "organisme", "url_billets",
+        "contact_nom", "contact_telephone", "contact_email",
+        "description",
+    )

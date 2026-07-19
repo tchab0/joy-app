@@ -1,0 +1,117 @@
+server {
+    server_name jazz-orchestra-yonnais.fr www.jazz-orchestra-yonnais.fr;
+
+    client_max_body_size 30M;
+
+    access_log /var/log/nginx/jazz-orchestra-yonnais.access.log;
+    error_log /var/log/nginx/jazz-orchestra-yonnais.error.log;
+
+    location = /favicon.ico {
+        access_log off;
+        log_not_found off;
+    }
+
+    location /static/ {
+        alias /srv/jazz-orchestra-yonnais/repo/staticfiles/;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /media/ {
+        alias /srv/jazz-orchestra-yonnais/media/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location /ws/ {
+        proxy_pass http://unix:/run/daphne-jazz-orchestra-yonnais/daphne.sock;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    location / {
+        include proxy_params;
+        proxy_pass http://unix:/run/gunicorn-jazz-orchestra-yonnais/gunicorn.sock;
+        proxy_read_timeout 120;
+    }
+
+    listen [::]:443 ssl ipv6only=on;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/jazz-orchestra-yonnais.fr/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/jazz-orchestra-yonnais.fr/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name jazz-orchestra-yonnais.fr www.jazz-orchestra-yonnais.fr;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name dev.jazz-orchestra-yonnais.fr;
+
+    client_max_body_size 30M;
+
+    access_log /var/log/nginx/jazz-orchestra-yonnais.dev.access.log;
+    error_log /var/log/nginx/jazz-orchestra-yonnais.dev.error.log;
+
+    ssl_certificate /etc/letsencrypt/live/dev.jazz-orchestra-yonnais.fr/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dev.jazz-orchestra-yonnais.fr/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location = /favicon.ico {
+        access_log off;
+        log_not_found off;
+    }
+
+    location /static/ {
+        alias /srv/jazz-orchestra-yonnais/repo/staticfiles/;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /media/ {
+        alias /srv/jazz-orchestra-yonnais/media/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location /ws/ {
+        proxy_pass http://unix:/run/daphne-jazz-orchestra-yonnais-dev/daphne.sock;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    location / {
+        include proxy_params;
+        proxy_pass http://unix:/run/gunicorn-jazz-orchestra-yonnais-dev/gunicorn.sock;
+        proxy_read_timeout 120;
+    }
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name dev.jazz-orchestra-yonnais.fr;
+    return 301 https://$host$request_uri;
+}

@@ -10,6 +10,9 @@
 <div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   <nav class="pl-nav">
     <a href="{% url 'planning:dashboard' %}">← Planning</a>
+    {% if event.chat_room %}
+    <a href="{% url 'chat:room' event.chat_room.pk %}">Salon chat</a>
+    {% endif %}
     {% if is_planning_staff %}
     <a href="{% url 'planning:event_roster' event.pk %}">Effectif staff</a>
     {% endif %}
@@ -20,8 +23,21 @@
     <p class="pl-sub">
       {{ event.date_debut|date:"l d F Y · H:i" }}
       {% if event.date_fin %} – {{ event.date_fin|date:"H:i" }}{% endif %}
-      {% if event.venue %}<br>{{ event.venue.nom }}{% if event.venue.ville %}, {{ event.venue.ville }}{% endif %}{% endif %}
+      {% if event.venue %}<br>{{ event.lieu_affiche }}{% endif %}
       · {{ event.type.nom }}
+      {% if event.parent %}<br>Dans : {{ event.parent.titre }}{% endif %}
+      {% if event.organisme %}<br>Organisé par {{ event.organisme }}{% endif %}
+      {% if event.public %}<br><span style="color:var(--ok)">Visible sur le site public</span>{% endif %}
+      {% if event.show_contact %}
+      <br>
+      Contact{% if event.contact_nom %} : {{ event.contact_nom }}{% endif %}
+      {% if event.contact_telephone %}
+        · <a href="tel:{{ event.contact_telephone }}" style="color:var(--accent)">{{ event.contact_telephone }}</a>
+      {% endif %}
+      {% if event.contact_email %}
+        · <a href="mailto:{{ event.contact_email }}" style="color:var(--accent)">{{ event.contact_email }}</a>
+      {% endif %}
+      {% endif %}
     </p>
   </header>
 

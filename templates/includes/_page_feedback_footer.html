@@ -1,0 +1,128 @@
+{% if show_page_feedback and page_feedback_form %}
+<div class="fb-footer-action" x-data="{
+    feedbackOpen: false,
+    pageTitle: '',
+    pagePath: '{{ page_feedback_page_url|escapejs }}',
+    category: '',
+    mode: 'new',
+    existingId: null,
+    pendingItems: [],
+    pendingLoading: false,
+    importance: 0,
+    pendingUrl: '{% url 'pending_page_feedback' %}',
+    syncPageInfo() {
+        this.pageTitle = document.title || '';
+        this.pagePath = window.location.pathname + window.location.search;
+        if (this.$refs.pageUrl) this.$refs.pageUrl.value = this.pagePath;
+        if (this.$refs.pageTitle) this.$refs.pageTitle.value = this.pageTitle;
+        if (this.$refs.pageContext) {
+            this.$refs.pageContext.value = JSON.stringify({
+                title: this.pageTitle,
+                path: this.pagePath,
+                href: window.location.href,
+            });
+        }
+    },
+    async loadPending() {
+        if (!this.category) { this.pendingItems = []; return; }
+        this.pendingLoading = true;
+        try {
+            const params = new URLSearchParams({ page_url: this.pagePath, category: this.category });
+            const resp = await fetch(this.pendingUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+            this.pendingItems = resp.ok ? ((await resp.json()).items || []) : [];
+        } catch (e) { this.pendingItems = []; }
+        finally { this.pendingLoading = false; }
+    },
+    selectCategory(value) { this.category = value; this.mode = 'new'; this.existingId = null; this.loadPending(); },
+    selectExisting(id) {
+        this.mode = 'existing'; this.existingId = id;
+        const item = this.pendingItems.find(i => i.id === id);
+        if (item && item.user_rating) this.importance = item.user_rating;
+    },
+    selectNew() { this.mode = 'new'; this.existingId = null; },
+    openFeedback() {
+        this.syncPageInfo(); this.category = ''; this.mode = 'new'; this.existingId = null;
+        this.pendingItems = []; this.importance = 0; this.feedbackOpen = true;
+    }
+}">
+  <button type="button" class="fb-trigger" @click="openFeedback()" title="Signaler un bug ou proposer une idée">
+    Signaler un bug ou une idée
+  </button>
+
+  <div class="fb-modal-root" x-show="feedbackOpen" x-cloak @keydown.escape.window="feedbackOpen = false">
+    <div class="fb-modal-backdrop" @click="feedbackOpen = false"></div>
+    <div class="fb-modal" role="dialog" aria-labelledby="page-feedback-title">
+      <div class="fb-modal-head">
+        <h2 id="page-feedback-title">Retour utilisateur</h2>
+        <button type="button" class="fb-icon-btn" @click="feedbackOpen = false" aria-label="Fermer">×</button>
+      </div>
+      <form method="post" action="{% url 'submit_page_feedback' %}" @submit="syncPageInfo()" class="fb-modal-form">
+        {% csrf_token %}
+        <input type="hidden" name="page_url" x-ref="pageUrl" value="{{ page_feedback_page_url }}">
+        <input type="hidden" name="page_title" x-ref="pageTitle" value="">
+        <input type="hidden" name="page_context" x-ref="pageContext" value="">
+        <input type="hidden" name="existing_feedback_id" :value="mode === 'existing' ? existingId : ''">
+        <div class="fb-modal-body">
+          <p class="fb-help">Soutenez un retour déjà formulé sur cette page, ou décrivez une nouvelle proposition.</p>
+          <div class="fb-page-meta">
+            <strong>Page concernée</strong>
+            <span x-text="pageTitle || '—'"></span>
+            <code x-text="pagePath"></code>
+          </div>
+          <fieldset class="fb-fieldset">
+            <legend>Type de retour</legend>
+            {% for value, label in page_feedback_form.fields.category.choices %}
+            {% if value %}
+            <label class="fb-choice">
+              <input type="radio" name="category" value="{{ value }}" required @change="selectCategory('{{ value }}')">
+              <span>{{ label }}</span>
+            </label>
+            {% endif %}
+            {% endfor %}
+          </fieldset>
+
+          <div x-show="category" x-cloak class="fb-pending">
+            <p class="fb-label">Retours en attente sur cette page</p>
+            <template x-if="pendingLoading"><p class="fb-muted">Chargement…</p></template>
+            <template x-if="!pendingLoading && pendingItems.length === 0"><p class="fb-muted">Aucun retour similaire. Proposez-en un nouveau.</p></template>
+            <div class="fb-pending-list" x-show="!pendingLoading && pendingItems.length > 0">
+              <template x-for="item in pendingItems" :key="item.id">
+                <label class="fb-choice" :class="mode === 'existing' && existingId === item.id ? 'is-active' : ''">
+                  <input type="radio" name="feedback_choice" :checked="mode === 'existing' && existingId === item.id" @change="selectExisting(item.id)">
+                  <span>
+                    <span class="fb-msg" x-text="item.message_preview"></span>
+                    <span class="fb-meta" x-text="item.supporter_count + ' soutien' + (item.supporter_count > 1 ? 's' : '')"></span>
+                  </span>
+                </label>
+              </template>
+            </div>
+            <label class="fb-choice" :class="mode === 'new' ? 'is-active' : ''">
+              <input type="radio" name="feedback_choice" :checked="mode === 'new'" @change="selectNew()">
+              <span><strong>Nouvelle description</strong></span>
+            </label>
+          </div>
+
+          <div class="fb-stars">
+            <p class="fb-label"><span x-show="mode === 'existing'">Votre importance</span><span x-show="mode !== 'existing'">Importance</span></p>
+            <input type="hidden" name="importance" :value="importance">
+            <div class="fb-star-row">
+              {% for star in "12345" %}
+              <button type="button" class="fb-star" @click="importance = {{ star }}" :class="importance >= {{ star }} ? 'is-on' : ''" aria-label="{{ star }} sur 5">★</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div x-show="mode === 'new'" x-cloak>
+            <label class="fb-label" for="page-feedback-message">Description</label>
+            <textarea id="page-feedback-message" name="message" rows="4" minlength="10" maxlength="2000" :required="mode === 'new'" placeholder="Décrivez le bug, l'inconfort ou la fonctionnalité attendue…"></textarea>
+          </div>
+        </div>
+        <div class="fb-modal-foot">
+          <button type="button" class="btn btn-outline" @click="feedbackOpen = false">Annuler</button>
+          <button type="submit" class="btn btn-primary">Envoyer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}

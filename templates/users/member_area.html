@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Espace adhérent — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:720px">
+    <h1 class="section-title">Espace adhérent</h1>
+    <p style="color:var(--muted);margin-bottom:1.5rem">
+      Bienvenue dans l’espace réservé aux membres de l’association Jazz Orchestra Yonnais.
+    </p>
+    <p style="margin-bottom:1rem">
+      Adhésion
+      {% if request.user.membership_expires_at %}
+        valable jusqu’au {{ request.user.membership_expires_at|date:"d/m/Y" }}.
+      {% else %}
+        active.
+      {% endif %}
+    </p>
+    <p><a class="btn btn-outline" href="{% url 'account_home' %}">← Mon compte</a></p>
+  </div>
+</section>
+{% endblock %}

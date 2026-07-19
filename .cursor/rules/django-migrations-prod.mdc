@@ -1,0 +1,39 @@
+---
+description: Après toute migration Django — appliquer en prod et éviter les 500
+alwaysApply: true
+---
+
+# Migrations Django → pas de 500 en prod
+
+Ce site tourne en **prod PostgreSQL** (`config.settings.prod` + gunicorn) **et** en **dev SQLite**. Créer une migration dans le code **ne l’applique pas** automatiquement sur la base prod.
+
+## Checklist obligatoire après création / modification de migrations
+
+1. **Appliquer** sur la DB concernée :
+   - Prod : `DJANGO_SETTINGS_MODULE=config.settings.prod python manage.py migrate` (avec `.env`)
+   - Dev : `DJANGO_SETTINGS_MODULE=config.settings.dev python manage.py migrate`
+2. **Vérifier** : `showmigrations` — aucune migration `[ ]` critique non appliquée sur prod.
+3. **Recharger gunicorn** (HUP ou `systemctl restart`) pour que le code + schéma soient alignés.
+4. **Smoke-test** au moins une page qui touche les nouveaux modèles / signaux (ex. `/planning/`, `/compte/`, page liée à la feature).
+
+## Signaux & code au démarrage
+
+- Tout `post_save` / sync qui interroge des tables **nouvelles** doit tolérer l’absence de schéma (`ProgrammingError` / `OperationalError`) : log warning, **pas** de 500 site-wide (cf. `chat/signals.py` `_safe_chat_sync`).
+- Ne jamais faire échouer une vue métier existante (planning, musiciens, compte) parce qu’une app satellite n’est pas encore migrée.
+
+## Pièges connus
+
+- `bulk_create` ne déclenche **pas** `post_save` → sync manuelle si besoin.
+- Table déjà présente mais migration non enregistrée → `migrate <app> <name> --fake` **uniquement** après vérification, puis finir `migrate`.
+- Colonne / table manquante en prod = cause typique de **500** juste après un déploiement de modèles.
+
+## Infra chat (WebSockets)
+
+Après déploiement chat / ASGI : si les units Daphne ou le proxy `/ws/` manquent,
+relancer `sudo bash scripts/install_chat_infra.sh` (Daphne + nginx + timer digest).
+Le digest SMS a aussi un fallback crontab user (`chat_send_digests` toutes les 30 min).
+
+## À ne pas faire
+
+- Livrer des modèles / signaux nouveaux **sans** `migrate` prod.
+- Supposer que « ça marche en SQLite dev » = schéma prod à jour.
