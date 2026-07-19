@@ -84,4 +84,24 @@ urlpatterns = [
         views.CreateEquipmentItemView.as_view(),
         name="create_equipment",
     ),
+    path(
+        "admin/musiciens/",
+        views.AdminMusiciansView.as_view(),
+        name="admin_musicians",
+    ),
+    path(
+        "admin/musiciens/ajouter/",
+        views.AdminMusicianEditView.as_view(),
+        name="admin_musician_add",
+    ),
+    path(
+        "admin/musiciens/<int:pk>/modifier/",
+        views.AdminMusicianEditView.as_view(),
+        name="admin_musician_edit",
+    ),
+    path(
+        "admin/musiciens/<int:pk>/retirer/",
+        views.AdminMusicianRemoveView.as_view(),
+        name="admin_musician_remove",
+    ),
 ]

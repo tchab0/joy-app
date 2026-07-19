@@ -101,6 +101,9 @@
       <div class="pl-row">
         <div class="pl-row__main">
           <span class="pl-row__title">{{ p.user.get_full_name|default:p.user.username }}</span>
+          {% if p.user.musician_profile.roles_label != "—" %}
+          <p class="pl-row__meta">{{ p.user.musician_profile.roles_label }}</p>
+          {% endif %}
         </div>
         <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
       </div>

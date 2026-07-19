@@ -53,9 +53,64 @@ class OrchestraSection(models.Model):
 
 
 class MusicianProfile(models.Model):
-    class RosterStatus(models.TextChoices):
-        TITULAIRE = "titulaire", "Titulaire"
-        REMPLACANT = "remplacant", "Remplaçant"
+    class Poste(models.TextChoices):
+        """Chaises d’un big band standard (5 sax / 4 tp / 4 tb / rythmique)."""
+
+        ALTO_1 = "alto_1", "1er alto"
+        ALTO_2 = "alto_2", "2e alto"
+        TENOR_1 = "tenor_1", "1er ténor"
+        TENOR_2 = "tenor_2", "2e ténor"
+        BARYTON = "baryton", "Sax baryton"
+        TROMPETTE_1 = "trompette_1", "1er trompette"
+        TROMPETTE_2 = "trompette_2", "2e trompette"
+        TROMPETTE_3 = "trompette_3", "3e trompette"
+        TROMPETTE_4 = "trompette_4", "4e trompette"
+        TROMBONE_1 = "trombone_1", "1er trombone"
+        TROMBONE_2 = "trombone_2", "2e trombone"
+        TROMBONE_3 = "trombone_3", "3e trombone"
+        TROMBONE_4 = "trombone_4", "4e trombone (basse)"
+        PIANO = "piano", "Piano"
+        GUITARE = "guitare", "Guitare"
+        BASSE = "basse", "Basse"
+        BATTERIE = "batterie", "Batterie"
+        CLARINETTE = "clarinette", "Clarinette"
+        CHANT = "chant", "Chant"
+        PERCUSSION = "percussion", "Percussions"
+
+    # Poste → code OrchestraSection (aligné sur seed_planning.DEFAULT_SECTIONS).
+    POSTE_SECTION_CODE = {
+        Poste.ALTO_1: "sax-alto",
+        Poste.ALTO_2: "sax-alto",
+        Poste.TENOR_1: "sax-tenor",
+        Poste.TENOR_2: "sax-tenor",
+        Poste.BARYTON: "sax-baryton",
+        Poste.CLARINETTE: "clarinette",
+        Poste.TROMPETTE_1: "trompette",
+        Poste.TROMPETTE_2: "trompette",
+        Poste.TROMPETTE_3: "trompette",
+        Poste.TROMPETTE_4: "trompette",
+        Poste.TROMBONE_1: "trombone",
+        Poste.TROMBONE_2: "trombone",
+        Poste.TROMBONE_3: "trombone",
+        Poste.TROMBONE_4: "trombone",
+        Poste.PIANO: "rythmique",
+        Poste.GUITARE: "rythmique",
+        Poste.BASSE: "rythmique",
+        Poste.BATTERIE: "rythmique",
+        Poste.PERCUSSION: "rythmique",
+        Poste.CHANT: "chant",
+    }
+
+    SECTION_DEFAULTS = {
+        "sax-alto": ("Saxophones altos", 10),
+        "sax-tenor": ("Saxophones ténors", 20),
+        "sax-baryton": ("Saxophone baryton", 30),
+        "clarinette": ("Clarinette", 35),
+        "trompette": ("Trompettes", 40),
+        "trombone": ("Trombones", 50),
+        "rythmique": ("Rythmique", 60),
+        "chant": ("Chant", 70),
+    }
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -70,20 +125,23 @@ class MusicianProfile(models.Model):
         blank=True,
         related_name="musicians",
         verbose_name="Pupitre",
+        help_text="Déduit automatiquement du poste titulaire.",
     )
-    instrument = models.CharField(
-        max_length=100,
+    poste_titulaire = models.CharField(
+        max_length=30,
         blank=True,
-        verbose_name="Instrument",
-        help_text="Précision libre (ex. trompette 2, batterie).",
+        choices=Poste.choices,
+        verbose_name="Poste titulaire",
+        help_text="Chaise pour laquelle le musicien est titulaire "
+        "(convoqué à chaque nouvelle date). Détermine le pupitre.",
     )
-    roster_status = models.CharField(
-        max_length=20,
-        choices=RosterStatus.choices,
-        default=RosterStatus.TITULAIRE,
-        verbose_name="Statut",
-        help_text="Les titulaires sont convoqués à chaque nouvelle date ; "
-        "les remplaçants sont sollicités uniquement en cas de besoin.",
+    poste_remplacant = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=Poste.choices,
+        verbose_name="Poste remplaçant",
+        help_text="Chaise pour laquelle le musicien peut être sollicité "
+        "en remplacement. Laisser vide si non remplaçant.",
     )
 
     class Meta:
@@ -96,11 +154,44 @@ class MusicianProfile(models.Model):
 
     @property
     def is_titulaire(self) -> bool:
-        return self.roster_status == self.RosterStatus.TITULAIRE
+        return bool(self.poste_titulaire)
 
     @property
     def is_remplacant(self) -> bool:
-        return self.roster_status == self.RosterStatus.REMPLACANT
+        return bool(self.poste_remplacant)
+
+    def roles_label(self) -> str:
+        """Libellé compact des rôles (liste admin, roster)."""
+        parts: list[str] = []
+        if self.poste_titulaire:
+            parts.append(f"{self.get_poste_titulaire_display()} (tit.)")
+        if self.poste_remplacant:
+            parts.append(f"{self.get_poste_remplacant_display()} (remp.)")
+        return " · ".join(parts) if parts else "—"
+
+    @classmethod
+    def section_for_poste(cls, poste: str) -> OrchestraSection | None:
+        """Résout (ou crée) le pupitre correspondant à un poste."""
+        code = cls.POSTE_SECTION_CODE.get(poste or "")
+        if not code:
+            return None
+        name, order = cls.SECTION_DEFAULTS[code]
+        section, _ = OrchestraSection.objects.get_or_create(
+            code=code,
+            defaults={"name": name, "sort_order": order, "is_active": True},
+        )
+        return section
+
+    def sync_section_from_poste(self) -> None:
+        """Pupitre = pupitre du poste titulaire (source de vérité)."""
+        self.section = self.section_for_poste(self.poste_titulaire)
+
+    def save(self, *args, **kwargs):
+        self.sync_section_from_poste()
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"section"}
+        super().save(*args, **kwargs)
 
 
 class EventParticipation(models.Model):

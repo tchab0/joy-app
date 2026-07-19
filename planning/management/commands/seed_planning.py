@@ -16,6 +16,7 @@ DEFAULT_SECTIONS = [
     ("sax-alto", "Saxophones altos", 10),
     ("sax-tenor", "Saxophones ténors", 20),
     ("sax-baryton", "Saxophone baryton", 30),
+    ("clarinette", "Clarinette", 35),
     ("trompette", "Trompettes", 40),
     ("trombone", "Trombones", 50),
     ("rythmique", "Rythmique", 60),

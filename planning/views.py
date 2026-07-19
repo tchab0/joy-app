@@ -192,6 +192,7 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
                 "my_gear": my_gear,
                 "profile": get_or_create_profile(user),
                 "sections": OrchestraSection.objects.filter(is_active=True),
+                "postes": MusicianProfile.Poste.choices,
                 "is_planning_staff": user.is_staff or user.is_superuser,
             }
         )
@@ -802,17 +803,110 @@ class CreateEquipmentItemView(PlanningStaffRequiredMixin, View):
 
 class UpdateProfileSectionView(MusicianRequiredMixin, View):
     def post(self, request):
+        if not (request.user.is_staff or request.user.is_superuser):
+            messages.error(request, "Modification réservée au staff.")
+            return redirect("planning:my_board")
         profile = get_or_create_profile(request.user)
-        section_id = request.POST.get("section_id") or None
-        if section_id:
-            profile.section = get_object_or_404(OrchestraSection, pk=section_id)
-        else:
-            profile.section = None
-        profile.instrument = (request.POST.get("instrument") or "").strip()
-        if request.user.is_staff or request.user.is_superuser:
-            status = request.POST.get("roster_status")
-            if status in MusicianProfile.RosterStatus.values:
-                profile.roster_status = status
-        profile.save()
+        tit = (request.POST.get("poste_titulaire") or "").strip()
+        rem = (request.POST.get("poste_remplacant") or "").strip()
+        profile.poste_titulaire = (
+            tit if tit in MusicianProfile.Poste.values else ""
+        )
+        profile.poste_remplacant = (
+            rem if rem in MusicianProfile.Poste.values else ""
+        )
+        if (
+            profile.poste_titulaire
+            and profile.poste_remplacant
+            and profile.poste_titulaire == profile.poste_remplacant
+        ):
+            messages.error(
+                request,
+                "Poste titulaire et remplaçant doivent être différents.",
+            )
+            return redirect("planning:my_board")
+        profile.save()  # pupitre déduit du poste titulaire
         messages.success(request, "Profil mis à jour.")
         return redirect("planning:my_board")
+
+
+class AdminMusiciansView(PlanningStaffRequiredMixin, TemplateView):
+    template_name = "planning/admin_musicians.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        profiles = (
+            MusicianProfile.objects.select_related("user", "section")
+            .filter(user__is_musician=True)
+            .order_by("user__last_name", "user__first_name")
+        )
+        context["profiles"] = profiles
+        return context
+
+
+class AdminMusicianEditView(PlanningStaffRequiredMixin, View):
+    template_name = "planning/admin_musician_edit.html"
+
+    def get(self, request, pk=None):
+        from planning.forms import MusicianAdminForm
+
+        profile = None
+        if pk is not None:
+            profile = get_object_or_404(
+                MusicianProfile.objects.select_related("user"),
+                pk=pk,
+            )
+        form = MusicianAdminForm(profile=profile)
+        return self._render(request, form, profile)
+
+    def post(self, request, pk=None):
+        from planning.forms import MusicianAdminForm
+
+        profile = None
+        if pk is not None:
+            profile = get_object_or_404(
+                MusicianProfile.objects.select_related("user"),
+                pk=pk,
+            )
+        form = MusicianAdminForm(request.POST, profile=profile)
+        if form.is_valid():
+            saved = form.save()
+            messages.success(
+                request,
+                f"Musicien « {saved.user} » enregistré."
+                + (
+                    " Mot de passe à définir via Django admin ou réinitialisation."
+                    if pk is None
+                    else ""
+                ),
+            )
+            return redirect("planning:admin_musicians")
+        return self._render(request, form, profile)
+
+    def _render(self, request, form, profile):
+        from django.shortcuts import render
+
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "profile": profile},
+        )
+
+
+class AdminMusicianRemoveView(PlanningStaffRequiredMixin, View):
+    def post(self, request, pk):
+        profile = get_object_or_404(
+            MusicianProfile.objects.select_related("user"),
+            pk=pk,
+        )
+        user = profile.user
+        user.is_musician = False
+        user.save(update_fields=["is_musician"])
+        from users.roles import sync_user_groups
+
+        sync_user_groups(user)
+        messages.success(
+            request,
+            f"{user} n’est plus marqué comme musicien.",
+        )
+        return redirect("planning:admin_musicians")

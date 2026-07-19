@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 
 from django.db import transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -82,13 +81,14 @@ def set_participation_response(
 
 
 def titulaires_queryset():
-    """Musiciens titulaires actifs (sans profil = titulaire par défaut)."""
+    """Musiciens actifs ayant un poste titulaire renseigné."""
     from django.contrib.auth import get_user_model
 
     User = get_user_model()
-    return User.objects.filter(is_musician=True, is_active=True).filter(
-        Q(musician_profile__roster_status=MusicianProfile.RosterStatus.TITULAIRE)
-        | Q(musician_profile__isnull=True)
+    return User.objects.filter(
+        is_musician=True,
+        is_active=True,
+        musician_profile__poste_titulaire__gt="",
     )
 
 
@@ -122,7 +122,7 @@ def eligible_substitutes_for(participation: EventParticipation):
     qs = MusicianProfile.objects.select_related("user", "section").filter(
         user__is_active=True,
         user__is_musician=True,
-        roster_status=MusicianProfile.RosterStatus.REMPLACANT,
+        poste_remplacant__gt="",
     ).exclude(user_id=participation.user_id)
 
     if section is not None:
@@ -259,7 +259,7 @@ def _expected_sections() -> list[OrchestraSection]:
     return list(
         OrchestraSection.objects.filter(
             is_active=True,
-            musicians__roster_status=MusicianProfile.RosterStatus.TITULAIRE,
+            musicians__poste_titulaire__gt="",
             musicians__user__is_active=True,
             musicians__user__is_musician=True,
         )
@@ -305,12 +305,7 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
                 profile = p.user.musician_profile
             except MusicianProfile.DoesNotExist:
                 profile = None
-            roster = (
-                profile.roster_status
-                if profile is not None
-                else MusicianProfile.RosterStatus.TITULAIRE
-            )
-            if roster == MusicianProfile.RosterStatus.REMPLACANT:
+            if profile is not None and profile.is_remplacant and not profile.is_titulaire:
                 n_rem += 1
             else:
                 n_tit += 1

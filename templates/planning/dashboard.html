@@ -140,38 +140,37 @@
 
   <section class="pl-section">
     <h2>Mon pupitre</h2>
+    <p class="pl-row__meta">
+      Pupitre : {{ profile.section|default:"—" }}
+      · {{ profile.roles_label }}
+    </p>
+    {% if is_planning_staff %}
     <form class="pl-form" method="post" action="{% url 'planning:update_profile' %}">
       {% csrf_token %}
       <div class="pl-form__row pl-form__row--2">
         <div>
-          <label for="section_id">Pupitre</label>
-          <select name="section_id" id="section_id">
-            <option value="">—</option>
-            {% for s in sections %}
-            <option value="{{ s.pk }}" {% if profile.section_id == s.pk %}selected{% endif %}>{{ s.name }}</option>
+          <label for="poste_titulaire">Poste titulaire</label>
+          <select name="poste_titulaire" id="poste_titulaire">
+            <option value="">— Non titulaire —</option>
+            {% for value, label in postes %}
+            <option value="{{ value }}" {% if profile.poste_titulaire == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
         <div>
-          <label for="instrument">Instrument</label>
-          <input type="text" name="instrument" id="instrument" value="{{ profile.instrument }}" placeholder="ex. trompette 2">
-        </div>
-      </div>
-      {% if is_planning_staff %}
-      <div class="pl-form__row">
-        <div>
-          <label for="roster_status">Statut</label>
-          <select name="roster_status" id="roster_status">
-            <option value="titulaire" {% if profile.roster_status == "titulaire" %}selected{% endif %}>Titulaire</option>
-            <option value="remplacant" {% if profile.roster_status == "remplacant" %}selected{% endif %}>Remplaçant</option>
+          <label for="poste_remplacant">Poste remplaçant</label>
+          <select name="poste_remplacant" id="poste_remplacant">
+            <option value="">— Non remplaçant —</option>
+            {% for value, label in postes %}
+            <option value="{{ value }}" {% if profile.poste_remplacant == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
           </select>
         </div>
       </div>
-      {% else %}
-      <p class="pl-row__meta">Statut : {{ profile.get_roster_status_display }}</p>
-      {% endif %}
+      <p class="pl-row__meta">Le pupitre est déduit du poste titulaire.</p>
       <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Enregistrer</button>
     </form>
+    {% endif %}
   </section>
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>

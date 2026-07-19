@@ -49,13 +49,14 @@ class PlanningBaseTestCase(TestCase):
             last_name="Placant",
         )
         MusicianProfile.objects.create(
-            user=self.musician, section=self.section, instrument="trompette 1"
+            user=self.musician,
+            section=self.section,
+            poste_titulaire=MusicianProfile.Poste.TROMPETTE_1,
         )
         MusicianProfile.objects.create(
             user=self.sub,
             section=self.section,
-            instrument="trompette 2",
-            roster_status=MusicianProfile.RosterStatus.REMPLACANT,
+            poste_remplacant=MusicianProfile.Poste.TROMPETTE_2,
         )
         self.staff = User.objects.create_user(
             username="staff1",
@@ -308,6 +309,69 @@ class StaffAdminTests(PlanningBaseTestCase):
         r = self.client.get(reverse("planning:admin"))
         self.assertEqual(r.status_code, 200)
 
+    def test_musicians_admin_staff_only(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:admin_musicians"))
+        self.assertIn(r.status_code, (302, 403))
+
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:admin_musicians"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Ada")
+        self.assertContains(r, "1er trompette")
+
+    def test_create_musician_with_dual_roles(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:admin_musician_add"),
+            {
+                "first_name": "Billie",
+                "last_name": "Holiday",
+                "email": "billie@example.com",
+                "phone": "+33600000000",
+                "poste_titulaire": MusicianProfile.Poste.TROMPETTE_3,
+                "poste_remplacant": MusicianProfile.Poste.TROMPETTE_4,
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        user = User.objects.get(email="billie@example.com")
+        self.assertTrue(user.is_musician)
+        profile = user.musician_profile
+        self.assertEqual(profile.poste_titulaire, MusicianProfile.Poste.TROMPETTE_3)
+        self.assertEqual(profile.poste_remplacant, MusicianProfile.Poste.TROMPETTE_4)
+        self.assertTrue(profile.is_titulaire)
+        self.assertTrue(profile.is_remplacant)
+        self.assertEqual(profile.section.code, "trompette")
+
+    def test_reject_same_poste_for_both_roles(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:admin_musician_add"),
+            {
+                "first_name": "Dup",
+                "last_name": "Poste",
+                "email": "dup@example.com",
+                "phone": "",
+                "poste_titulaire": MusicianProfile.Poste.PIANO,
+                "poste_remplacant": MusicianProfile.Poste.PIANO,
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(User.objects.filter(email="dup@example.com").exists())
+
+    def test_section_derived_from_poste_titulaire(self):
+        profile = self.musician.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.ALTO_1
+        profile.save()
+        profile.refresh_from_db()
+        self.assertEqual(profile.section.code, "sax-alto")
+        profile.poste_titulaire = ""
+        profile.save()
+        profile.refresh_from_db()
+        self.assertIsNone(profile.section_id)
+
 
 class CalendarSummaryTests(PlanningBaseTestCase):
     def test_summary_counts_titulaire_and_remplacant(self):
@@ -337,11 +401,11 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         MusicianProfile.objects.create(
             user=sax_player,
             section=sax,
-            roster_status=MusicianProfile.RosterStatus.TITULAIRE,
+            poste_titulaire=MusicianProfile.Poste.ALTO_1,
         )
         summary = calendar_summaries_for_events([self.event])[self.event.pk]
         self.assertIn("Trompettes", summary["instruments_manquants"])
-        self.assertIn("Saxophones", summary["instruments_manquants"])
+        self.assertIn("Saxophones altos", summary["instruments_manquants"])
 
     def test_calendar_shows_concert_and_presence_stats(self):
         concert_type = EventType.objects.create(nom="Concert")
