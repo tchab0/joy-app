@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import calendar
 import json
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -10,6 +11,7 @@ from django.contrib.auth.mixins import AccessMixin
 from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views import View
@@ -42,6 +44,58 @@ from planning.services import (
 from users.roles import MusicianRequiredMixin, user_can_access_planning
 
 User = get_user_model()
+
+_FRENCH_MONTHS = (
+    "",
+    "Janvier",
+    "Février",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Août",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Décembre",
+)
+_WEEKDAY_LABELS = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
+
+
+def _build_year_calendar(year: int, events_by_day: dict[date, list]) -> list[dict]:
+    """Grille des 12 mois : chaque jour de l’année (lundi → dimanche)."""
+    today = timezone.localdate()
+    cal = calendar.Calendar(firstweekday=0)
+    months: list[dict] = []
+    for month in range(1, 13):
+        weeks = []
+        for week in cal.monthdayscalendar(year, month):
+            days = []
+            for day_num in week:
+                if day_num == 0:
+                    days.append(None)
+                    continue
+                day = date(year, month, day_num)
+                days.append(
+                    {
+                        "date": day,
+                        "iso": day.isoformat(),
+                        "day": day_num,
+                        "events": events_by_day.get(day, []),
+                        "is_today": day == today,
+                        "is_past": day < today,
+                    }
+                )
+            weeks.append(days)
+        months.append(
+            {
+                "number": month,
+                "name": _FRENCH_MONTHS[month],
+                "weeks": weeks,
+            }
+        )
+    return months
 
 
 class PlanningStaffRequiredMixin(AccessMixin):
@@ -143,25 +197,108 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
         return context
 
 
-class PlanningUpcomingView(MusicianRequiredMixin, TemplateView):
+class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
+    """Planning par défaut : tous les jours des 12 mois de l’année."""
+
     template_name = "planning/upcoming_12_months.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        now = timezone.now()
-        end_date = now + timedelta(days=365)
+        user = self.request.user
+        try:
+            year = int(self.request.GET.get("year") or timezone.localdate().year)
+        except (TypeError, ValueError):
+            year = timezone.localdate().year
+        year = max(2000, min(2100, year))
+
+        tz = timezone.get_current_timezone()
+        start = timezone.make_aware(datetime.combine(date(year, 1, 1), time.min), tz)
+        end = timezone.make_aware(
+            datetime.combine(date(year, 12, 31), time.max), tz
+        )
         events = (
-            Event.objects.filter(date_debut__gte=now, date_debut__lte=end_date)
+            Event.objects.filter(date_debut__gte=start, date_debut__lte=end)
             .select_related("type", "venue")
-            .prefetch_related("participations__user", "participations__status")
             .order_by("date_debut", "titre")
         )
-        grouped_events: dict[str, list] = defaultdict(list)
+        events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
-            month_key = event.date_debut.strftime("%Y-%m")
-            grouped_events[month_key].append(event)
-        context["grouped_events"] = dict(grouped_events)
+            events_by_day[timezone.localtime(event.date_debut).date()].append(event)
+
+        is_staff = user.is_staff or user.is_superuser
+        context.update(
+            {
+                "calendar_year": year,
+                "prev_year": year - 1,
+                "next_year": year + 1,
+                "weekday_labels": _WEEKDAY_LABELS,
+                "months": _build_year_calendar(year, events_by_day),
+                "is_planning_staff": is_staff,
+                "venues": Venue.objects.all().order_by("ville", "nom") if is_staff else [],
+                "event_types": EventType.objects.all().order_by("nom") if is_staff else [],
+            }
+        )
         return context
+
+
+# Alias conservé pour les URLs / tests existants.
+PlanningUpcomingView = PlanningYearCalendarView
+
+
+class CreateEventView(PlanningStaffRequiredMixin, View):
+    """Création d’un événement à partir d’un jour du calendrier."""
+
+    def post(self, request):
+        titre = (request.POST.get("titre") or "").strip()
+        venue_id = request.POST.get("venue_id")
+        type_id = request.POST.get("type_id")
+        day_raw = (request.POST.get("date") or "").strip()
+        time_raw = (request.POST.get("time") or "20:00").strip() or "20:00"
+
+        if not titre or not venue_id or not type_id or not day_raw:
+            messages.error(request, "Titre, date, lieu et type sont requis.")
+            return redirect(self._calendar_url(day_raw))
+
+        try:
+            day = date.fromisoformat(day_raw)
+        except ValueError:
+            messages.error(request, "Date invalide.")
+            return redirect("planning:dashboard")
+
+        try:
+            hour, minute = (int(x) for x in time_raw.split(":")[:2])
+            starts = timezone.make_aware(datetime.combine(day, time(hour, minute)))
+        except (ValueError, TypeError):
+            messages.error(request, "Heure invalide.")
+            return redirect(self._calendar_url(day_raw))
+
+        venue = get_object_or_404(Venue, pk=venue_id)
+        event_type = get_object_or_404(EventType, pk=type_id)
+        public = request.POST.get("public") == "on"
+        description = (request.POST.get("description") or "").strip()
+
+        event = Event.objects.create(
+            titre=titre,
+            type=event_type,
+            venue=venue,
+            date_debut=starts,
+            description=description,
+            statut=Event.Statut.TENTATIVE,
+            public=public,
+        )
+        messages.success(
+            request,
+            f"Événement « {event.titre} » créé — titulaires convoqués.",
+        )
+        return redirect("planning:event_roster", pk=event.pk)
+
+    @staticmethod
+    def _calendar_url(day_raw: str) -> str:
+        try:
+            year = date.fromisoformat(day_raw).year
+            return f"{reverse('planning:dashboard')}?year={year}"
+        except ValueError:
+            return reverse("planning:dashboard")
 
 
 class EventDetailView(MusicianRequiredMixin, TemplateView):
@@ -676,4 +813,4 @@ class UpdateProfileSectionView(MusicianRequiredMixin, View):
                 profile.roster_status = status
         profile.save()
         messages.success(request, "Profil mis à jour.")
-        return redirect("planning:dashboard")
+        return redirect("planning:my_board")

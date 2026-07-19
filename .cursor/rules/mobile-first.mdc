@@ -1,0 +1,14 @@
+---
+description: Tout le site JOY est conçu mobile-first
+alwaysApply: true
+---
+
+# Mobile first
+
+Tout le site (templates, CSS, UX) est **mobile-first**.
+
+- Concevoir d’abord pour petit écran (touch, une colonne, cibles ≥ ~44px).
+- Enrichir ensuite via `min-width` media queries — jamais l’inverse.
+- Éviter les layouts desktop-only ; le contenu critique doit être utilisable sans hover.
+- Formulaires et modales : pleine largeur / bottom-sheet sur mobile, centrés sur écran large.
+- Tester mentalement le flux pouce (nav, CTA, calendriers, listes) avant d’ajouter une variante desktop.

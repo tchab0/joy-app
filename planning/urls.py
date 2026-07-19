@@ -5,10 +5,17 @@ from planning import views
 app_name = "planning"
 
 urlpatterns = [
-    path("", views.PlanningDashboardView.as_view(), name="dashboard"),
+    # Planning par défaut : calendrier annuel (tous les jours)
+    path("", views.PlanningYearCalendarView.as_view(), name="dashboard"),
+    path(
+        "moi/",
+        views.PlanningDashboardView.as_view(),
+        name="my_board",
+    ),
+    # Alias historique
     path(
         "concerts/12-mois/",
-        views.PlanningUpcomingView.as_view(),
+        views.PlanningYearCalendarView.as_view(),
         name="upcoming_12_months",
     ),
     path("events/<int:pk>/", views.EventDetailView.as_view(), name="event_detail"),
@@ -41,6 +48,11 @@ urlpatterns = [
     path("profile/", views.UpdateProfileSectionView.as_view(), name="update_profile"),
     # Staff
     path("admin/", views.PlanningAdminView.as_view(), name="admin"),
+    path(
+        "admin/events/create/",
+        views.CreateEventView.as_view(),
+        name="create_event",
+    ),
     path(
         "admin/events/<int:pk>/",
         views.EventRosterView.as_view(),

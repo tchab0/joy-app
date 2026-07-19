@@ -85,11 +85,42 @@ class DashboardTests(PlanningBaseTestCase):
         r = self.client.get(reverse("planning:dashboard"))
         self.assertIn(r.status_code, (302, 403))
 
-    def test_dashboard_ok(self):
+    def test_year_calendar_is_default_planning(self):
         self.client.login(username="musi", password="pass12345")
-        r = self.client.get(reverse("planning:dashboard"))
+        year = timezone.localdate().year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Janvier")
+        self.assertContains(r, "Décembre")
+        self.assertContains(r, "Répète vendredi")
+        self.assertEqual(len(r.context["months"]), 12)
+
+    def test_my_board_ok(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:my_board"))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Répète vendredi")
+
+    def test_staff_can_create_event_from_day(self):
+        self.client.login(username="staff1", password="pass12345")
+        day = (timezone.localdate() + timedelta(days=14)).isoformat()
+        r = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "titre": "Nouveau concert",
+                "date": day,
+                "time": "19:30",
+                "venue_id": self.venue.pk,
+                "type_id": self.event_type.pk,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        event = Event.objects.get(titre="Nouveau concert")
+        self.assertTrue(
+            EventParticipation.objects.filter(
+                event=event, user=self.musician
+            ).exists()
+        )
 
 
 class RespondTests(PlanningBaseTestCase):

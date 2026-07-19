@@ -1,6 +1,9 @@
 {% comment %}Styles partagés du module planning — inclure via {% block extra_css %}{% endcomment %}
 <style>
-  .pl { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  .pl { max-width: 900px; margin: 0 auto; padding: 1.25rem 1rem 3.5rem; }
+  @media (min-width: 640px) {
+    .pl { padding: 2rem 1.5rem 4rem; }
+  }
   .pl-head { margin-bottom: 1.75rem; }
   .pl-head h1 {
     font-family: var(--font-d); font-size: clamp(1.6rem, 3vw, 2.1rem);
@@ -39,9 +42,9 @@
     text-transform: uppercase; padding: .2rem .5rem; border-radius: var(--r);
     background: rgba(0,0,0,.06); color: var(--muted);
   }
-  .pl-badge--success { background: rgba(46,125,50,.12); color: #2e7d32; }
-  .pl-badge--warning { background: rgba(184,137,42,.15); color: #8a6a1a; }
-  .pl-badge--danger { background: rgba(201,79,58,.12); color: var(--accent); }
+  .pl-badge--success { background: rgba(42,107,60,.12); color: var(--ok); }
+  .pl-badge--warning { background: rgba(184,137,42,.15); color: var(--gold-text); }
+  .pl-badge--danger { background: rgba(var(--accent-rgb),.12); color: var(--accent); }
   .pl-badge--neutral { background: rgba(0,0,0,.06); color: var(--muted); }
   .pl-btn {
     appearance: none; border: 1.5px solid var(--border); background: #fff;
@@ -52,9 +55,9 @@
   .pl-btn:hover { border-color: var(--text); }
   .pl-btn:active { transform: scale(.97); }
   .pl-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .pl-btn--yes { border-color: #2e7d32; color: #2e7d32; }
-  .pl-btn--yes.is-active, .pl-btn--yes:hover { background: #2e7d32; color: #fff; }
-  .pl-btn--maybe { border-color: var(--gold); color: #8a6a1a; }
+  .pl-btn--yes { border-color: var(--ok); color: var(--ok); }
+  .pl-btn--yes.is-active, .pl-btn--yes:hover { background: var(--ok); color: #fff; }
+  .pl-btn--maybe { border-color: var(--gold); color: var(--gold-text); }
   .pl-btn--maybe.is-active, .pl-btn--maybe:hover { background: var(--gold); color: #fff; }
   .pl-btn--no { border-color: var(--accent); color: var(--accent); }
   .pl-btn--no.is-active, .pl-btn--no:hover { background: var(--accent); color: #fff; }
@@ -94,4 +97,133 @@
   .pl-option__counts { font-size: .8rem; color: var(--muted); margin: .4rem 0 .6rem; }
   .pl-reveal { overflow: hidden; }
   [x-cloak] { display: none !important; }
+
+  /* Calendrier annuel — mobile first */
+  .pl-year-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: .75rem; margin-bottom: 1.25rem;
+  }
+  .pl-year-nav__current {
+    font-family: var(--font-d); font-weight: 700; font-size: 1.15rem;
+  }
+  .pl-year {
+    display: flex; flex-direction: column; gap: 1.75rem;
+  }
+  @media (min-width: 900px) {
+    .pl-year {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem 1.75rem;
+    }
+  }
+  .pl-month h2 {
+    font-family: var(--font-d); font-size: 1.15rem; margin-bottom: .65rem;
+  }
+  .pl-cal { width: 100%; }
+  .pl-cal__weekdays,
+  .pl-cal__week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .pl-cal__wd {
+    text-align: center; font-size: .65rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+    padding: .2rem 0 .35rem;
+  }
+  .pl-cal__day {
+    appearance: none; border: none; background: rgba(0,0,0,.03);
+    position: relative;
+    min-height: 2.75rem; padding: .25rem .1rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: .15rem; border-radius: var(--r); cursor: pointer; font: inherit;
+    color: var(--text); transition: background var(--trans), color var(--trans), transform var(--trans);
+  }
+  .pl-cal__day:hover { background: rgba(0,0,0,.07); }
+  .pl-cal__day:active { transform: scale(.96); }
+  .pl-cal__day--empty { background: transparent; cursor: default; pointer-events: none; }
+  .pl-cal__day.is-today {
+    outline: 1.5px solid var(--accent); outline-offset: -1px;
+    background: rgba(201,79,58,.08);
+  }
+  .pl-cal__day.is-past { color: var(--muted); }
+  .pl-cal__day.has-events { font-weight: 600; }
+  .pl-cal__num { font-size: .85rem; line-height: 1.2; }
+  .pl-cal__dots {
+    display: flex; gap: 2px; min-height: 5px; align-items: center;
+    transition: opacity var(--trans);
+  }
+  .pl-cal__dot {
+    display: block; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .pl-cal__add {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; font-weight: 700; line-height: 1; color: var(--accent);
+    background: rgba(245, 242, 236, .92); border-radius: inherit;
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--trans);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .pl-cal__day.can-add:hover .pl-cal__add,
+    .pl-cal__day.can-add:focus-visible .pl-cal__add {
+      opacity: 1;
+    }
+    .pl-cal__day.can-add:hover .pl-cal__dots,
+    .pl-cal__day.can-add:focus-visible .pl-cal__dots {
+      opacity: 0;
+    }
+  }
+  .pl-cal__day.can-add:focus-visible .pl-cal__add {
+    opacity: 1;
+  }
+  .pl-day-events {
+    margin-top: .75rem; padding: .75rem 0 0;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: .5rem;
+  }
+  .pl-day-events__label {
+    font-size: .75rem; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .pl-day-events__item {
+    display: flex; flex-direction: column; gap: .1rem;
+    text-decoration: none; color: var(--text); padding: .45rem 0;
+    border-bottom: 1px solid var(--border); font-size: .9rem;
+  }
+  .pl-day-events__item:last-of-type { border-bottom: none; }
+  .pl-day-events__item span { font-size: .8rem; color: var(--muted); }
+  .pl-day-events__item:hover strong { color: var(--accent); }
+
+  .pl-modal-root {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 0;
+  }
+  @media (min-width: 640px) {
+    .pl-modal-root { align-items: center; padding: 1rem; }
+  }
+  .pl-modal-backdrop {
+    position: absolute; inset: 0; background: rgba(0,0,0,.45);
+  }
+  .pl-modal {
+    position: relative; width: 100%; max-width: 28rem; max-height: 92vh;
+    overflow: auto; background: var(--surface); color: var(--text);
+    border-radius: 12px 12px 0 0; padding: 1.1rem 1rem 1.5rem;
+    box-shadow: 0 -8px 32px rgba(0,0,0,.18);
+  }
+  @media (min-width: 640px) {
+    .pl-modal {
+      border-radius: 8px; padding: 1.25rem 1.25rem 1.5rem;
+      box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    }
+  }
+  .pl-modal__head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: .75rem; margin-bottom: .5rem;
+  }
+  .pl-modal__head h2 {
+    font-family: var(--font-d); font-size: 1.25rem; margin: 0;
+  }
+  .pl-modal .pl-form { border-top: none; margin-top: 0; padding-top: .5rem; }
 </style>

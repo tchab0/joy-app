@@ -1,44 +1,193 @@
 {% extends "base.html" %}
 
-{% block title %}Planning 12 mois — JOY{% endblock %}
+{% block title %}Planning {{ calendar_year }} — JOY{% endblock %}
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
 {% endblock %}
 
 {% block content %}
-<div class="pl">
+<div class="pl"
+     x-data="yearCalendar({
+       canCreate: {{ is_planning_staff|yesno:'true,false' }},
+       year: {{ calendar_year }}
+     })"
+     @keydown.escape.window="closeModal()">
+
   <header class="pl-head">
-    <h1>12 prochains mois</h1>
-    <p class="pl-sub">Vue synthétique des concerts à venir.</p>
+    <h1>Planning {{ calendar_year }}</h1>
+    <p class="pl-sub">
+      Tous les jours de l’année.
+      {% if is_planning_staff %}Cliquez un jour pour ajouter un événement.{% endif %}
+    </p>
   </header>
 
   <nav class="pl-nav">
-    <a href="{% url 'planning:dashboard' %}">Tableau de bord</a>
-    <a href="{% url 'planning:upcoming_12_months' %}" class="is-active">12 mois</a>
+    <a href="{% url 'planning:dashboard' %}" class="is-active">Calendrier</a>
+    <a href="{% url 'planning:my_board' %}">Mes dates</a>
+    {% if is_planning_staff %}
+    <a href="{% url 'planning:admin' %}">Admin</a>
+    {% endif %}
   </nav>
 
-  {% if grouped_events %}
-    {% for month, events in grouped_events.items %}
-      <section class="pl-section">
-        <h2>{{ month }}</h2>
-        {% for event in events %}
-          <div class="pl-row">
-            <div class="pl-row__main">
-              <a class="pl-row__title" href="{% url 'planning:event_detail' event.pk %}">{{ event.titre }}</a>
-              <p class="pl-row__meta">
-                {{ event.date_debut|date:"d/m/Y H:i" }}
-                {% if event.venue %} · {{ event.venue.nom }}{% endif %}
-                {% if event.type %} · {{ event.type.nom }}{% endif %}
-              </p>
-            </div>
-            <span class="pl-badge">{{ event.participations.all|length }} musicien{{ event.participations.all|length|pluralize }}</span>
-          </div>
+  <div class="pl-year-nav">
+    <a class="pl-btn" href="?year={{ prev_year }}" aria-label="Année précédente">← {{ prev_year }}</a>
+    <span class="pl-year-nav__current">{{ calendar_year }}</span>
+    <a class="pl-btn" href="?year={{ next_year }}" aria-label="Année suivante">{{ next_year }} →</a>
+  </div>
+
+  <div class="pl-year">
+    {% for month in months %}
+    <section class="pl-month" id="mois-{{ month.number }}">
+      <h2>{{ month.name }}</h2>
+      <div class="pl-cal" role="grid" aria-label="{{ month.name }} {{ calendar_year }}">
+        <div class="pl-cal__weekdays" role="row">
+          {% for label in weekday_labels %}
+          <span class="pl-cal__wd" role="columnheader">{{ label }}</span>
+          {% endfor %}
+        </div>
+        {% for week in month.weeks %}
+        <div class="pl-cal__week" role="row">
+          {% for day in week %}
+            {% if day %}
+            <button type="button"
+                    class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if is_planning_staff %} can-add{% endif %}"
+                    role="gridcell"
+                    aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if is_planning_staff %} — ajouter un événement{% endif %}"
+                    @click="onDayClick('{{ day.iso }}', {{ day.events|length }})">
+              <span class="pl-cal__num">{{ day.day }}</span>
+              {% if day.events %}
+              <span class="pl-cal__dots" aria-hidden="true">
+                {% for e in day.events|slice:":3" %}
+                <i class="pl-cal__dot"></i>
+                {% endfor %}
+              </span>
+              {% endif %}
+              {% if is_planning_staff %}
+              <span class="pl-cal__add" aria-hidden="true">+</span>
+              {% endif %}
+            </button>
+            {% else %}
+            <span class="pl-cal__day pl-cal__day--empty" role="gridcell" aria-hidden="true"></span>
+            {% endif %}
+          {% endfor %}
+        </div>
         {% endfor %}
-      </section>
+      </div>
+
+      {% for week in month.weeks %}
+        {% for day in week %}
+          {% if day and day.events %}
+          <div class="pl-day-events" x-show="selectedDay === '{{ day.iso }}'" x-cloak>
+            <p class="pl-day-events__label">{{ day.date|date:"l d F" }}</p>
+            {% for event in day.events %}
+            <a class="pl-day-events__item" href="{% url 'planning:event_detail' event.pk %}">
+              <strong>{{ event.titre }}</strong>
+              <span>{{ event.date_debut|date:"H:i" }}{% if event.venue %} · {{ event.venue.nom }}{% endif %}</span>
+            </a>
+            {% endfor %}
+            {% if is_planning_staff %}
+            <button type="button" class="pl-btn pl-btn--primary" @click="openCreate('{{ day.iso }}')">
+              Ajouter un événement
+            </button>
+            {% endif %}
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </section>
     {% endfor %}
-  {% else %}
-    <p class="pl-empty">Aucun concert prévu sur les 12 prochains mois.</p>
+  </div>
+
+  {% if is_planning_staff %}
+  <div class="pl-modal-root" x-show="modalOpen" x-cloak
+       x-transition.opacity
+       role="dialog" aria-modal="true" aria-labelledby="pl-create-title">
+    <div class="pl-modal-backdrop" @click="closeModal()"></div>
+    <div class="pl-modal" @click.stop>
+      <header class="pl-modal__head">
+        <h2 id="pl-create-title">Nouvel événement</h2>
+        <button type="button" class="pl-btn" @click="closeModal()" aria-label="Fermer">✕</button>
+      </header>
+      <form class="pl-form" method="post" action="{% url 'planning:create_event' %}">
+        {% csrf_token %}
+        <input type="hidden" name="date" :value="formDate">
+        <div>
+          <label>Date</label>
+          <p class="pl-row__meta" x-text="formDateLabel"></p>
+        </div>
+        <div>
+          <label for="ev_titre">Titre</label>
+          <input type="text" name="titre" id="ev_titre" required placeholder="ex. Concert printemps">
+        </div>
+        <div class="pl-form__row pl-form__row--2">
+          <div>
+            <label for="ev_time">Heure</label>
+            <input type="time" name="time" id="ev_time" value="20:00" required>
+          </div>
+          <div>
+            <label for="ev_type">Type</label>
+            <select name="type_id" id="ev_type" required>
+              <option value="">Choisir…</option>
+              {% for t in event_types %}
+              <option value="{{ t.pk }}">{{ t.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="ev_venue">Lieu</label>
+          <select name="venue_id" id="ev_venue" required>
+            <option value="">Choisir…</option>
+            {% for v in venues %}
+            <option value="{{ v.pk }}">{{ v.nom }} — {{ v.ville }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="ev_desc">Description</label>
+          <textarea name="description" id="ev_desc" rows="2"></textarea>
+        </div>
+        <label style="display:flex;align-items:center;gap:.5rem;font-weight:500">
+          <input type="checkbox" name="public"> Visible sur le site public
+        </label>
+        <button type="submit" class="pl-btn pl-btn--primary">Créer l’événement</button>
+      </form>
+    </div>
+  </div>
   {% endif %}
 </div>
+
+<script>
+function yearCalendar({ canCreate, year }) {
+  return {
+    canCreate,
+    year,
+    selectedDay: null,
+    modalOpen: false,
+    formDate: '',
+    formDateLabel: '',
+    onDayClick(iso, eventCount) {
+      this.selectedDay = this.selectedDay === iso ? null : iso;
+      if (canCreate && eventCount === 0) {
+        this.openCreate(iso);
+      }
+    },
+    openCreate(iso) {
+      if (!canCreate) return;
+      this.formDate = iso;
+      const [y, m, d] = iso.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      this.formDateLabel = dt.toLocaleDateString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+      });
+      this.modalOpen = true;
+      this.$nextTick(() => document.getElementById('ev_titre')?.focus());
+    },
+    closeModal() {
+      this.modalOpen = false;
+    },
+  };
+}
+</script>
 {% endblock %}
