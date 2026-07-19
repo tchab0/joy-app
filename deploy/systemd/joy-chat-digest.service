@@ -1,5 +1,5 @@
 [Unit]
-Description=JOY — digest SMS chat
+Description=JOY — digest alertes chat (push/e-mail)
 
 [Service]
 Type=oneshot

@@ -62,9 +62,9 @@ class ChatMembership(models.Model):
         verbose_name="Utilisateur",
     )
     subscribed = models.BooleanField(
-        "Alertes SMS (digest)",
+        "Alertes (digest)",
         default=True,
-        help_text="Reçoit un digest SMS des nouveaux messages.",
+        help_text="Reçoit un digest (push ou e-mail) des nouveaux messages.",
     )
     joined_at = models.DateTimeField("Rejoint le", auto_now_add=True)
     left_at = models.DateTimeField("Quitté le", null=True, blank=True)
@@ -72,7 +72,7 @@ class ChatMembership(models.Model):
     last_digested_message_id = models.PositiveBigIntegerField(
         "Dernier message digéré",
         default=0,
-        help_text="ID du dernier message inclus dans un digest SMS.",
+        help_text="ID du dernier message inclus dans un digest d’alertes.",
     )
 
     class Meta:

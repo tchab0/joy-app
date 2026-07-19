@@ -1,8 +1,21 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import AuthChallenge, User
+from .models import AuthChallenge, PushSubscription, User
 from .roles import sync_user_groups
+
+
+@admin.register(PushSubscription)
+class PushSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("user", "endpoint_short", "created_at", "updated_at")
+    list_filter = ("created_at",)
+    search_fields = ("user__username", "user__email", "endpoint")
+    raw_id_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="Endpoint")
+    def endpoint_short(self, obj):
+        return (obj.endpoint or "")[:64]
 
 
 @admin.register(User)

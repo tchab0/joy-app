@@ -100,6 +100,38 @@ SMS_HTTP_BODY_FIELD = os.environ.get("SMS_HTTP_BODY_FIELD", "message")
 SMS_HTTP_API_KEY = os.environ.get("SMS_HTTP_API_KEY", "")
 SMS_HTTP_API_KEY_HEADER = os.environ.get("SMS_HTTP_API_KEY_HEADER", "Authorization")
 
+# Web Push (VAPID) — PEM privée peut contenir \n échappés dans .env
+def _env_get(name: str, default: str = "") -> str:
+    val = os.environ.get(name)
+    if val:
+        return val
+    env_path = Path(os.environ.get("JOY_ENV_FILE", "/srv/jazz-orchestra-yonnais/.env"))
+    if not env_path.is_file():
+        return default
+    try:
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() != name:
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            return value
+    except OSError:
+        return default
+    return default
+
+
+VAPID_PUBLIC_KEY = _env_get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = _env_get("VAPID_PRIVATE_KEY", "")
+VAPID_ADMIN_EMAIL = _env_get(
+    "VAPID_ADMIN_EMAIL",
+    os.environ.get("ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr"),
+)
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

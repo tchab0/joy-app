@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Notifications chat — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -40,6 +41,43 @@
   }
   .chat-prefs__opt strong { display: block; margin-bottom: .25rem; }
   .chat-prefs__opt span span { color: var(--muted); font-size: .88rem; line-height: 1.35; }
+  .chat-prefs__push {
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+    color: var(--text);
+  }
+  .chat-prefs__push h2 {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    margin: 0 0 .5rem;
+  }
+  .chat-prefs__push p {
+    color: var(--muted);
+    font-size: .9rem;
+    line-height: 1.4;
+    margin: 0 0 .85rem;
+  }
+  .chat-prefs__status {
+    font-size: .88rem;
+    margin: 0 0 .85rem;
+    color: var(--muted);
+  }
+  .chat-prefs__status.is-ok { color: var(--ok); }
+  .chat-prefs__status.is-warn { color: var(--accent-h); }
+  .chat-prefs__ios {
+    border: 1px solid rgba(184,137,42,.35);
+    border-radius: var(--r);
+    background: rgba(184,137,42,.1);
+    color: var(--text);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+    font-size: .9rem;
+    line-height: 1.45;
+  }
+  .chat-prefs__ios strong { color: var(--gold-text); }
   .chat-prefs__actions {
     display: flex;
     flex-direction: column;
@@ -60,11 +98,37 @@
 </style>
 {% endblock %}
 {% block content %}
-<section class="chat-prefs">
+<section class="chat-prefs" x-data="joyPushPrefs()" x-init="init()">
   <h1>Notifications chat</h1>
   <p class="chat-prefs__lead">
-    Choisissez si vous êtes automatiquement abonné aux alertes SMS (digest) des nouveaux salons d’événements.
+    Choisissez si vous êtes automatiquement abonné aux alertes (push ou e-mail)
+    des nouveaux salons d’événements.
   </p>
+
+  <div class="chat-prefs__ios" x-show="showIosHint" x-cloak>
+    <strong>iPhone / iPad —</strong>
+    Pour recevoir les alertes sur cet appareil : touchez
+    <strong>Partager</strong> → <strong>Sur l’écran d’accueil</strong>,
+    puis ouvrez JOY depuis l’icône et activez les notifications ci-dessous.
+  </div>
+
+  <div class="chat-prefs__push">
+    <h2>Notifications push</h2>
+    <p>
+      Prioritaires lorsqu’elles sont activées. Sinon (permission refusée ou
+      appareil non compatible), les alertes partent par e-mail.
+    </p>
+    <p class="chat-prefs__status" :class="statusClass" x-text="statusText"></p>
+    <div class="chat-prefs__actions">
+      <button type="button" class="btn btn-primary" @click="enablePush()"
+              :disabled="busy || (isIos && !isStandalone)"
+              x-text="busy ? '…' : 'Activer les notifications'"></button>
+      <button type="button" class="btn btn-outline" @click="disablePush()"
+              :disabled="busy || !hasPush"
+              x-show="hasPush" x-cloak>Désactiver sur cet appareil</button>
+    </div>
+  </div>
+
   <form method="post">
     {% csrf_token %}
     <label class="chat-prefs__opt">
@@ -81,4 +145,93 @@
     </div>
   </form>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'users/push.js' %}"></script>
+<script>
+function joyPushPrefs() {
+  return {
+    busy: false,
+    hasPush: false,
+    isIos: false,
+    isStandalone: false,
+    showIosHint: false,
+    statusText: 'Vérification…',
+    statusClass: '',
+    async init() {
+      this.isIos = window.JoyPush && JoyPush.isIos();
+      this.isStandalone = window.JoyPush && JoyPush.isStandalone();
+      this.showIosHint = this.isIos && !this.isStandalone;
+      await this.refresh();
+    },
+    async refresh() {
+      if (!window.JoyPush) {
+        this.statusText = 'Navigateur non compatible — alertes par e-mail.';
+        this.statusClass = 'is-warn';
+        return;
+      }
+      try {
+        const s = await JoyPush.status();
+        this.hasPush = !!(s.subscriptions && s.subscriptions > 0);
+        if (!s.configured) {
+          this.statusText = 'Push non configuré côté serveur — alertes par e-mail.';
+          this.statusClass = 'is-warn';
+        } else if (this.showIosHint) {
+          this.statusText = 'Installez JOY sur l’écran d’accueil pour activer le push.';
+          this.statusClass = 'is-warn';
+        } else if (this.hasPush) {
+          this.statusText = 'Notifications push actives sur au moins un appareil.';
+          this.statusClass = 'is-ok';
+        } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+          this.statusText = 'Permission refusée — les alertes partiront par e-mail.';
+          this.statusClass = 'is-warn';
+        } else {
+          this.statusText = 'Push non activé sur cet appareil — fallback e-mail.';
+          this.statusClass = '';
+        }
+      } catch (e) {
+        this.statusText = 'Impossible de vérifier le statut push.';
+        this.statusClass = 'is-warn';
+      }
+    },
+    async enablePush() {
+      this.busy = true;
+      try {
+        const res = await JoyPush.enable();
+        if (res.ok) {
+          this.statusText = 'Notifications push activées.';
+          this.statusClass = 'is-ok';
+          this.hasPush = true;
+        } else if (res.reason === 'ios_install_required') {
+          this.showIosHint = true;
+          this.statusText = 'Installez d’abord JOY sur l’écran d’accueil.';
+          this.statusClass = 'is-warn';
+        } else if (res.reason === 'denied') {
+          this.statusText = 'Permission refusée — les alertes partiront par e-mail.';
+          this.statusClass = 'is-warn';
+        } else {
+          this.statusText = 'Activation impossible — fallback e-mail.';
+          this.statusClass = 'is-warn';
+        }
+      } catch (e) {
+        this.statusText = 'Erreur d’activation — fallback e-mail.';
+        this.statusClass = 'is-warn';
+      } finally {
+        this.busy = false;
+      }
+    },
+    async disablePush() {
+      this.busy = true;
+      try {
+        await JoyPush.disable();
+        this.hasPush = false;
+        this.statusText = 'Push désactivé sur cet appareil — fallback e-mail.';
+        this.statusClass = '';
+      } finally {
+        this.busy = false;
+      }
+    },
+  };
+}
+</script>
 {% endblock %}

@@ -24,6 +24,7 @@ User = get_user_model()
 @override_settings(
     CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
     SMS_BACKEND="console",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
 )
 class ChatCoreTests(TestCase):
     @classmethod
@@ -34,6 +35,7 @@ class ChatCoreTests(TestCase):
         cls.musician = User.objects.create_user(
             username="chat_musi",
             password="pass",
+            email="chat_musi@example.com",
             is_musician=True,
             phone="+33601020304",
             chat_auto_subscribe=True,
@@ -45,6 +47,7 @@ class ChatCoreTests(TestCase):
         cls.other = User.objects.create_user(
             username="chat_other",
             password="pass",
+            email="chat_other@example.com",
             is_musician=True,
             phone="+33601020305",
             chat_auto_subscribe=True,

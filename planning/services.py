@@ -21,7 +21,7 @@ from planning.models import (
     ParticipationStatus,
     SubstituteRequest,
 )
-from users.notify_sms import notify_users_sms
+from users.notify import notify_users
 
 logger = logging.getLogger(__name__)
 
@@ -129,17 +129,22 @@ def invite_titulaires_to_event(event, *, send_sms: bool = False) -> int:
 
 
 def notify_event_invite_sms(event, users) -> int:
-    """SMS instantané d’invitation au salon / événement."""
+    """Alerte (push ou e-mail) d’invitation au salon / événement."""
     users = list(users)
     if not users:
         return 0
     local = timezone.localtime(event.date_debut)
     date_label = local.strftime("%d/%m/%Y %H:%M")
     body = (
-        f"JOY — Invitation : « {event.titre} » ({date_label}). "
+        f"Invitation : « {event.titre} » ({date_label}). "
         f"Ouvrez le salon de discussion pour répondre."
     )
-    return notify_users_sms(users, body)
+    return notify_users(
+        users,
+        title="JOY — Invitation",
+        body=body,
+        url="/chat/",
+    )
 
 
 @transaction.atomic
@@ -150,7 +155,7 @@ def invite_musician_to_event(
     send_sms: bool = True,
 ) -> tuple[EventParticipation, bool]:
     """
-    Invite un musicien individuellement (roster + salon) + SMS optionnel.
+    Invite un musicien individuellement (roster + salon) + alerte optionnelle.
 
     Retourne (participation, created).
     """
@@ -240,7 +245,7 @@ def propose_event(
 def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProposal:
     """
     Autorise / lance le sondage : statut OPEN, message mis en évidence dans
-    le salon, SMS instantané aux musiciens déjà invités au salon.
+    le salon, alerte (push ou e-mail) aux musiciens déjà invités au salon.
     """
     if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
         raise ValueError("Sondage déjà lancé")
@@ -298,11 +303,15 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
         by_id = {u.pk: u for u in recipients + part_users}
         if launched_by:
             by_id.pop(launched_by.pk, None)
-        sms_body = (
-            f"JOY — Sondage dispo : « {proposal.title} ». "
-            f"Répondez dans l’app planning / salon."
+        notify_users(
+            by_id.values(),
+            title="JOY — Sondage disponibilité",
+            body=(
+                f"Sondage dispo : « {proposal.title} ». "
+                f"Répondez dans le planning / salon."
+            ),
+            url=poll_path,
         )
-        notify_users_sms(by_id.values(), sms_body)
 
     return proposal
 

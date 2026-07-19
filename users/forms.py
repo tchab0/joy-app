@@ -133,7 +133,7 @@ class ChatNotificationPrefsForm(forms.ModelForm):
         }
         help_texts = {
             "chat_auto_subscribe": (
-                "Vous recevrez un digest SMS des nouveaux messages. "
-                "Vous pourrez vous désabonner salon par salon."
+                "Vous recevrez un digest des nouveaux messages (notification push "
+                "si activée, sinon e-mail). Vous pourrez vous désabonner salon par salon."
             ),
         }

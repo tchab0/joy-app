@@ -3,8 +3,12 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from users import views_push
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("sw.js", views_push.service_worker, name="service_worker"),
+    path("manifest.webmanifest", views_push.web_manifest, name="web_manifest"),
     path("compte/", include("users.urls")),
     path("", include("feedback.urls")),
     path("", include("core.urls")),

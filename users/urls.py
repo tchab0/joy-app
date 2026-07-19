@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import views_push
 
 urlpatterns = [
     path("connexion/", views.login_view, name="account_login"),
@@ -13,4 +14,7 @@ urlpatterns = [
     path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),
     path("securite/totp/desactiver/", views.totp_disable, name="account_totp_disable"),
     path("adherent/", views.member_area, name="account_member_area"),
+    path("push/vapid-key/", views_push.push_vapid_public_key, name="push_vapid_key"),
+    path("push/subscribe/", views_push.push_subscription, name="push_subscribe"),
+    path("push/status/", views_push.push_status, name="push_status"),
 ]

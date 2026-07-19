@@ -18,12 +18,12 @@
       {% if membership.subscribed %}
       <form method="post" action="{% url 'chat:room' room.pk %}">
         {% csrf_token %}<input type="hidden" name="action" value="unsubscribe">
-        <button type="submit" class="chat-menu__item chat-menu__item--ok">Alertes SMS : activées ✓</button>
+        <button type="submit" class="chat-menu__item chat-menu__item--ok">Alertes : activées ✓</button>
       </form>
       {% else %}
       <form method="post" action="{% url 'chat:room' room.pk %}">
         {% csrf_token %}<input type="hidden" name="action" value="subscribe">
-        <button type="submit" class="chat-menu__item">Activer les alertes SMS</button>
+        <button type="submit" class="chat-menu__item">Activer les alertes</button>
       </form>
       {% endif %}
       {% if room.kind == 'event' %}

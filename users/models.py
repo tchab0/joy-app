@@ -67,7 +67,7 @@ class User(AbstractUser):
         default=True,
         help_text=(
             "À la création d’un événement, s’abonner automatiquement "
-            "aux alertes SMS (digest) du salon associé."
+            "aux alertes (push ou e-mail) du salon associé."
         ),
     )
 
@@ -166,3 +166,28 @@ class AuthChallenge(models.Model):
             and not self.is_expired
             and self.attempts < self.max_attempts
         )
+
+
+class PushSubscription(models.Model):
+    """Abonnement Web Push d’un appareil / navigateur."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="push_subscriptions",
+        verbose_name="Utilisateur",
+    )
+    endpoint = models.URLField("Endpoint", max_length=500, unique=True)
+    p256dh = models.CharField("Clé p256dh", max_length=200)
+    auth = models.CharField("Clé auth", max_length=100)
+    user_agent = models.CharField("User-Agent", max_length=300, blank=True)
+    created_at = models.DateTimeField("Créé le", auto_now_add=True)
+    updated_at = models.DateTimeField("Mis à jour le", auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        verbose_name = "abonnement push"
+        verbose_name_plural = "abonnements push"
+
+    def __str__(self) -> str:
+        return f"PushSubscription({self.user_id}, {self.endpoint[:48]}…)"

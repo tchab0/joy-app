@@ -11,5 +11,6 @@ pikepdf==10.7.2
 pillow==12.2.0
 psycopg==3.3.4
 psycopg-binary==3.3.4
+pywebpush==2.3.0
 redis==8.0.1
 sqlparse==0.5.5
