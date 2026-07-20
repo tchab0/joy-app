@@ -31,6 +31,7 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
         logger.warning("Web Push ignoré : clés VAPID manquantes.")
         return False
 
+    from py_vapid import Vapid
     from pywebpush import WebPushException, webpush
 
     payload = json.dumps(
@@ -44,9 +45,12 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
     claims = {
         "sub": f"mailto:{getattr(settings, 'VAPID_ADMIN_EMAIL', 'admin@jazz-orchestra-yonnais.fr')}"
     }
-    private_key = settings.VAPID_PRIVATE_KEY
-    if "\\n" in private_key and "-----BEGIN" in private_key:
-        private_key = private_key.replace("\\n", "\n")
+    # pywebpush.from_string n’accepte que raw/DER — pas le PEM.
+    private_key = settings.VAPID_PRIVATE_KEY.replace("\\n", "\n").strip()
+    if "-----BEGIN" in private_key:
+        vapid_key = Vapid.from_pem(private_key.encode("utf-8"))
+    else:
+        vapid_key = Vapid.from_string(private_key)
 
     try:
         webpush(
@@ -58,7 +62,7 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
                 },
             },
             data=payload,
-            vapid_private_key=private_key,
+            vapid_private_key=vapid_key,
             vapid_claims=claims,
             ttl=86400,
         )
