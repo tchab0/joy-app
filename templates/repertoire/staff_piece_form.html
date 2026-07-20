@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %} — Atelier{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <nav class="pl-nav">
+    <a href="{% url 'repertoire:staff_list' %}">← Atelier</a>
+    {% if piece %}
+    <a href="{% url 'repertoire:detail' piece.slug %}">Voir fiche</a>
+    {% endif %}
+  </nav>
+
+  <header class="pl-head">
+    <h1>{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %}</h1>
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="rep-form-stack" style="margin-bottom:2rem">
+    {% csrf_token %}
+    {% for field in form %}
+    <div>
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<p class="rep-muted" style="color:var(--accent)">{{ field.errors|striptags }}</p>{% endif %}
+      {% if field.help_text %}<p class="rep-muted">{{ field.help_text }}</p>{% endif %}
+      {% if field.name == "audio_recording" and piece.audio_recording %}
+      <p class="rep-muted" style="margin-top:.35rem">
+        Fichier actuel :
+        <a href="{{ piece.audio_recording.url }}" style="color:var(--accent)" target="_blank" rel="noopener">écouter</a>
+      </p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="rep-form-actions">
+      <button type="submit" class="pl-btn pl-btn--primary">Enregistrer</button>
+    </div>
+  </form>
+
+  {% if piece %}
+  <section class="pl-section">
+    <h2>Partitions existantes</h2>
+    {% if parts %}
+    <ul class="rep-part-list">
+      {% for part in parts %}
+      <li>
+        <span>
+          <strong>{{ part.get_poste_display }}</strong>
+          {% if part.source_name %}<span class="rep-muted"> · {{ part.source_name }}</span>{% endif %}
+        </span>
+        <span style="display:flex;gap:.4rem;align-items:center">
+          <a href="{% url 'repertoire:part_pdf' part.pk %}">PDF</a>
+          <form method="post" action="{% url 'repertoire:staff_part_delete' part.pk %}" onsubmit="return confirm('Supprimer cette partition ?');">
+            {% csrf_token %}
+            <button type="submit" class="pl-btn pl-btn--no">Suppr.</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="pl-empty">Aucune partition encore.</p>
+    {% endif %}
+  </section>
+
+  <section class="rep-block">
+    <h3>Upload PDF (1 poste)</h3>
+    <form method="post" action="{% url 'repertoire:staff_part_upload' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
+      {% csrf_token %}
+      {% for field in upload_form %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <button type="submit" class="pl-btn pl-btn--primary">Enregistrer le PDF</button>
+    </form>
+  </section>
+
+  <section class="rep-block">
+    <h3>Images JPG/PNG → PDF</h3>
+    <form method="post" action="{% url 'repertoire:staff_part_images' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
+      {% csrf_token %}
+      <div>
+        <label for="{{ images_form.poste.id_for_label }}">{{ images_form.poste.label }}</label>
+        {{ images_form.poste }}
+      </div>
+      <div>
+        <label for="id_images">Images (ordre = ordre des pages)</label>
+        <input class="pl-input" type="file" name="images" id="id_images" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple required>
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary">Fusionner en PDF</button>
+    </form>
+  </section>
+
+  <section class="rep-block">
+    <h3>Découper un PDF multi-parties</h3>
+    <p class="rep-muted" style="margin-bottom:.75rem">Indiquez la plage de pages (1 = première page) pour un poste.</p>
+    <form method="post" action="{% url 'repertoire:staff_part_split' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
+      {% csrf_token %}
+      {% for field in split_form %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <button type="submit" class="pl-btn pl-btn--primary">Extraire vers le poste</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

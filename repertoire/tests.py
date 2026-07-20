@@ -1,0 +1,237 @@
+from __future__ import annotations
+
+import io
+import tempfile
+from pathlib import Path
+
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from PIL import Image
+
+from chat.models import ChatMessage, ChatRoom
+from chat.services import ensure_piece_room, notify_piece_chorus_update
+from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem
+from repertoire.pdf_utils import extract_pdf_pages_bytes, images_to_pdf_bytes, pdf_page_count
+
+User = get_user_model()
+
+
+def _tiny_png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(200, 100, 50)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PieceMediaTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="chef", password="x", is_staff=True, is_superuser=True
+        )
+        self.musician = User.objects.create_user(
+            username="tromba", password="x", is_musician=True
+        )
+        self.piece = Piece.objects.create(
+            title="Satin Doll",
+            is_published=True,
+            youtube_url_1="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            youtube_url_2="https://youtu.be/abc1234",
+        )
+
+    def test_youtube_links_helper(self):
+        self.assertEqual(len(self.piece.youtube_links()), 2)
+        self.piece.youtube_url_3 = "https://www.youtube.com/watch?v=zzzzzzz"
+        self.assertEqual(len(self.piece.youtube_links()), 3)
+
+    def test_youtube_videos_helper(self):
+        videos = self.piece.youtube_videos()
+        self.assertEqual(len(videos), 2)
+        self.assertEqual(videos[0]["id"], "dQw4w9WgXcQ")
+        self.assertIn("i.ytimg.com/vi/dQw4w9WgXcQ", videos[0]["thumbnail"])
+        self.assertEqual(videos[1]["id"], "abc1234")
+
+    def test_detail_shows_youtube(self):
+        self.client.login(username="tromba", password="x")
+        r = self.client.get(reverse("repertoire:detail", args=[self.piece.slug]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Références YouTube")
+        self.assertContains(r, "i.ytimg.com/vi/dQw4w9WgXcQ")
+        self.assertContains(r, "rep-yt-card")
+        self.assertContains(r, "youtube.com/watch?v=dQw4w9WgXcQ")
+
+    def test_staff_can_upload_audio(self):
+        self.client.login(username="chef", password="x")
+        audio = SimpleUploadedFile(
+            "satin.mp3",
+            b"ID3fakeaudio",
+            content_type="audio/mpeg",
+        )
+        r = self.client.post(
+            reverse("repertoire:staff_piece_edit", args=[self.piece.slug]),
+            {
+                "title": self.piece.title,
+                "is_published": "on",
+                "remarks": "",
+                "chorus_order": "",
+                "youtube_url_1": self.piece.youtube_url_1,
+                "youtube_url_2": self.piece.youtube_url_2,
+                "youtube_url_3": "",
+                "audio_recording": audio,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.piece.refresh_from_db()
+        self.assertTrue(self.piece.audio_recording)
+        self.assertIn("satin", self.piece.audio_recording.name)
+
+    def test_piece_salon_chrome_has_audio(self):
+        self.piece.audio_recording = SimpleUploadedFile(
+            "clean.mp3", b"ID3x", content_type="audio/mpeg"
+        )
+        self.piece.save()
+        room = ensure_piece_room(self.piece)
+        self.client.login(username="tromba", password="x")
+        r = self.client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Enregistrement")
+        self.assertContains(r, self.piece.audio_recording.url)
+        self.assertContains(r, "YouTube")
+
+
+class PdfUtilsTests(TestCase):
+    def test_images_to_pdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for i in range(2):
+                p = Path(tmp) / f"{i}.png"
+                p.write_bytes(_tiny_png_bytes())
+                paths.append(p)
+            data = images_to_pdf_bytes(paths)
+            self.assertTrue(data[:4] == b"%PDF" or data.startswith(b"%PDF"))
+            out = Path(tmp) / "out.pdf"
+            out.write_bytes(data)
+            self.assertGreaterEqual(pdf_page_count(out), 1)
+
+    def test_extract_pages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "a.png"
+            p.write_bytes(_tiny_png_bytes())
+            pdf_data = images_to_pdf_bytes([p, p, p])
+            src = Path(tmp) / "src.pdf"
+            src.write_bytes(pdf_data)
+            extracted = extract_pdf_pages_bytes(src, 2, 3)
+            out = Path(tmp) / "part.pdf"
+            out.write_bytes(extracted)
+            self.assertEqual(pdf_page_count(out), 2)
+
+
+class PieceChatTests(TestCase):
+    def setUp(self):
+        self.musician = User.objects.create_user(
+            username="sax", password="x", is_musician=True
+        )
+        self.staff = User.objects.create_user(
+            username="staff", password="x", is_staff=True
+        )
+        self.piece = Piece.objects.create(
+            title="Take the A Train",
+            is_published=True,
+            chorus_order="1. Piano  2. Alto 1",
+            remarks="Intro 4 mesures",
+        )
+
+    def test_ensure_piece_room_seeds_and_system_message(self):
+        room = ensure_piece_room(self.piece)
+        self.assertEqual(room.kind, ChatRoom.Kind.PIECE)
+        self.assertTrue(room.memberships.filter(user=self.musician, left_at__isnull=True).exists())
+        self.assertTrue(room.memberships.filter(user=self.staff).exists())
+        sys_msg = ChatMessage.objects.filter(room=room, kind=ChatMessage.Kind.SYSTEM).first()
+        self.assertIsNotNone(sys_msg)
+        self.assertIn("Piano", sys_msg.body)
+
+    def test_chorus_notify(self):
+        ensure_piece_room(self.piece)
+        self.piece.update_chorus_order("Alto 1 seul")
+        msg = notify_piece_chorus_update(self.piece, author=self.staff)
+        self.assertIsNotNone(msg)
+        self.assertIn("Alto 1", msg.body)
+
+
+class SetlistTests(TestCase):
+    def test_duplicate(self):
+        piece = Piece.objects.create(title="Fever", is_published=True)
+        sl = Setlist.objects.create(title="Soirée 1")
+        SetlistItem.objects.create(setlist=sl, piece=piece, position=1)
+        copy = sl.duplicate(title="Soirée 2")
+        self.assertEqual(copy.items.count(), 1)
+        self.assertEqual(copy.items.first().piece_id, piece.pk)
+        self.assertNotEqual(copy.pk, sl.pk)
+
+    def test_sync_items_order_and_notes(self):
+        a = Piece.objects.create(title="Alpha", is_published=True)
+        b = Piece.objects.create(title="Bravo", is_published=True)
+        c = Piece.objects.create(title="Charlie", is_published=True)
+        sl = Setlist.objects.create(title="Soirée")
+        SetlistItem.objects.create(setlist=sl, piece=a, position=1)
+        sl.sync_items([c.pk, a.pk], {c.pk: "ouverture", a.pk: ""})
+        items = list(sl.items.order_by("position"))
+        self.assertEqual([i.piece_id for i in items], [c.pk, a.pk])
+        self.assertEqual(items[0].note, "ouverture")
+        self.assertFalse(sl.items.filter(piece=b).exists())
+
+    def test_staff_create_builder_and_save(self):
+        staff = User.objects.create_user(
+            username="setlist-staff", password="x", is_staff=True
+        )
+        p1 = Piece.objects.create(title="Take Five", is_published=True)
+        p2 = Piece.objects.create(title="Blue Bossa", is_published=True)
+        self.client.login(username="setlist-staff", password="x")
+        r = self.client.get(reverse("repertoire:staff_setlist_create"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "rep-builder")
+        self.assertContains(r, "Take Five")
+        self.assertContains(r, "setlistBuilder")
+        r2 = self.client.post(
+            reverse("repertoire:staff_setlist_create"),
+            {
+                "title": "Bal du 14",
+                "notes": "",
+                "is_active": "on",
+                "piece_ids": [str(p2.pk), str(p1.pk)],
+                f"note_{p2.pk}": "opener",
+            },
+        )
+        self.assertEqual(r2.status_code, 302)
+        sl = Setlist.objects.get(title="Bal du 14")
+        items = list(sl.items.order_by("position"))
+        self.assertEqual([i.piece_id for i in items], [p2.pk, p1.pk])
+        self.assertEqual(items[0].note, "opener")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class MusicianViewsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="player", password="x", is_musician=True
+        )
+        self.piece = Piece.objects.create(title="Route 66", is_published=True)
+        Part.objects.create(
+            piece=self.piece,
+            poste=PartPoste.BASSE,
+            file=SimpleUploadedFile("basse.pdf", b"%PDF-1.4\n%", content_type="application/pdf"),
+        )
+
+    def test_list_requires_login(self):
+        r = self.client.get(reverse("repertoire:list"))
+        self.assertEqual(r.status_code, 302)
+
+    def test_list_filter_poste(self):
+        self.client.login(username="player", password="x")
+        r = self.client.get(reverse("repertoire:list"), {"poste": "basse"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Route 66")
+        r2 = self.client.get(reverse("repertoire:list"), {"poste": "alto_1"})
+        self.assertEqual(r2.status_code, 200)
+        self.assertNotContains(r2, "Route 66")

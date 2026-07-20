@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "planning.apps.PlanningConfig",
     "feedback.apps.FeedbackConfig",
     "chat.apps.ChatConfig",
+    "repertoire.apps.RepertoireConfig",
 ]
 
 MIDDLEWARE = [

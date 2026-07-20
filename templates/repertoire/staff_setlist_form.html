@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}{% if setlist %}{{ setlist.title }}{% else %}Nouvelle setlist{% endif %} — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+{{ builder_pieces|json_script:"builder-pieces-data" }}
+{{ builder_selected|json_script:"builder-selected-data" }}
+
+<div class="pl pl--wide">
+  <nav class="pl-nav">
+    <a href="{% url 'repertoire:staff_setlist_list' %}">← Setlists</a>
+  </nav>
+
+  <header class="pl-head">
+    <h1>{% if setlist %}{{ setlist.title }}{% else %}Nouvelle setlist{% endif %}</h1>
+    <p class="pl-sub">Glissez les morceaux vers la setlist, puis réordonnez-les.</p>
+  </header>
+
+  <form method="post" class="rep-setlist-form" x-data="setlistBuilder()">
+    {% csrf_token %}
+
+    <div class="rep-form-stack rep-form-stack--wide">
+      {% for field in form %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<p class="rep-muted" style="color:var(--accent)">{{ field.errors|striptags }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="rep-builder" aria-label="Composition de la setlist">
+      <section class="rep-builder__pane" aria-labelledby="rep-pool-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-pool-title">Morceaux</h2>
+          <span class="rep-muted" x-text="available.length + ' disponible' + (available.length > 1 ? 's' : '')"></span>
+        </div>
+
+        <div class="rep-builder__filters">
+          <label class="rep-sr-only" for="rep-piece-search">Filtrer</label>
+          <input id="rep-piece-search" class="pl-input" type="search"
+                 placeholder="Rechercher…" x-model="query" autocomplete="off">
+          <div class="rep-letter-bar" role="group" aria-label="Filtre alphabétique">
+            <button type="button" class="rep-letter"
+                    :class="{ 'is-active': !letter }"
+                    @click="letter = ''">Tous</button>
+            <template x-for="l in letters" :key="l">
+              <button type="button" class="rep-letter"
+                      :class="{ 'is-active': letter === l }"
+                      @click="letter = (letter === l ? '' : l)"
+                      x-text="l"></button>
+            </template>
+          </div>
+        </div>
+
+        <ul class="rep-builder__list"
+            @dragover.prevent="onPoolDragOver($event)"
+            @drop.prevent="onPoolDrop($event)">
+          <template x-for="piece in available" :key="piece.id">
+            <li class="rep-builder__item"
+                draggable="true"
+                @dragstart="onPoolDragStart($event, piece)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <span class="rep-builder__title" x-text="piece.title"></span>
+              <button type="button" class="rep-builder__action"
+                      @click="addPiece(piece)"
+                      @mousedown.stop
+                      :aria-label="'Ajouter ' + piece.title">+</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="available.length === 0" x-cloak>
+            Aucun morceau à afficher.
+          </li>
+        </ul>
+      </section>
+
+      <section class="rep-builder__pane rep-builder__pane--setlist" aria-labelledby="rep-set-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-set-title">Setlist</h2>
+          <span class="rep-muted" x-text="selected.length + ' morceau' + (selected.length !== 1 ? 'x' : '')"></span>
+        </div>
+        <p class="rep-builder__hint rep-muted">Déposez ici · glissez pour réordonner</p>
+
+        <ul class="rep-builder__list rep-builder__list--set"
+            :class="{ 'is-drag-over': dropTarget === 'set' }"
+            @dragover.prevent="onSetDragOver($event)"
+            @drop.prevent="onSetDrop($event)"
+            @dragleave="onSetDragLeave($event)">
+          <template x-for="(item, index) in selected" :key="item.id">
+            <li class="rep-builder__item rep-builder__item--set"
+                :class="{ 'is-dragging': dragKind === 'set' && dragIndex === index }"
+                draggable="true"
+                @dragstart="onSetDragStart($event, index)"
+                @dragover.prevent="onSetItemDragOver($event, index)"
+                @drop.prevent="onSetDrop($event, index)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__pos" x-text="index + 1"></span>
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <div class="rep-builder__body">
+                <span class="rep-builder__title" x-text="item.title"></span>
+                <input class="pl-input rep-builder__note" type="text"
+                       placeholder="Note (optionnel)"
+                       x-model="item.note"
+                       @click.stop
+                       @mousedown.stop
+                       maxlength="200">
+              </div>
+              <button type="button" class="rep-builder__action rep-builder__action--remove"
+                      @click="removeAt(index)"
+                      @mousedown.stop
+                      :aria-label="'Retirer ' + item.title">×</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="selected.length === 0" x-cloak>
+            Glissez des morceaux ici, ou touchez « + ».
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="rep-setlist-hidden" aria-hidden="true">
+      <template x-for="item in selected" :key="'h-' + item.id">
+        <span>
+          <input type="hidden" name="piece_ids" :value="item.id">
+          <input type="hidden" :name="'note_' + item.id" :value="item.note">
+        </span>
+      </template>
+    </div>
+
+    <div class="rep-form-actions">
+      <button type="submit" class="pl-btn pl-btn--primary">Enregistrer</button>
+    </div>
+  </form>
+
+  {% if setlist and duplicate_form %}
+  <section class="rep-block" style="margin-top:2rem">
+    <h3>Dupliquer</h3>
+    <form method="post" action="{% url 'repertoire:staff_setlist_duplicate' setlist.pk %}" class="rep-form-stack">
+      {% csrf_token %}
+      {% for field in duplicate_form %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <button type="submit" class="pl-btn">Créer une copie</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  function readJson(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
+  }
+
+  window.setlistBuilder = function () {
+    const initialPieces = readJson('builder-pieces-data', []);
+    const initialSelected = readJson('builder-selected-data', []);
+    return {
+      pieces: initialPieces.map(p => ({ id: p.id, title: p.title })),
+      selected: initialSelected.map(p => ({
+        id: p.id,
+        title: p.title,
+        note: p.note || '',
+      })),
+      query: '',
+      letter: '',
+      dragKind: null,
+      dragPiece: null,
+      dragIndex: null,
+      dropTarget: null,
+
+      get letters() {
+        const set = new Set();
+        this.pieces.forEach(p => {
+          const raw = (p.title || '').trim().charAt(0).toUpperCase();
+          if (!raw) return;
+          const base = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          set.add(base.charAt(0) || raw);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, 'fr'));
+      },
+
+      get selectedIds() {
+        return new Set(this.selected.map(s => s.id));
+      },
+
+      get available() {
+        const q = this.query.trim().toLowerCase();
+        const ids = this.selectedIds;
+        return this.pieces.filter(p => {
+          if (ids.has(p.id)) return false;
+          if (this.letter) {
+            const first = (p.title || '').trim().charAt(0).toUpperCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (first !== this.letter) return false;
+          }
+          if (q && !(p.title || '').toLowerCase().includes(q)) return false;
+          return true;
+        });
+      },
+
+      addPiece(piece) {
+        if (this.selectedIds.has(piece.id)) return;
+        this.selected.push({ id: piece.id, title: piece.title, note: '' });
+      },
+
+      removeAt(index) {
+        this.selected.splice(index, 1);
+      },
+
+      onPoolDragStart(event, piece) {
+        this.dragKind = 'pool';
+        this.dragPiece = piece;
+        this.dragIndex = null;
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData('text/plain', String(piece.id));
+      },
+
+      onSetDragStart(event, index) {
+        this.dragKind = 'set';
+        this.dragPiece = this.selected[index];
+        this.dragIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(this.selected[index].id));
+      },
+
+      onDragEnd() {
+        this.dragKind = null;
+        this.dragPiece = null;
+        this.dragIndex = null;
+        this.dropTarget = null;
+      },
+
+      onSetDragOver(event) {
+        this.dropTarget = 'set';
+        event.dataTransfer.dropEffect = this.dragKind === 'pool' ? 'copy' : 'move';
+      },
+
+      onSetDragLeave(event) {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          this.dropTarget = null;
+        }
+      },
+
+      onSetItemDragOver(event, index) {
+        this.dropTarget = 'set';
+        if (this.dragKind !== 'set' || this.dragIndex === null || this.dragIndex === index) return;
+        const item = this.selected.splice(this.dragIndex, 1)[0];
+        this.selected.splice(index, 0, item);
+        this.dragIndex = index;
+      },
+
+      onSetDrop(event, index) {
+        event.stopPropagation();
+        if (this.dragKind === 'pool' && this.dragPiece) {
+          const insertAt = typeof index === 'number' ? index : this.selected.length;
+          if (!this.selectedIds.has(this.dragPiece.id)) {
+            this.selected.splice(insertAt, 0, {
+              id: this.dragPiece.id,
+              title: this.dragPiece.title,
+              note: '',
+            });
+          }
+        }
+        this.onDragEnd();
+      },
+
+      onPoolDragOver(event) {
+        if (this.dragKind === 'set') {
+          event.dataTransfer.dropEffect = 'move';
+        }
+      },
+
+      onPoolDrop() {
+        if (this.dragKind === 'set' && this.dragIndex !== null) {
+          this.removeAt(this.dragIndex);
+        }
+        this.onDragEnd();
+      },
+    };
+  };
+})();
+</script>
+{% endblock %}

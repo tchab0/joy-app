@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Répertoire — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <header class="pl-head">
+    <h1>Répertoire</h1>
+    <p class="pl-sub">Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.</p>
+  </header>
+
+  <nav class="pl-nav">
+    <a href="{% url 'repertoire:list' %}" class="is-active">Morceaux</a>
+    <a href="{% url 'planning:dashboard' %}">Planning</a>
+    {% if is_planning_staff %}
+    <a href="{% url 'repertoire:staff_list' %}">Atelier staff</a>
+    <a href="{% url 'repertoire:staff_setlist_list' %}">Setlists</a>
+    {% endif %}
+  </nav>
+
+  <form class="rep-filter" method="get" action="">
+    <label for="poste">Poste</label>
+    <select id="poste" name="poste" onchange="this.form.submit()">
+      <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
+      {% for value, label in poste_choices %}
+      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if pieces %}
+  <section class="pl-section">
+    {% for piece in pieces %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">{{ piece.title }}</a>
+        <p class="pl-row__meta">
+          {% if selected_poste != 'all' and parts_by_piece|default_if_none:None %}
+            {% with part=parts_by_piece|default_if_none:None %}
+            {% endwith %}
+          {% endif %}
+          {{ piece.parts.count }} partition{{ piece.parts.count|pluralize }}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        {% if selected_poste != 'all' %}
+          {% for p in piece.parts.all %}
+            {% if p.poste == selected_poste %}
+            <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' p.pk %}">PDF</a>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        <a class="pl-btn" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">Fiche</a>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% else %}
+  <p class="pl-empty">Aucun morceau publié{% if selected_poste != 'all' %} pour ce poste{% endif %}.</p>
+  {% endif %}
+</div>
+{% endblock %}
