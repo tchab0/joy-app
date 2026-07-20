@@ -509,9 +509,21 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "gear": gear,
                 "chat_link": chat_link,
                 "is_planning_staff": user.is_staff or user.is_superuser,
+                "setlist": _active_setlist_for_event(event),
             }
         )
         return context
+
+
+def _active_setlist_for_event(event):
+    from repertoire.models import Setlist
+
+    return (
+        Setlist.objects.filter(event=event, is_active=True)
+        .prefetch_related("items__piece")
+        .order_by("-updated_at")
+        .first()
+    )
 
 
 class PollDetailView(MusicianRequiredMixin, TemplateView):

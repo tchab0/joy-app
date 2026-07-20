@@ -40,6 +40,25 @@
   </a>
   {% endif %}
 
+  {% if setlist %}
+  <section class="pl-section" style="margin-top:1.25rem">
+    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
+    {% if setlist.notes %}<p class="pl-row__meta" style="margin-bottom:.5rem">{{ setlist.notes }}</p>{% endif %}
+    <ol style="margin:0;padding-left:1.25rem">
+      {% for item in setlist.items.all %}
+      <li style="margin-bottom:.45rem;min-height:44px">
+        <a href="{% url 'repertoire:detail' item.piece.slug %}" style="color:var(--accent);font-weight:600;text-decoration:none">
+          {{ item.piece.title }}
+        </a>
+        {% if item.note %}<span class="pl-row__meta"> — {{ item.note }}</span>{% endif %}
+      </li>
+      {% empty %}
+      <li class="pl-empty">Setlist vide.</li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
   {% if participation %}
   <section class="pl-accept__response"
            x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}')">

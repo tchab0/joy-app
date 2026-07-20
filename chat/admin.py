@@ -18,9 +18,10 @@ class ChatMembershipInline(admin.TabularInline):
 
 @admin.register(ChatRoom)
 class ChatRoomAdmin(admin.ModelAdmin):
-    list_display = ("title", "kind", "event", "is_active", "created_at")
+    list_display = ("title", "kind", "event", "piece", "is_active", "created_at")
     list_filter = ("kind", "is_active")
     search_fields = ("title",)
+    autocomplete_fields = ("event", "piece")
     inlines = [ChatMembershipInline]
 
 

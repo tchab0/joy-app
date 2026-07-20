@@ -5,6 +5,8 @@
     <p class="chat-room__sub">
       {% if room.kind == 'orchestra' %}
         Salon orchestre
+      {% elif room.kind == 'piece' and room.piece %}
+        Répertoire · {{ room.piece.title }}
       {% elif room.event %}
         {{ room.event.date_debut|date:"D d/m · H:i" }}{% if room.event.venue %} · {{ room.event.venue.nom }}{% endif %}
       {% else %}
@@ -26,7 +28,7 @@
         <button type="submit" class="chat-menu__item">Activer les alertes</button>
       </form>
       {% endif %}
-      {% if room.kind == 'event' %}
+      {% if room.kind == 'event' or room.kind == 'piece' %}
       <form method="post" action="{% url 'chat:room' room.pk %}" onsubmit="return confirm('Quitter ce salon ? Vous pourrez le rejoindre plus tard.');">
         {% csrf_token %}<input type="hidden" name="action" value="leave">
         <button type="submit" class="chat-menu__item chat-menu__item--warn">Quitter le salon</button>
@@ -35,6 +37,40 @@
     </div>
   </div>
 </div>
+
+{% if room.piece %}
+<aside class="chat-piece-intro" aria-label="Infos du morceau">
+  <h2>Remarques &amp; chorus</h2>
+  {% if room.piece.audio_recording %}
+  <div class="chat-piece-intro__media">
+    <p><strong>Enregistrement</strong></p>
+    <audio class="chat-piece-intro__audio" controls preload="metadata" src="{{ room.piece.audio_recording.url }}">
+      Votre navigateur ne lit pas l’audio.
+    </audio>
+  </div>
+  {% endif %}
+  {% if room.piece.youtube_videos %}
+  <div class="chat-piece-intro__media">
+    <p><strong>YouTube</strong></p>
+    {% include "repertoire/_youtube_thumbs.html" with videos=room.piece.youtube_videos compact=True %}
+  </div>
+  {% endif %}
+  {% if room.piece.chorus_order %}
+  <p><strong>Ordre des chorus</strong></p>
+  <pre>{{ room.piece.chorus_order }}</pre>
+  {% endif %}
+  {% if room.piece.remarks %}
+  <p style="margin-top:.65rem"><strong>Remarques</strong></p>
+  <pre>{{ room.piece.remarks }}</pre>
+  {% endif %}
+  {% if not room.piece.chorus_order and not room.piece.remarks and not room.piece.audio_recording and not room.piece.youtube_videos %}
+  <p style="color:var(--muted);font-size:.85rem">Pas encore de remarques ni d’ordre de chorus.</p>
+  {% endif %}
+  <a class="chat-piece-intro__link" href="{% url 'repertoire:detail' room.piece.slug %}">
+    Voir la fiche morceau →
+  </a>
+</aside>
+{% endif %}
 
 {% if room.event %}
 <aside class="chat-event-intro" aria-label="Infos de l’événement">

@@ -37,7 +37,7 @@ def room_list(request: HttpRequest) -> HttpResponse:
 
     memberships = (
         ChatMembership.objects.filter(user=request.user, left_at__isnull=True)
-        .select_related("room", "room__event")
+        .select_related("room", "room__event", "room__piece")
         .order_by("room__kind", "-room__created_at")
     )
     rooms = []
@@ -71,6 +71,7 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
             "event__venue",
             "event__type",
             "event__parent",
+            "piece",
         ),
         pk=room_id,
         is_active=True,

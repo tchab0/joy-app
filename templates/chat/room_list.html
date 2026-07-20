@@ -115,7 +115,7 @@
 {% block content %}
 <div class="chat-wrap">
   <h1>Chat</h1>
-  <p class="chat-lead">Salons de l’orchestre et des événements — messages et documents.</p>
+  <p class="chat-lead">Salons de l’orchestre, des morceaux et des événements — messages et documents.</p>
   <div class="chat-toolbar">
     <a href="{% url 'chat:prefs' %}">Notifications SMS</a>
   </div>
@@ -126,7 +126,7 @@
     <li>
       <a href="{% url 'chat:room' item.room.pk %}">
         <div>
-          <div class="chat-kind">{% if item.room.kind == 'orchestra' %}Orchestre{% else %}Événement{% endif %}</div>
+          <div class="chat-kind">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
           <p class="chat-list__title">{{ item.room.title }}</p>
           {% if item.last_message %}
           <p class="chat-list__meta">

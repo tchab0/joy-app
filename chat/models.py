@@ -9,6 +9,7 @@ class ChatRoom(models.Model):
     class Kind(models.TextChoices):
         ORCHESTRA = "orchestra", "Orchestre"
         EVENT = "event", "Événement"
+        PIECE = "piece", "Morceau"
 
     kind = models.CharField(
         "Type",
@@ -24,6 +25,14 @@ class ChatRoom(models.Model):
         blank=True,
         related_name="chat_room",
         verbose_name="Événement",
+    )
+    piece = models.OneToOneField(
+        "repertoire.Piece",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="chat_room",
+        verbose_name="Morceau",
     )
     is_active = models.BooleanField("Actif", default=True)
     created_at = models.DateTimeField("Créé le", auto_now_add=True)

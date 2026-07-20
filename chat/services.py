@@ -65,6 +65,88 @@ def ensure_event_room(event) -> ChatRoom:
     return room
 
 
+def _chorus_system_body(piece) -> str:
+    order = (piece.chorus_order or "").strip()
+    if order:
+        return f"Ordre des chorus (dernière décision) :\n{order}"
+    return (
+        "Salon du morceau — aucun ordre de chorus enregistré pour l’instant. "
+        "Les remarques (intro / structure) sont sur la fiche du morceau."
+    )
+
+
+@transaction.atomic
+def ensure_piece_room(piece) -> ChatRoom:
+    """
+    Crée (si besoin) le salon d’un morceau : staff seed + tous les musiciens actifs.
+    Message système initial avec le récap chorus.
+    """
+    title = f"Morceau · {piece.title}"
+    room, created = ChatRoom.objects.get_or_create(
+        piece=piece,
+        defaults={
+            "kind": ChatRoom.Kind.PIECE,
+            "title": title,
+        },
+    )
+    updates: list[str] = []
+    if room.kind != ChatRoom.Kind.PIECE:
+        room.kind = ChatRoom.Kind.PIECE
+        updates.append("kind")
+    if room.title != title:
+        room.title = title
+        updates.append("title")
+    if updates:
+        room.save(update_fields=updates)
+
+    if created:
+        seed_staff_members(room)
+        musicians = User.objects.filter(is_musician=True, is_active=True)
+        for user in musicians:
+            add_member(room, user)
+        post_message(
+            room=room,
+            author=None,
+            body=_chorus_system_body(piece),
+            kind=ChatMessage.Kind.SYSTEM,
+        )
+    return room
+
+
+def sync_musician_to_piece_rooms(user) -> int:
+    """Ajoute un musicien à tous les salons morceau actifs."""
+    if not getattr(user, "is_musician", False) or not user.is_active:
+        return 0
+    rooms = ChatRoom.objects.filter(kind=ChatRoom.Kind.PIECE, is_active=True)
+    n = 0
+    for room in rooms:
+        add_member(room, user)
+        n += 1
+    return n
+
+
+def notify_piece_chorus_update(piece, *, author=None) -> ChatMessage | None:
+    """Poste un message système si le salon existe déjà."""
+    try:
+        room = piece.chat_room
+    except ChatRoom.DoesNotExist:
+        return None
+    if not room.is_active:
+        return None
+    order = (piece.chorus_order or "").strip()
+    body = (
+        f"Nouvelle décision chorus :\n{order}"
+        if order
+        else "L’ordre des chorus a été effacé."
+    )
+    return post_message(
+        room=room,
+        author=author,
+        body=body,
+        kind=ChatMessage.Kind.SYSTEM,
+    )
+
+
 def add_member(
     room: ChatRoom,
     user,
@@ -144,7 +226,11 @@ def serialize_message(message: ChatMessage) -> dict:
         "created_at": message.created_at.isoformat(),
         "author_id": author.pk if author else None,
         "author_name": (
-            (author.get_full_name() or author.username) if author else "Compte supprimé"
+            "Système"
+            if message.kind == ChatMessage.Kind.SYSTEM and not author
+            else (
+                (author.get_full_name() or author.username) if author else "Compte supprimé"
+            )
         ),
         "attachments": [serialize_attachment(a) for a in message.attachments.all()],
     }
