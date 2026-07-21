@@ -94,10 +94,123 @@ def titulaires_queryset():
         is_musician=True,
         is_active=True,
         musician_profile__poste_titulaire__gt="",
-    )
+    ).select_related("musician_profile")
 
 
-def invite_titulaires_to_event(event, *, send_sms: bool = False) -> int:
+def resolve_invite_slot(musician, poste: str) -> tuple[str, str]:
+    """
+    Valide le poste convoqué pour un musicien.
+
+    Retourne (poste, role_kind). Lève ValueError si incohérent.
+    """
+    poste = (poste or "").strip()
+    try:
+        profile = musician.musician_profile
+    except MusicianProfile.DoesNotExist as exc:
+        raise ValueError("Profil musicien manquant") from exc
+
+    slots = invite_slots_for_profile(profile)
+    if not slots:
+        if not poste:
+            return "", ""
+        raise ValueError("Ce musicien n’a aucun poste renseigné")
+
+    if len(slots) == 1 and not poste:
+        return slots[0]["poste"], slots[0]["role_kind"]
+
+    for slot in slots:
+        if slot["poste"] == poste:
+            return slot["poste"], slot["role_kind"]
+
+    if not poste:
+        raise ValueError("Choisissez le poste pour lequel convoquer ce musicien")
+    raise ValueError("Poste non associé à ce musicien")
+
+
+def invite_slots_for_profile(profile: MusicianProfile) -> list[dict]:
+    """Slots d’invitation (un par poste titulaire / remplaçant)."""
+    slots: list[dict] = []
+    if profile.poste_titulaire:
+        slots.append(
+            {
+                "poste": profile.poste_titulaire,
+                "role_kind": EventParticipation.RoleKind.TITULAIRE,
+                "label": f"{profile.get_poste_titulaire_display()} (tit.)",
+            }
+        )
+    if profile.poste_remplacant:
+        slots.append(
+            {
+                "poste": profile.poste_remplacant,
+                "role_kind": EventParticipation.RoleKind.REMPLACANT,
+                "label": f"{profile.get_poste_remplacant_display()} (remp.)",
+            }
+        )
+    return slots
+
+
+def invite_choices_for_musicians(musicians) -> list[dict]:
+    """
+    Options d’invitation aplaties : une entrée par (musicien, poste).
+
+    value = « {user_id}:{poste} » pour le select HTML.
+    """
+    choices: list[dict] = []
+    for m in musicians:
+        name = m.get_full_name() or m.username
+        try:
+            profile = m.musician_profile
+        except MusicianProfile.DoesNotExist:
+            choices.append(
+                {
+                    "value": f"{m.pk}:",
+                    "user_id": m.pk,
+                    "poste": "",
+                    "label": name,
+                }
+            )
+            continue
+        slots = invite_slots_for_profile(profile)
+        if not slots:
+            choices.append(
+                {
+                    "value": f"{m.pk}:",
+                    "user_id": m.pk,
+                    "poste": "",
+                    "label": name,
+                }
+            )
+            continue
+        for slot in slots:
+            choices.append(
+                {
+                    "value": f"{m.pk}:{slot['poste']}",
+                    "user_id": m.pk,
+                    "poste": slot["poste"],
+                    "label": f"{name} · {slot['label']}",
+                }
+            )
+    return choices
+
+
+def parse_invite_choice(raw: str) -> tuple[int | None, str]:
+    """Parse « user_id:poste » depuis le formulaire d’invitation."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None, ""
+    if ":" not in raw:
+        try:
+            return int(raw), ""
+        except ValueError:
+            return None, ""
+    user_part, poste = raw.split(":", 1)
+    try:
+        return int(user_part), poste.strip()
+    except ValueError:
+        return None, ""
+
+
+def invite_titulaires_to_event(event, *, send_notification: bool = False) -> int:
     """Convoque tous les titulaires à une date (ignore les déjà inscrits)."""
     invited = get_status("invited")
     musicians = list(titulaires_queryset())
@@ -106,11 +219,20 @@ def invite_titulaires_to_event(event, *, send_sms: bool = False) -> int:
             "user_id", flat=True
         )
     )
-    to_create = [
-        EventParticipation(event=event, user=u, status=invited)
-        for u in musicians
-        if u.pk not in existing
-    ]
+    to_create = []
+    for u in musicians:
+        if u.pk in existing:
+            continue
+        poste = u.musician_profile.poste_titulaire
+        to_create.append(
+            EventParticipation(
+                event=event,
+                user=u,
+                status=invited,
+                poste=poste,
+                role_kind=EventParticipation.RoleKind.TITULAIRE,
+            )
+        )
     if to_create:
         EventParticipation.objects.bulk_create(to_create, ignore_conflicts=True)
         # bulk_create ne déclenche pas post_save → sync chat manuelle
@@ -123,13 +245,13 @@ def invite_titulaires_to_event(event, *, send_sms: bool = False) -> int:
         )
         for part in created_parts:
             sync_participation_to_chat(part)
-        if send_sms:
-            notify_event_invite_sms(event, [p.user for p in created_parts])
+        if send_notification:
+            notify_event_invite(event, [p.user for p in created_parts])
     return len(to_create)
 
 
-def notify_event_invite_sms(event, users) -> int:
-    """Alerte (push ou e-mail) d’invitation au salon / événement."""
+def notify_event_invite(event, users) -> int:
+    """Notification d’invitation au salon / événement."""
     users = list(users)
     if not users:
         return 0
@@ -152,26 +274,33 @@ def invite_musician_to_event(
     event,
     musician,
     *,
-    send_sms: bool = True,
+    poste: str = "",
+    send_notification: bool = True,
 ) -> tuple[EventParticipation, bool]:
     """
-    Invite un musicien individuellement (roster + salon) + alerte optionnelle.
+    Invite un musicien individuellement (roster + salon) + notification optionnelle.
 
+    ``poste`` est obligatoire si le musicien a plusieurs postes.
     Retourne (participation, created).
     """
     if not getattr(musician, "is_musician", False) or not musician.is_active:
         raise ValueError("Utilisateur non musicien ou inactif")
+    poste, role_kind = resolve_invite_slot(musician, poste)
     invited = get_status("invited")
     part, created = EventParticipation.objects.get_or_create(
         event=event,
         user=musician,
-        defaults={"status": invited},
+        defaults={
+            "status": invited,
+            "poste": poste,
+            "role_kind": role_kind,
+        },
     )
     from chat.services import sync_participation_to_chat
 
     sync_participation_to_chat(part)
-    if created and send_sms:
-        notify_event_invite_sms(event, [musician])
+    if created and send_notification:
+        notify_event_invite(event, [musician])
     return part, created
 
 
@@ -317,12 +446,8 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
 
 
 def eligible_substitutes_for(participation: EventParticipation):
-    """Remplaçants du même pupitre non déjà inscrits confirmés / invités."""
-    try:
-        profile = participation.user.musician_profile
-        section = profile.section
-    except MusicianProfile.DoesNotExist:
-        section = None
+    """Remplaçants du même poste / pupitre non déjà inscrits confirmés / invités."""
+    section = participation.section_for_roster()
 
     qs = MusicianProfile.objects.select_related("user", "section").filter(
         user__is_active=True,
@@ -330,7 +455,20 @@ def eligible_substitutes_for(participation: EventParticipation):
         poste_remplacant__gt="",
     ).exclude(user_id=participation.user_id)
 
-    if section is not None:
+    if participation.poste:
+        # Priorité : mêmes chaises en remplaçant, sinon même pupitre.
+        same_poste = qs.filter(poste_remplacant=participation.poste)
+        if same_poste.exists():
+            qs = same_poste
+        elif section is not None:
+            qs = qs.filter(
+                poste_remplacant__in=[
+                    code
+                    for code, section_code in MusicianProfile.POSTE_SECTION_CODE.items()
+                    if section_code == section.code
+                ]
+            )
+    elif section is not None:
         qs = qs.filter(section=section)
 
     taken_ids = set(
@@ -378,12 +516,17 @@ def respond_substitute_request(
         request_obj.save(update_fields=["status", "updated_at"])
         confirmed = get_status("confirmed")
         declined = get_status("declined")
-        EventParticipation.objects.update_or_create(
-            event=request_obj.participation.event,
-            user=request_obj.candidate,
-            defaults={"status": confirmed, "comment": "Remplaçant"},
-        )
         orig = request_obj.participation
+        EventParticipation.objects.update_or_create(
+            event=orig.event,
+            user=request_obj.candidate,
+            defaults={
+                "status": confirmed,
+                "comment": "Remplaçant",
+                "poste": orig.poste,
+                "role_kind": EventParticipation.RoleKind.REMPLACANT,
+            },
+        )
         orig.status = declined
         orig.save(update_fields=["status", "updated_at"])
         SubstituteRequest.objects.filter(
@@ -510,12 +653,21 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
                 profile = p.user.musician_profile
             except MusicianProfile.DoesNotExist:
                 profile = None
-            if profile is not None and profile.is_remplacant and not profile.is_titulaire:
+            if p.role_kind == EventParticipation.RoleKind.REMPLACANT:
+                n_rem += 1
+            elif p.role_kind == EventParticipation.RoleKind.TITULAIRE:
+                n_tit += 1
+            elif (
+                profile is not None
+                and profile.is_remplacant
+                and not profile.is_titulaire
+            ):
                 n_rem += 1
             else:
                 n_tit += 1
-            if profile is not None and profile.section_id in expected_ids:
-                covered_section_ids.add(profile.section_id)
+            section = p.section_for_roster()
+            if section is not None and section.pk in expected_ids:
+                covered_section_ids.add(section.pk)
 
         missing = [s.name for s in expected if s.pk not in covered_section_ids]
         local_start = timezone.localtime(event.date_debut)

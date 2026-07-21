@@ -195,6 +195,10 @@ class MusicianProfile(models.Model):
 
 
 class EventParticipation(models.Model):
+    class RoleKind(models.TextChoices):
+        TITULAIRE = "titulaire", "Titulaire"
+        REMPLACANT = "remplacant", "Remplaçant"
+
     event = models.ForeignKey(
         "events.Event",
         on_delete=models.CASCADE,
@@ -212,6 +216,20 @@ class EventParticipation(models.Model):
         on_delete=models.PROTECT,
         related_name="participations",
         verbose_name="Statut",
+    )
+    poste = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=MusicianProfile.Poste.choices,
+        verbose_name="Poste convoqué",
+        help_text="Chaise pour laquelle le musicien est convoqué à cette date.",
+    )
+    role_kind = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=RoleKind.choices,
+        verbose_name="Rôle",
+        help_text="Titulaire ou remplaçant pour ce poste.",
     )
     comment = models.TextField(
         blank=True,
@@ -233,6 +251,27 @@ class EventParticipation(models.Model):
 
     def __str__(self):
         return f"{self.event} – {self.user}"
+
+    @property
+    def poste_label(self) -> str:
+        """Libellé du poste convoqué (ex. « Sax baryton (tit.) »)."""
+        if not self.poste:
+            return "—"
+        label = self.get_poste_display()
+        if self.role_kind == self.RoleKind.TITULAIRE:
+            return f"{label} (tit.)"
+        if self.role_kind == self.RoleKind.REMPLACANT:
+            return f"{label} (remp.)"
+        return label
+
+    def section_for_roster(self) -> OrchestraSection | None:
+        """Pupitre d’affichage = pupitre du poste convoqué, sinon profil."""
+        if self.poste:
+            return MusicianProfile.section_for_poste(self.poste)
+        try:
+            return self.user.musician_profile.section
+        except MusicianProfile.DoesNotExist:
+            return None
 
 
 class DateProposal(models.Model):

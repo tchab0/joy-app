@@ -299,7 +299,7 @@ def mark_room_read(room: ChatRoom, user) -> None:
 
 
 def ensure_staff_membership(room: ChatRoom, user) -> ChatMembership:
-    """Staff sans membership : crée / réintègre (non abonné SMS par défaut)."""
+    """Staff sans membership : crée / réintègre (non abonné aux notifications par défaut)."""
     membership, _ = ChatMembership.objects.get_or_create(
         room=room,
         user=user,
@@ -333,6 +333,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
     show_leave_hint = False
     draft_proposal = None
     invite_musicians: list = []
+    invite_choices: list = []
     open_proposal = None
     lock_options: list = []
 
@@ -346,7 +347,10 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
             show_leave_hint = True
         if is_staff:
             from planning.models import DateProposal
-            from planning.services import draft_proposal_for_event
+            from planning.services import (
+                draft_proposal_for_event,
+                invite_choices_for_musicians,
+            )
 
             draft_proposal = draft_proposal_for_event(room.event)
             open_proposal = (
@@ -367,8 +371,10 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
             invite_musicians = list(
                 User.objects.filter(is_musician=True, is_active=True)
                 .exclude(pk__in=already)
+                .select_related("musician_profile")
                 .order_by("last_name", "first_name")[:200]
             )
+            invite_choices = invite_choices_for_musicians(invite_musicians)
 
     ws_scheme = "wss" if request.is_secure() else "ws"
     ws_url = f"{ws_scheme}://{request.get_host()}/ws/chat/{room.pk}/"
@@ -389,6 +395,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         "is_planning_staff": is_staff,
         "draft_proposal": draft_proposal,
         "invite_musicians": invite_musicians,
+        "invite_choices": invite_choices,
         "open_proposal": open_proposal,
         "lock_options": lock_options,
         "embedded": True,

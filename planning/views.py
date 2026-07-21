@@ -18,6 +18,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from events.models import Event, EventType, Venue
+from events.weather import attach_weather
 from planning.models import (
     DateOption,
     DateProposal,
@@ -38,10 +39,12 @@ from planning.services import (
     ensure_participation_statuses,
     get_or_create_profile,
     get_participation_for,
+    invite_choices_for_musicians,
     invite_musician_to_event,
     invite_titulaires_to_event,
     launch_availability_poll,
     lock_date_proposal,
+    parse_invite_choice,
     propose_event,
     propose_substitute,
     respond_substitute_request,
@@ -306,6 +309,7 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         )
         attach_calendar_summaries(events)
         attach_calendar_chat_links(events, user)
+        attach_weather(events, concerts_only=True)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
             events_by_day[timezone.localtime(event.date_debut).date()].append(event)
@@ -457,6 +461,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             Event.objects.select_related("venue", "type", "parent", "chat_room"),
             pk=kwargs["pk"],
         )
+        attach_weather([event], concerts_only=True)
         user = self.request.user
         participation = get_participation_for(event, user)
         chat_link = chat_link_for_event(event, user)
@@ -465,21 +470,27 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             EventParticipation.objects.filter(event=event)
             .select_related("user", "status", "user__musician_profile__section")
             .order_by(
-                "user__musician_profile__section__sort_order",
                 "user__last_name",
                 "user__first_name",
             )
         )
         by_section: dict[str, list] = defaultdict(list)
-        counts = {"confirmed": 0, "invited": 0, "maybe": 0, "declined": 0, "replacement_needed": 0}
+        section_order: dict[str, int] = {}
+        counts = {
+            "confirmed": 0,
+            "invited": 0,
+            "maybe": 0,
+            "declined": 0,
+            "replacement_needed": 0,
+        }
         for p in parts:
-            section_name = "Sans pupitre"
-            try:
-                if p.user.musician_profile.section:
-                    section_name = p.user.musician_profile.section.name
-            except MusicianProfile.DoesNotExist:
-                pass
+            section = p.section_for_roster()
+            section_name = section.name if section else "Sans pupitre"
             by_section[section_name].append(p)
+            if section_name not in section_order:
+                section_order[section_name] = (
+                    section.sort_order if section else 999
+                )
             if p.status.code in counts:
                 counts[p.status.code] += 1
 
@@ -502,7 +513,13 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             {
                 "event": event,
                 "participation": participation,
-                "by_section": dict(by_section),
+                "by_section": {
+                    name: by_section[name]
+                    for name in sorted(
+                        by_section.keys(),
+                        key=lambda n: (section_order.get(n, 999), n),
+                    )
+                },
                 "counts": counts,
                 "eligible_subs": eligible,
                 "my_sub_requests": my_sub_requests,
@@ -813,19 +830,18 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
             EventParticipation.objects.filter(event=event)
             .select_related("user", "status", "user__musician_profile__section")
             .order_by(
-                "user__musician_profile__section__sort_order",
                 "user__last_name",
+                "user__first_name",
             )
         )
         by_section: dict[str, list] = defaultdict(list)
+        section_order: dict[str, int] = {}
         for p in parts:
-            name = "Sans pupitre"
-            try:
-                if p.user.musician_profile.section:
-                    name = p.user.musician_profile.section.name
-            except MusicianProfile.DoesNotExist:
-                pass
+            section = p.section_for_roster()
+            name = section.name if section else "Sans pupitre"
             by_section[name].append(p)
+            if name not in section_order:
+                section_order[name] = section.sort_order if section else 999
 
         gear = EventEquipmentAssignment.objects.filter(event=event).select_related(
             "item", "assigned_to"
@@ -838,10 +854,17 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
         context.update(
             {
                 "event": event,
-                "by_section": dict(by_section),
+                "by_section": {
+                    name: by_section[name]
+                    for name in sorted(
+                        by_section.keys(),
+                        key=lambda n: (section_order.get(n, 999), n),
+                    )
+                },
                 "gear": gear,
                 "equipment_catalog": EquipmentItem.objects.filter(is_active=True),
                 "musicians": musicians,
+                "invite_choices": invite_choices_for_musicians(musicians),
                 "parent_events": _parent_events_qs(exclude_pk=event.pk),
                 "draft_proposal": draft_proposal_for_event(event),
             }
@@ -918,7 +941,7 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
 
 
 class LaunchPollView(PlanningStaffRequiredMixin, View):
-    """Autorise / lance le sondage de disponibilité (+ highlight chat + SMS)."""
+    """Autorise / lance le sondage de disponibilité (+ highlight chat + notification)."""
 
     def post(self, request, pk):
         proposal = get_object_or_404(DateProposal, pk=pk)
@@ -929,7 +952,8 @@ class LaunchPollView(PlanningStaffRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
         messages.success(
             request,
-            "Sondage lancé — mis en évidence dans le salon, SMS envoyés aux invités.",
+            "Sondage lancé — mis en évidence dans le salon, "
+            "notifications envoyées aux invités.",
         )
         return redirect("planning:poll_detail", pk=pk)
 
@@ -1021,11 +1045,41 @@ class LockPollView(PlanningStaffRequiredMixin, View):
 class InviteMusicianView(PlanningStaffRequiredMixin, View):
     def post(self, request, pk):
         event = get_object_or_404(Event, pk=pk)
-        user_id = request.POST.get("user_id")
+        raw = request.POST.get("invite_slot") or request.POST.get("user_id") or ""
+        user_id, poste = parse_invite_choice(raw)
+        if user_id is None:
+            # Compat : ancien formulaire user_id + poste séparés
+            try:
+                user_id = int(request.POST.get("user_id") or 0) or None
+            except (TypeError, ValueError):
+                user_id = None
+            poste = (request.POST.get("poste") or "").strip()
+        if user_id is None:
+            messages.error(request, "Musicien requis.")
+            return redirect("planning:event_roster", pk=pk)
         user = get_object_or_404(User, pk=user_id, is_musician=True, is_active=True)
-        _part, created = invite_musician_to_event(event, user, send_sms=True)
+        try:
+            _part, created = invite_musician_to_event(
+                event, user, poste=poste, send_notification=True
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            next_url = request.POST.get("next") or ""
+            if next_url.startswith("/") and not next_url.startswith("//"):
+                return redirect(next_url)
+            return redirect("planning:event_roster", pk=pk)
         if created:
-            messages.success(request, f"{user} invité au salon (SMS envoyé).")
+            name = user.get_full_name() or user.username
+            if _part.poste:
+                messages.success(
+                    request,
+                    f"{name} invité · {_part.poste_label} (notification envoyée).",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"{name} invité au salon (notification envoyée).",
+                )
         else:
             messages.info(request, f"{user} était déjà invité.")
         next_url = request.POST.get("next") or ""
@@ -1037,11 +1091,11 @@ class InviteMusicianView(PlanningStaffRequiredMixin, View):
 class InviteTitulairesView(PlanningStaffRequiredMixin, View):
     def post(self, request, pk):
         event = get_object_or_404(Event, pk=pk)
-        n = invite_titulaires_to_event(event, send_sms=True)
+        n = invite_titulaires_to_event(event, send_notification=True)
         messages.success(
             request,
             f"{n} titulaire{'s' if n != 1 else ''} "
-            f"convoqué{'s' if n != 1 else ''} (SMS envoyés).",
+            f"convoqué{'s' if n != 1 else ''} (notifications envoyées).",
         )
         return redirect("planning:event_roster", pk=pk)
 

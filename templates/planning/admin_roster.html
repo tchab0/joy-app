@@ -8,10 +8,10 @@
 
 {% block content %}
 <div class="pl">
-  <nav class="pl-nav">
-    <a href="{% url 'planning:admin' %}">← Admin</a>
+  {% include "planning/_module_nav.html" with active="admin" %}
+  <div class="pl-nav-context">
     <a href="{% url 'planning:event_detail' event.pk %}">Vue musicien</a>
-  </nav>
+  </div>
 
   <header class="pl-head">
     <h1>{{ event.titre }}</h1>
@@ -38,7 +38,7 @@
     <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
       Lancez le sondage pour que les musiciens invités indiquent leur disponibilité
-      (message mis en évidence dans le salon + SMS).
+      (message mis en évidence dans le salon + notification).
     </p>
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
@@ -98,8 +98,8 @@
       <div class="pl-row">
         <div class="pl-row__main">
           <span class="pl-row__title">{{ p.user.get_full_name|default:p.user.username }}</span>
-          {% if p.user.musician_profile.roles_label != "—" %}
-          <p class="pl-row__meta">{{ p.user.musician_profile.roles_label }}</p>
+          {% if p.poste %}
+          <p class="pl-row__meta">{{ p.poste_label }}</p>
           {% endif %}
         </div>
         <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
@@ -119,17 +119,16 @@
       {% csrf_token %}
       <div class="pl-form__row pl-form__row--2">
         <div>
-          <label for="user_id">Inviter un musicien</label>
-          <select name="user_id" id="user_id" required>
-            {% for m in musicians %}
-            <option value="{{ m.pk }}">
-              {{ m.get_full_name|default:m.username }}
-              {% if m.musician_profile %}
-                {% if m.musician_profile.roles_label != "—" %} · {{ m.musician_profile.roles_label }}{% endif %}
-              {% endif %}
-            </option>
+          <label for="invite_slot">Inviter un musicien</label>
+          <select name="invite_slot" id="invite_slot" required>
+            <option value="">Choisir le musicien et le poste…</option>
+            {% for choice in invite_choices %}
+            <option value="{{ choice.value }}">{{ choice.label }}</option>
             {% endfor %}
           </select>
+          <p class="help" style="margin-top:.35rem;color:var(--muted);font-size:.8rem">
+            Si un musicien a plusieurs postes, choisissez celui pour lequel il est convoqué.
+          </p>
         </div>
         <div style="display:flex;align-items:flex-end">
           <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>

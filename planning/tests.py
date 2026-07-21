@@ -79,7 +79,7 @@ class PlanningBaseTestCase(TestCase):
         from planning.services import invite_musician_to_event
 
         self.participation, _ = invite_musician_to_event(
-            self.event, self.musician, send_sms=False
+            self.event, self.musician, send_notification=False
         )
         self.client = Client()
 
@@ -373,6 +373,9 @@ class RosterStatusTests(PlanningBaseTestCase):
                 event=self.event, user=self.musician
             ).exists()
         )
+        part = EventParticipation.objects.get(event=self.event, user=self.musician)
+        self.assertEqual(part.poste, MusicianProfile.Poste.TROMPETTE_1)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.TITULAIRE)
         self.assertFalse(
             EventParticipation.objects.filter(
                 event=self.event, user=self.sub
@@ -562,7 +565,7 @@ class CalendarSummaryTests(PlanningBaseTestCase):
             statut=Event.Statut.CONFIRME,
             public=True,
         )
-        part, _ = invite_musician_to_event(concert, self.musician, send_sms=False)
+        part, _ = invite_musician_to_event(concert, self.musician, send_notification=False)
         set_participation_response(part, "yes")
 
         self.client.login(username="musi", password="pass12345")
@@ -612,3 +615,89 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, f"Salon « {self.event.titre} »")
         self.assertContains(r, reverse("chat:room", args=[room.pk]))
+
+
+class InvitePosteChoiceTests(PlanningBaseTestCase):
+    def test_invite_single_poste_auto_resolves(self):
+        self.participation.delete()
+        from planning.services import invite_musician_to_event
+
+        part, created = invite_musician_to_event(
+            self.event, self.musician, send_notification=False
+        )
+        self.assertTrue(created)
+        self.assertEqual(part.poste, MusicianProfile.Poste.TROMPETTE_1)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.TITULAIRE)
+
+    def test_invite_dual_poste_requires_choice(self):
+        dual = User.objects.create_user(
+            username="dual1",
+            password="pass12345",
+            is_musician=True,
+            first_name="Thierry",
+            last_name="Chabot",
+        )
+        MusicianProfile.objects.create(
+            user=dual,
+            poste_titulaire=MusicianProfile.Poste.BARYTON,
+            poste_remplacant=MusicianProfile.Poste.ALTO_1,
+        )
+        from planning.services import invite_musician_to_event
+
+        with self.assertRaises(ValueError):
+            invite_musician_to_event(self.event, dual, send_notification=False)
+
+        part, created = invite_musician_to_event(
+            self.event,
+            dual,
+            poste=MusicianProfile.Poste.ALTO_1,
+            send_notification=False,
+        )
+        self.assertTrue(created)
+        self.assertEqual(part.poste, MusicianProfile.Poste.ALTO_1)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.REMPLACANT)
+        self.assertEqual(part.poste_label, "1er alto (remp.)")
+        self.assertEqual(part.section_for_roster().code, "sax-alto")
+
+    def test_invite_endpoint_with_slot(self):
+        dual = User.objects.create_user(
+            username="dual2",
+            password="pass12345",
+            is_musician=True,
+            first_name="Jean",
+            last_name="Dupont",
+        )
+        MusicianProfile.objects.create(
+            user=dual,
+            poste_titulaire=MusicianProfile.Poste.BARYTON,
+            poste_remplacant=MusicianProfile.Poste.ALTO_1,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:invite_musician", args=[self.event.pk]),
+            {"invite_slot": f"{dual.pk}:{MusicianProfile.Poste.BARYTON}"},
+        )
+        self.assertEqual(r.status_code, 302)
+        part = EventParticipation.objects.get(event=self.event, user=dual)
+        self.assertEqual(part.poste, MusicianProfile.Poste.BARYTON)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.TITULAIRE)
+
+    def test_roster_lists_separate_slots(self):
+        dual = User.objects.create_user(
+            username="dual3",
+            password="pass12345",
+            is_musician=True,
+            first_name="Marie",
+            last_name="Martin",
+        )
+        MusicianProfile.objects.create(
+            user=dual,
+            poste_titulaire=MusicianProfile.Poste.BARYTON,
+            poste_remplacant=MusicianProfile.Poste.ALTO_1,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Marie Martin · Sax baryton (tit.)")
+        self.assertContains(r, "Marie Martin · 1er alto (remp.)")
+        self.assertContains(r, "Choisir le musicien et le poste")

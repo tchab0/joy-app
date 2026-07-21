@@ -41,8 +41,8 @@ class MusicianProfileAdmin(admin.ModelAdmin):
 
 @admin.register(EventParticipation)
 class EventParticipationAdmin(admin.ModelAdmin):
-    list_display = ("event", "user", "status", "updated_at")
-    list_filter = ("status",)
+    list_display = ("event", "user", "poste", "role_kind", "status", "updated_at")
+    list_filter = ("status", "role_kind", "poste")
     search_fields = ("user__username", "user__first_name", "user__last_name", "event__titre")
     autocomplete_fields = ("event", "user", "status")
 
