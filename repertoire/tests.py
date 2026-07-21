@@ -12,6 +12,13 @@ from PIL import Image
 
 from chat.models import ChatMessage, ChatRoom
 from chat.services import ensure_piece_room, notify_piece_chorus_update
+from planning.models import MusicianProfile
+from repertoire.chorus import (
+    format_chorus_order,
+    parse_chorus_order,
+    resolve_solo_selection,
+    solo_pool_entries,
+)
 from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem
 from repertoire.pdf_utils import extract_pdf_pages_bytes, images_to_pdf_bytes, pdf_page_count
 
@@ -235,3 +242,118 @@ class MusicianViewsTests(TestCase):
         r2 = self.client.get(reverse("repertoire:list"), {"poste": "alto_1"})
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, "Route 66")
+
+class ChorusOrderHelpersTests(TestCase):
+    def test_parse_multiline_and_inline(self):
+        self.assertEqual(
+            parse_chorus_order("1. Piano\n2. 1er alto"),
+            ["Piano", "1er alto"],
+        )
+        self.assertEqual(
+            parse_chorus_order("1. Piano  2. Alto 1"),
+            ["Piano", "Alto 1"],
+        )
+
+    def test_format_roundtrip(self):
+        text = format_chorus_order(["Piano", "Basse"])
+        self.assertEqual(text, "1. Piano\n2. Basse")
+        self.assertEqual(parse_chorus_order(text), ["Piano", "Basse"])
+
+    def test_pool_uses_titulaire_name(self):
+        user = User.objects.create_user(
+            username="pianiste",
+            password="x",
+            is_musician=True,
+            first_name="Nina",
+            last_name="Simone",
+        )
+        profile = user.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.PIANO
+        profile.save()
+        pool = solo_pool_entries()
+        piano = next(p for p in pool if p["id"] == f"m{profile.pk}")
+        self.assertEqual(piano["poste"], "Piano")
+        self.assertIn("Nina", piano["name"])
+        self.assertIn("Piano", piano["title"])
+
+    def test_resolve_matches_poste_and_keeps_custom(self):
+        pool = [
+            {
+                "id": "p:piano",
+                "name": "",
+                "poste": "Piano",
+                "title": "Piano",
+            },
+            {
+                "id": "m1",
+                "name": "Ada Lovelace",
+                "poste": "1er alto",
+                "title": "Ada Lovelace — 1er alto",
+            },
+        ]
+        selected = resolve_solo_selection(
+            "1. Piano\n2. Guest solo\n3. Ada Lovelace — 1er alto",
+            pool,
+        )
+        self.assertEqual(selected[0]["id"], "p:piano")
+        self.assertTrue(selected[1]["id"].startswith("custom-"))
+        self.assertEqual(selected[1]["title"], "Guest solo")
+        self.assertEqual(selected[2]["id"], "m1")
+
+
+class SoloBuilderStaffTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="solo-staff", password="x", is_staff=True
+        )
+        self.musician = User.objects.create_user(
+            username="alto1",
+            password="x",
+            is_musician=True,
+            first_name="Charlie",
+            last_name="Parker",
+        )
+        profile = self.musician.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.ALTO_1
+        profile.save()
+        self.piece = Piece.objects.create(
+            title="Cherokee",
+            is_published=True,
+            chorus_order="1. Piano",
+        )
+
+    def test_edit_form_has_solo_builder(self):
+        self.client.login(username="solo-staff", password="x")
+        r = self.client.get(
+            reverse("repertoire:staff_piece_edit", args=[self.piece.slug])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "soloBuilder")
+        self.assertContains(r, "Ordre des solos")
+        self.assertContains(r, "Musiciens / postes")
+        self.assertContains(r, "Charlie")
+        self.assertEqual(len(r.context["solo_selected"]), 1)
+        self.assertEqual(r.context["solo_selected"][0]["title"], "Piano")
+
+    def test_save_chorus_order_from_builder(self):
+        self.client.login(username="solo-staff", password="x")
+        profile = self.musician.musician_profile
+        title = f"Charlie Parker — {profile.get_poste_titulaire_display()}"
+        r = self.client.post(
+            reverse("repertoire:staff_piece_edit", args=[self.piece.slug]),
+            {
+                "title": self.piece.title,
+                "is_published": "on",
+                "remarks": "",
+                "chorus_order": f"1. {title}\n2. Piano",
+                "youtube_url_1": "",
+                "youtube_url_2": "",
+                "youtube_url_3": "",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.piece.refresh_from_db()
+        self.assertIn("Charlie Parker", self.piece.chorus_order)
+        self.assertIn("Piano", self.piece.chorus_order)
+        self.assertIsNotNone(self.piece.chorus_order_updated_at)
+

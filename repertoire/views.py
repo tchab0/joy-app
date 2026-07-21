@@ -17,6 +17,7 @@ from django.views.generic import DetailView, FormView, ListView
 from chat.services import ensure_piece_room, notify_piece_chorus_update
 from planning.models import MusicianProfile
 from planning.views import PlanningStaffRequiredMixin
+from repertoire.chorus import solo_builder_context
 from repertoire.forms import (
     ImagesToPartForm,
     PartUploadForm,
@@ -188,6 +189,10 @@ class StaffPieceCreateView(PlanningStaffRequiredMixin, FormView):
         ctx = super().get_context_data(**kwargs)
         ctx["piece"] = None
         ctx["is_planning_staff"] = True
+        chorus = ""
+        if self.request.method in ("POST", "PUT"):
+            chorus = self.request.POST.get("chorus_order", "")
+        ctx.update(solo_builder_context(chorus))
         return ctx
 
 
@@ -222,6 +227,11 @@ class StaffPieceEditView(PlanningStaffRequiredMixin, View):
     def _render(self, request, piece, form):
         from django.template.response import TemplateResponse
 
+        chorus = ""
+        if form.is_bound:
+            chorus = form.data.get("chorus_order", "") or ""
+        elif form.instance and form.instance.pk:
+            chorus = form.instance.chorus_order or ""
         return TemplateResponse(
             request,
             self.template_name,
@@ -233,6 +243,7 @@ class StaffPieceEditView(PlanningStaffRequiredMixin, View):
                 "images_form": ImagesToPartForm(),
                 "split_form": PdfSplitForm(),
                 "is_planning_staff": True,
+                **solo_builder_context(chorus),
             },
         )
 

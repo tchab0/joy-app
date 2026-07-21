@@ -70,7 +70,7 @@ class PieceForm(forms.ModelForm):
         widgets = {
             "title": forms.TextInput(attrs={"class": "pl-input"}),
             "remarks": forms.Textarea(attrs={"class": "pl-input", "rows": 5}),
-            "chorus_order": forms.Textarea(attrs={"class": "pl-input", "rows": 4}),
+            "chorus_order": forms.HiddenInput(),
             "youtube_url_1": forms.URLInput(
                 attrs={
                     "class": "pl-input",
