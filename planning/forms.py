@@ -17,6 +17,13 @@ User = get_user_model()
 _INPUT = {"class": "field-input"}
 _SELECT = {"class": "field-input"}
 
+_POSTE_REMPLACANT_LABELS = (
+    "Poste remplaçant 1",
+    "Poste remplaçant 2",
+    "Poste remplaçant 3",
+    "Poste remplaçant 4",
+)
+
 
 def _slugify_username(value: str) -> str:
     value = unicodedata.normalize("NFKD", value)
@@ -65,11 +72,29 @@ class MusicianAdminForm(forms.Form):
         help_text="Convoqué à chaque nouvelle date. Le pupitre en découle automatiquement.",
     )
     poste_remplacant = forms.ChoiceField(
-        label="Poste remplaçant",
+        label=_POSTE_REMPLACANT_LABELS[0],
         choices=[("", "— Non remplaçant —")] + list(MusicianProfile.Poste.choices),
         required=False,
         widget=forms.Select(attrs=_SELECT),
-        help_text="Sollicité en cas de besoin sur ce poste.",
+        help_text="Jusqu’à 4 postes distincts du titulaire.",
+    )
+    poste_remplacant_2 = forms.ChoiceField(
+        label=_POSTE_REMPLACANT_LABELS[1],
+        choices=[("", "— —")] + list(MusicianProfile.Poste.choices),
+        required=False,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    poste_remplacant_3 = forms.ChoiceField(
+        label=_POSTE_REMPLACANT_LABELS[2],
+        choices=[("", "— —")] + list(MusicianProfile.Poste.choices),
+        required=False,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    poste_remplacant_4 = forms.ChoiceField(
+        label=_POSTE_REMPLACANT_LABELS[3],
+        choices=[("", "— —")] + list(MusicianProfile.Poste.choices),
+        required=False,
+        widget=forms.Select(attrs=_SELECT),
     )
     is_active = forms.BooleanField(
         label="Compte actif",
@@ -88,7 +113,8 @@ class MusicianAdminForm(forms.Form):
             self.fields["email"].initial = user.email
             self.fields["phone"].initial = user.phone
             self.fields["poste_titulaire"].initial = profile.poste_titulaire
-            self.fields["poste_remplacant"].initial = profile.poste_remplacant
+            for field in MusicianProfile.POSTE_REMPLACANT_FIELDS:
+                self.fields[field].initial = getattr(profile, field)
             self.fields["is_active"].initial = user.is_active
 
     def clean_email(self):
@@ -103,14 +129,29 @@ class MusicianAdminForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         tit = (cleaned.get("poste_titulaire") or "").strip()
-        rem = (cleaned.get("poste_remplacant") or "").strip()
-        if tit and rem and tit == rem:
-            raise forms.ValidationError(
-                "Le poste titulaire et le poste remplaçant doivent être différents "
-                "(un musicien peut cumuler les deux rôles sur des chaises distinctes)."
-            )
+        rem_raw = [
+            (cleaned.get(field) or "").strip()
+            for field in MusicianProfile.POSTE_REMPLACANT_FIELDS
+        ]
+        rem: list[str] = []
+        seen: set[str] = set()
+        for value in rem_raw:
+            if not value:
+                continue
+            if value in seen:
+                raise forms.ValidationError(
+                    "Les postes remplaçants doivent être distincts."
+                )
+            if tit and value == tit:
+                raise forms.ValidationError(
+                    "Le poste titulaire et les postes remplaçants doivent être "
+                    "différents (un musicien peut cumuler les deux rôles sur des "
+                    "chaises distinctes)."
+                )
+            seen.add(value)
+            rem.append(value)
         cleaned["poste_titulaire"] = tit
-        cleaned["poste_remplacant"] = rem
+        cleaned["postes_remplacant"] = rem
         return cleaned
 
     @transaction.atomic
@@ -132,7 +173,10 @@ class MusicianAdminForm(forms.Form):
             user.set_unusable_password()
             user.save()
             sync_user_groups(user)
-            profile = MusicianProfile(user=user)
+            # Le signal ensure_musician_profile a déjà créé le profil.
+            from planning.services import get_or_create_profile
+
+            profile = get_or_create_profile(user)
         else:
             user = self.user
             user.first_name = data["first_name"].strip()
@@ -146,6 +190,6 @@ class MusicianAdminForm(forms.Form):
             profile = self.profile
 
         profile.poste_titulaire = data["poste_titulaire"]
-        profile.poste_remplacant = data["poste_remplacant"]
+        profile.set_postes_remplacant(data["postes_remplacant"])
         profile.save()  # sync_section_from_poste via MusicianProfile.save
         return profile

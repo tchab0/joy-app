@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.db import models
+from django.urls import reverse
+from django.utils.text import slugify
 
 
 class Venue(models.Model):
@@ -34,6 +36,12 @@ class Event(models.Model):
         ANNULE    = 'annule',    'Annulé'
 
     titre       = models.CharField(max_length=300)
+    slug        = models.SlugField(
+        max_length=320,
+        unique=True,
+        blank=True,
+        help_text="URL publique /concerts/<slug>/ — généré automatiquement si vide.",
+    )
     type        = models.ForeignKey(EventType, on_delete=models.PROTECT)
     venue       = models.ForeignKey(Venue, on_delete=models.PROTECT)
     date_debut  = models.DateTimeField()
@@ -82,9 +90,42 @@ class Event(models.Model):
     class Meta:
         verbose_name = "Événement"
         ordering = ["date_debut"]
+        indexes = [
+            models.Index(fields=["public", "date_debut"], name="event_public_date_idx"),
+            models.Index(fields=["date_debut"], name="event_date_debut_idx"),
+        ]
 
     def __str__(self):
         return f"{self.titre} ({self.date_debut:%d/%m/%Y})"
+
+    def get_absolute_url(self):
+        if not self.slug:
+            return reverse("concerts")
+        return reverse("concert_detail", kwargs={"slug": self.slug})
+
+    def _build_slug_base(self) -> str:
+        base = slugify(self.titre) or "concert"
+        if self.date_debut:
+            base = f"{base}-{self.date_debut.strftime('%Y-%m-%d')}"
+        return base[:300]
+
+    def ensure_slug(self) -> None:
+        if self.slug:
+            return
+        base = self._build_slug_base()
+        candidate = base
+        n = 2
+        qs = Event.objects.all()
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        while qs.filter(slug=candidate).exists():
+            candidate = f"{base}-{n}"
+            n += 1
+        self.slug = candidate
+
+    def save(self, *args, **kwargs):
+        self.ensure_slug()
+        super().save(*args, **kwargs)
 
     @property
     def is_rehearsal(self) -> bool:

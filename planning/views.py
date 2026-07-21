@@ -39,8 +39,8 @@ from planning.services import (
     ensure_participation_statuses,
     get_or_create_profile,
     get_participation_for,
-    invite_choices_for_musicians,
     invite_musician_to_event,
+    invite_musicians_for_form,
     invite_titulaires_to_event,
     launch_availability_poll,
     lock_date_proposal,
@@ -48,6 +48,7 @@ from planning.services import (
     propose_event,
     propose_substitute,
     respond_substitute_request,
+    user_can_access_poll,
     set_participation_response,
     vote_counts_for_option,
 )
@@ -571,6 +572,10 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied("Sondage pas encore lancé par le staff.")
+        if not user_can_access_poll(user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Vous n’êtes pas concerné par ce sondage.")
         options_data = []
         for opt in proposal.options.all():
             my_vote = next((v for v in opt.votes.all() if v.user_id == user.pk), None)
@@ -864,7 +869,7 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
                 "gear": gear,
                 "equipment_catalog": EquipmentItem.objects.filter(is_active=True),
                 "musicians": musicians,
-                "invite_choices": invite_choices_for_musicians(musicians),
+                "invite_musicians": invite_musicians_for_form(musicians),
                 "parent_events": _parent_events_qs(exclude_pk=event.pk),
                 "draft_proposal": draft_proposal_for_event(event),
             }
@@ -1143,23 +1148,27 @@ class UpdateProfileSectionView(MusicianRequiredMixin, View):
             return redirect("planning:my_board")
         profile = get_or_create_profile(request.user)
         tit = (request.POST.get("poste_titulaire") or "").strip()
-        rem = (request.POST.get("poste_remplacant") or "").strip()
+        rem_list = [
+            (request.POST.get(field) or "").strip()
+            for field in MusicianProfile.POSTE_REMPLACANT_FIELDS
+        ]
+        rem_filled = [p for p in rem_list if p]
+        if len(set(rem_filled)) != len(rem_filled):
+            messages.error(
+                request,
+                "Les postes remplaçants doivent être distincts.",
+            )
+            return redirect("planning:my_board")
+        if tit and tit in rem_filled:
+            messages.error(
+                request,
+                "Poste titulaire et remplaçants doivent être différents.",
+            )
+            return redirect("planning:my_board")
         profile.poste_titulaire = (
             tit if tit in MusicianProfile.Poste.values else ""
         )
-        profile.poste_remplacant = (
-            rem if rem in MusicianProfile.Poste.values else ""
-        )
-        if (
-            profile.poste_titulaire
-            and profile.poste_remplacant
-            and profile.poste_titulaire == profile.poste_remplacant
-        ):
-            messages.error(
-                request,
-                "Poste titulaire et remplaçant doivent être différents.",
-            )
-            return redirect("planning:my_board")
+        profile.set_postes_remplacant(rem_list)
         profile.save()  # pupitre déduit du poste titulaire
         messages.success(request, "Profil mis à jour.")
         return redirect("planning:my_board")
@@ -1170,6 +1179,11 @@ class AdminMusiciansView(PlanningStaffRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        # Guérison : flag is_musician coché dans l’admin Django sans profil.
+        for user in User.objects.filter(
+            is_musician=True, musician_profile__isnull=True
+        ):
+            get_or_create_profile(user)
         profiles = (
             MusicianProfile.objects.select_related("user", "section")
             .filter(user__is_musician=True)

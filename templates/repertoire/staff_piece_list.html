@@ -10,16 +10,16 @@
 {% block content %}
 <div class="pl">
   <header class="pl-head">
-    <h1>Atelier répertoire</h1>
-    <p class="pl-sub">Créer les morceaux, découper les PDF et publier les parties par poste.</p>
+    <div class="pl-head__row">
+      <div>
+        <h1>Atelier répertoire</h1>
+        <p class="pl-sub">Créer les morceaux, découper les PDF et publier les parties par poste.</p>
+      </div>
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_piece_create' %}">+ Nouveau</a>
+    </div>
   </header>
 
-  <nav class="pl-nav">
-    <a href="{% url 'repertoire:list' %}">← Musiciens</a>
-    <a href="{% url 'repertoire:staff_list' %}" class="is-active">Morceaux</a>
-    <a href="{% url 'repertoire:staff_setlist_list' %}">Setlists</a>
-    <a href="{% url 'repertoire:staff_piece_create' %}">+ Nouveau</a>
-  </nav>
+  {% include "planning/_module_nav.html" with active="atelier" %}
 
   {% if pieces %}
   <section class="pl-section">

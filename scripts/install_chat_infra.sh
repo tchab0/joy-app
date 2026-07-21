@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installe Daphne (WebSockets), proxy nginx /ws/, timer digest SMS.
+# Installe Daphne (WebSockets), proxy nginx /ws/, timer digest notifications.
 # À lancer avec sudo : sudo bash scripts/install_chat_infra.sh
 set -euo pipefail
 

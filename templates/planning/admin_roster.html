@@ -115,26 +115,10 @@
       <button type="submit" class="pl-btn pl-btn--primary">Convoquer tous les titulaires</button>
     </form>
 
-    <form class="pl-form" method="post" action="{% url 'planning:invite_musician' event.pk %}">
-      {% csrf_token %}
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="invite_slot">Inviter un musicien</label>
-          <select name="invite_slot" id="invite_slot" required>
-            <option value="">Choisir le musicien et le poste…</option>
-            {% for choice in invite_choices %}
-            <option value="{{ choice.value }}">{{ choice.label }}</option>
-            {% endfor %}
-          </select>
-          <p class="help" style="margin-top:.35rem;color:var(--muted);font-size:.8rem">
-            Si un musicien a plusieurs postes, choisissez celui pour lequel il est convoqué.
-          </p>
-        </div>
-        <div style="display:flex;align-items:flex-end">
-          <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
-        </div>
-      </div>
-    </form>
+    {% if invite_musicians %}
+    {% url 'planning:invite_musician' event.pk as invite_form_action %}
+    {% include "planning/_invite_musician_form.html" with form_action=invite_form_action invite_musicians=invite_musicians submit_label="Inviter" id_prefix="roster_invite" %}
+    {% endif %}
   </section>
 
   <section class="pl-section">

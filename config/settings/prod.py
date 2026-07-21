@@ -2,7 +2,8 @@ from .base import *
 import os
 
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
-DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
+# Never enable DEBUG in production (even if DJANGO_DEBUG is set by mistake).
+DEBUG = False
 
 ALLOWED_HOSTS = ["jazz-orchestra-yonnais.fr", "www.jazz-orchestra-yonnais.fr"]
 
@@ -42,3 +43,17 @@ SECURE_REFERRER_POLICY = "same-origin"
 SECURE_HSTS_SECONDS = 3600
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = False
+
+# Shared cache across gunicorn/daphne workers (Channels stays on REDIS_URL /0).
+_redis_cache_url = os.environ.get("REDIS_CACHE_URL") or os.environ.get(
+    "REDIS_URL", "redis://127.0.0.1:6379/0"
+)
+if _redis_cache_url.rstrip("/").endswith("/0"):
+    _redis_cache_url = _redis_cache_url.rstrip("/")[:-1] + "1"
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _redis_cache_url,
+        "TIMEOUT": 300,
+    }
+}

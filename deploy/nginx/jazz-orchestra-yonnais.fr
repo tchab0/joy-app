@@ -1,5 +1,6 @@
+# Apex (canonique)
 server {
-    server_name jazz-orchestra-yonnais.fr www.jazz-orchestra-yonnais.fr;
+    server_name jazz-orchestra-yonnais.fr;
 
     client_max_body_size 30M;
 
@@ -7,7 +8,10 @@ server {
     error_log /var/log/nginx/jazz-orchestra-yonnais.error.log;
 
     location = /favicon.ico {
+        alias /srv/jazz-orchestra-yonnais/repo/staticfiles/users/icons/favicon.ico;
         access_log off;
+        expires 7d;
+        add_header Cache-Control "public";
         log_not_found off;
     }
 
@@ -17,10 +21,19 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # Private uploads — served only via authenticated Django views.
+    location ^~ /media/chat/ {
+        return 403;
+    }
+    location ^~ /media/repertoire/ {
+        return 403;
+    }
+
     location /media/ {
         alias /srv/jazz-orchestra-yonnais/media/;
         expires 7d;
         add_header Cache-Control "public";
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location /ws/ {
@@ -50,11 +63,25 @@ server {
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 }
 
+# www → apex
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name www.jazz-orchestra-yonnais.fr;
+
+    ssl_certificate /etc/letsencrypt/live/jazz-orchestra-yonnais.fr/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/jazz-orchestra-yonnais.fr/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    return 301 https://jazz-orchestra-yonnais.fr$request_uri;
+}
+
 server {
     listen 80;
     listen [::]:80;
     server_name jazz-orchestra-yonnais.fr www.jazz-orchestra-yonnais.fr;
-    return 301 https://$host$request_uri;
+    return 301 https://jazz-orchestra-yonnais.fr$request_uri;
 }
 
 server {
@@ -73,7 +100,10 @@ server {
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     location = /favicon.ico {
+        alias /srv/jazz-orchestra-yonnais/repo/staticfiles/users/icons/favicon.ico;
         access_log off;
+        expires 7d;
+        add_header Cache-Control "public";
         log_not_found off;
     }
 
@@ -83,10 +113,19 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # Private uploads — served only via authenticated Django views.
+    location ^~ /media/chat/ {
+        return 403;
+    }
+    location ^~ /media/repertoire/ {
+        return 403;
+    }
+
     location /media/ {
         alias /srv/jazz-orchestra-yonnais/media/;
         expires 7d;
         add_header Cache-Control "public";
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location /ws/ {

@@ -1,4 +1,4 @@
-"""Envoi SMS pluggable (console en dev, HTTP générique en prod)."""
+"""Envoi de codes OTP par téléphone (console en dev, HTTP générique en prod)."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 def send_sms(to: str, body: str) -> None:
     backend = getattr(settings, "SMS_BACKEND", "console")
     if backend == "console":
-        logger.info("SMS → %s : %s", to, body)
-        print(f"[SMS console] to={to} body={body}")
+        logger.info("Notification OTP → %s : %s", to, body)
+        print(f"[OTP console] to={to} body={body}")
         return
 
     if backend == "http":
@@ -46,7 +46,7 @@ def _send_http(to: str, body: str) -> None:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             if resp.status >= 400:
-                raise RuntimeError(f"SMS HTTP {resp.status}")
+                raise RuntimeError(f"OTP HTTP {resp.status}")
     except urllib.error.URLError as exc:
-        logger.exception("Échec envoi SMS vers %s", to)
-        raise RuntimeError("Échec d’envoi SMS") from exc
+        logger.exception("Échec envoi notification OTP vers %s", to)
+        raise RuntimeError("Échec d’envoi de notification") from exc

@@ -10,15 +10,16 @@
 {% block content %}
 <div class="pl">
   <header class="pl-head">
-    <h1>Setlists</h1>
-    <p class="pl-sub">Programmes liés aux événements — visibles par les musiciens sur la fiche de l’événement.</p>
+    <div class="pl-head__row">
+      <div>
+        <h1>Setlists</h1>
+        <p class="pl-sub">Programmes liés aux événements — visibles par les musiciens sur la fiche de l’événement.</p>
+      </div>
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}">+ Nouvelle</a>
+    </div>
   </header>
 
-  <nav class="pl-nav">
-    <a href="{% url 'repertoire:staff_list' %}">← Atelier</a>
-    <a href="{% url 'repertoire:staff_setlist_list' %}" class="is-active">Setlists</a>
-    <a href="{% url 'repertoire:staff_setlist_create' %}">+ Nouvelle</a>
-  </nav>
+  {% include "planning/_module_nav.html" with active="setlists" %}
 
   {% if setlists %}
   <section class="pl-section">

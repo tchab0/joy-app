@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sitemaps",
     "channels",
     "users.apps.UsersConfig",
     "core",
@@ -34,6 +35,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.NoIndexPrivateMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -49,6 +51,8 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "feedback.context_processors.page_feedback",
+                "users.context_processors.nav_access",
+                "core.context_processors.seo",
             ],
         },
     },
@@ -90,7 +94,7 @@ LOGIN_URL = "/compte/connexion/"
 LOGIN_REDIRECT_URL = "/compte/"
 LOGOUT_REDIRECT_URL = "/"
 
-# Auth OTP / SMS
+# Auth OTP (canal téléphone via backend configurable)
 OTP_PEPPER = os.environ.get("OTP_PEPPER", "")
 TOTP_ISSUER = os.environ.get("TOTP_ISSUER", "Jazz Orchestra Yonnais")
 SMS_BACKEND = os.environ.get("SMS_BACKEND", "console")
@@ -149,6 +153,8 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "JOY <admin@jazz-orchestra-yonnais.fr>")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr")
 SITE_URL = os.environ.get("SITE_URL", "https://jazz-orchestra-yonnais.fr")
+GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
+GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
 
 CACHES = {
     "default": {

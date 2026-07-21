@@ -23,14 +23,7 @@
     </p>
   </header>
 
-  <nav class="pl-nav">
-    <a href="{% url 'planning:dashboard' %}" class="is-active">Calendrier</a>
-    <a href="{% url 'planning:my_board' %}">Mes dates</a>
-    <a href="{% url 'repertoire:list' %}">Répertoire</a>
-    {% if is_planning_staff %}
-    <a href="{% url 'planning:admin' %}">Admin</a>
-    {% endif %}
-  </nav>
+  {% include "planning/_module_nav.html" with active="calendrier" %}
 
   <div class="pl-year-nav">
     <a class="pl-btn" href="?year={{ prev_year }}" aria-label="Année précédente">← {{ prev_year }}</a>
@@ -120,6 +113,12 @@
                   <dt>Lieu</dt>
                   <dd>{% if s.lieu %}{{ s.lieu }}{% else %}—{% endif %}</dd>
                 </div>
+                {% if event.weather %}
+                <div>
+                  <dt>Météo</dt>
+                  <dd>{% include "includes/_weather.html" with weather=event.weather compact=1 %}</dd>
+                </div>
+                {% endif %}
                 <div>
                   <dt>Présents</dt>
                   <dd>

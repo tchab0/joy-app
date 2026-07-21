@@ -21,6 +21,7 @@ from planning.services import (
     calendar_chat_links_for_user,
     calendar_summaries_for_events,
     ensure_participation_statuses,
+    invite_slots_for_profile,
     propose_substitute,
     respond_substitute_request,
     set_participation_response,
@@ -51,16 +52,15 @@ class PlanningBaseTestCase(TestCase):
             first_name="Remy",
             last_name="Placant",
         )
-        MusicianProfile.objects.create(
-            user=self.musician,
-            section=self.section,
-            poste_titulaire=MusicianProfile.Poste.TROMPETTE_1,
-        )
-        MusicianProfile.objects.create(
-            user=self.sub,
-            section=self.section,
-            poste_remplacant=MusicianProfile.Poste.TROMPETTE_2,
-        )
+        # Profil auto-créé par signal ensure_musician_profile
+        profile = self.musician.musician_profile
+        profile.section = self.section
+        profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_1
+        profile.save()
+        sub_profile = self.sub.musician_profile
+        sub_profile.section = self.section
+        sub_profile.poste_remplacant = MusicianProfile.Poste.TROMPETTE_2
+        sub_profile.save()
         self.staff = User.objects.create_user(
             username="staff1",
             password="pass12345",
@@ -477,6 +477,9 @@ class StaffAdminTests(PlanningBaseTestCase):
                 "phone": "+33600000000",
                 "poste_titulaire": MusicianProfile.Poste.TROMPETTE_3,
                 "poste_remplacant": MusicianProfile.Poste.TROMPETTE_4,
+                "poste_remplacant_2": MusicianProfile.Poste.TROMPETTE_2,
+                "poste_remplacant_3": "",
+                "poste_remplacant_4": "",
                 "is_active": "on",
             },
         )
@@ -485,7 +488,13 @@ class StaffAdminTests(PlanningBaseTestCase):
         self.assertTrue(user.is_musician)
         profile = user.musician_profile
         self.assertEqual(profile.poste_titulaire, MusicianProfile.Poste.TROMPETTE_3)
-        self.assertEqual(profile.poste_remplacant, MusicianProfile.Poste.TROMPETTE_4)
+        self.assertEqual(
+            profile.postes_remplacant,
+            [
+                MusicianProfile.Poste.TROMPETTE_4,
+                MusicianProfile.Poste.TROMPETTE_2,
+            ],
+        )
         self.assertTrue(profile.is_titulaire)
         self.assertTrue(profile.is_remplacant)
         self.assertEqual(profile.section.code, "trompette")
@@ -501,11 +510,34 @@ class StaffAdminTests(PlanningBaseTestCase):
                 "phone": "",
                 "poste_titulaire": MusicianProfile.Poste.PIANO,
                 "poste_remplacant": MusicianProfile.Poste.PIANO,
+                "poste_remplacant_2": "",
+                "poste_remplacant_3": "",
+                "poste_remplacant_4": "",
                 "is_active": "on",
             },
         )
         self.assertEqual(r.status_code, 200)
         self.assertFalse(User.objects.filter(email="dup@example.com").exists())
+
+    def test_reject_duplicate_remplacant_postes(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:admin_musician_add"),
+            {
+                "first_name": "Dup",
+                "last_name": "Remp",
+                "email": "dupremp@example.com",
+                "phone": "",
+                "poste_titulaire": MusicianProfile.Poste.PIANO,
+                "poste_remplacant": MusicianProfile.Poste.BASSE,
+                "poste_remplacant_2": MusicianProfile.Poste.BASSE,
+                "poste_remplacant_3": "",
+                "poste_remplacant_4": "",
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(User.objects.filter(email="dupremp@example.com").exists())
 
     def test_section_derived_from_poste_titulaire(self):
         profile = self.musician.musician_profile
@@ -544,11 +576,10 @@ class CalendarSummaryTests(PlanningBaseTestCase):
             password="pass12345",
             is_musician=True,
         )
-        MusicianProfile.objects.create(
-            user=sax_player,
-            section=sax,
-            poste_titulaire=MusicianProfile.Poste.ALTO_1,
-        )
+        profile = sax_player.musician_profile
+        profile.section = sax
+        profile.poste_titulaire = MusicianProfile.Poste.ALTO_1
+        profile.save()
         summary = calendar_summaries_for_events([self.event])[self.event.pk]
         self.assertIn("Trompettes", summary["instruments_manquants"])
         self.assertIn("Saxophones altos", summary["instruments_manquants"])
@@ -629,7 +660,7 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
         self.assertEqual(part.poste, MusicianProfile.Poste.TROMPETTE_1)
         self.assertEqual(part.role_kind, EventParticipation.RoleKind.TITULAIRE)
 
-    def test_invite_dual_poste_requires_choice(self):
+    def test_invite_dual_poste_defaults_to_titulaire(self):
         dual = User.objects.create_user(
             username="dual1",
             password="pass12345",
@@ -637,27 +668,42 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
             first_name="Thierry",
             last_name="Chabot",
         )
-        MusicianProfile.objects.create(
-            user=dual,
-            poste_titulaire=MusicianProfile.Poste.BARYTON,
-            poste_remplacant=MusicianProfile.Poste.ALTO_1,
-        )
-        from planning.services import invite_musician_to_event
-
-        with self.assertRaises(ValueError):
-            invite_musician_to_event(self.event, dual, send_notification=False)
+        profile = dual.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.BARYTON
+        profile.poste_remplacant = MusicianProfile.Poste.ALTO_1
+        profile.save()
+        from planning.services import invite_musician_to_event, resolve_invite_slot
 
         part, created = invite_musician_to_event(
-            self.event,
+            self.event, dual, send_notification=False
+        )
+        self.assertTrue(created)
+        self.assertEqual(part.poste, MusicianProfile.Poste.BARYTON)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.TITULAIRE)
+
+        poste, role = resolve_invite_slot(dual, MusicianProfile.Poste.ALTO_1)
+        self.assertEqual(poste, MusicianProfile.Poste.ALTO_1)
+        self.assertEqual(role, EventParticipation.RoleKind.REMPLACANT)
+
+        event2 = Event.objects.create(
+            titre="Autre",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=14),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        part3, created3 = invite_musician_to_event(
+            event2,
             dual,
             poste=MusicianProfile.Poste.ALTO_1,
             send_notification=False,
         )
-        self.assertTrue(created)
-        self.assertEqual(part.poste, MusicianProfile.Poste.ALTO_1)
-        self.assertEqual(part.role_kind, EventParticipation.RoleKind.REMPLACANT)
-        self.assertEqual(part.poste_label, "1er alto (remp.)")
-        self.assertEqual(part.section_for_roster().code, "sax-alto")
+        self.assertTrue(created3)
+        self.assertEqual(part3.poste, MusicianProfile.Poste.ALTO_1)
+        self.assertEqual(part3.role_kind, EventParticipation.RoleKind.REMPLACANT)
+        self.assertEqual(part3.poste_label, "1er alto (remp.)")
+        self.assertEqual(part3.section_for_roster().code, "sax-alto")
 
     def test_invite_endpoint_with_slot(self):
         dual = User.objects.create_user(
@@ -667,11 +713,10 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
             first_name="Jean",
             last_name="Dupont",
         )
-        MusicianProfile.objects.create(
-            user=dual,
-            poste_titulaire=MusicianProfile.Poste.BARYTON,
-            poste_remplacant=MusicianProfile.Poste.ALTO_1,
-        )
+        profile = dual.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.BARYTON
+        profile.poste_remplacant = MusicianProfile.Poste.ALTO_1
+        profile.save()
         self.client.login(username="staff1", password="pass12345")
         r = self.client.post(
             reverse("planning:invite_musician", args=[self.event.pk]),
@@ -690,14 +735,53 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
             first_name="Marie",
             last_name="Martin",
         )
-        MusicianProfile.objects.create(
-            user=dual,
-            poste_titulaire=MusicianProfile.Poste.BARYTON,
-            poste_remplacant=MusicianProfile.Poste.ALTO_1,
+        profile = dual.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.BARYTON
+        profile.poste_remplacant = MusicianProfile.Poste.ALTO_1
+        profile.save()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Marie Martin")
+        self.assertContains(r, "Choisir un musicien")
+        self.assertContains(r, "Titulaire par défaut")
+
+    def test_invite_multiple_remplacant_slots(self):
+        multi = User.objects.create_user(
+            username="multi1",
+            password="pass12345",
+            is_musician=True,
+            first_name="Sam",
+            last_name="Multi",
+        )
+        profile = multi.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.BARYTON
+        profile.set_postes_remplacant(
+            [
+                MusicianProfile.Poste.ALTO_1,
+                MusicianProfile.Poste.TENOR_1,
+                MusicianProfile.Poste.ALTO_2,
+            ]
+        )
+        profile.save()
+        slots = invite_slots_for_profile(profile)
+        self.assertEqual(len(slots), 4)
+        self.assertEqual(
+            [s["poste"] for s in slots],
+            [
+                MusicianProfile.Poste.BARYTON,
+                MusicianProfile.Poste.ALTO_1,
+                MusicianProfile.Poste.TENOR_1,
+                MusicianProfile.Poste.ALTO_2,
+            ],
         )
         self.client.login(username="staff1", password="pass12345")
         r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Marie Martin · Sax baryton (tit.)")
-        self.assertContains(r, "Marie Martin · 1er alto (remp.)")
-        self.assertContains(r, "Choisir le musicien et le poste")
+        self.assertContains(r, "Sam Multi")
+        # Données JSON du formulaire (échappement unicode possible)
+        self.assertContains(r, '"default_poste": "baryton"')
+        self.assertContains(r, '"poste": "alto_1"')
+        self.assertContains(r, '"poste": "tenor_1"')
+        self.assertContains(r, '"poste": "alto_2"')
+        self.assertContains(r, "Titulaire par défaut")

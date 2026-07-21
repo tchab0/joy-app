@@ -5,6 +5,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 from chat.services import (
     active_membership,
+    ensure_staff_membership,
     post_message,
     user_can_access_room,
 )
@@ -25,6 +26,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         self.room = room
+        if self.user.is_staff or self.user.is_superuser:
+            await self._ensure_staff_membership()
         self.group_name = room.channel_group
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
@@ -58,6 +61,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 text_data=json.dumps({"type": "error", "error": "Accès refusé"})
             )
             return
+        if membership is None and (self.user.is_staff or self.user.is_superuser):
+            await self._ensure_staff_membership()
 
         try:
             message = await self._post(body)
@@ -86,6 +91,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _active_membership(self):
         return active_membership(self.room, self.user)
+
+    @database_sync_to_async
+    def _ensure_staff_membership(self):
+        return ensure_staff_membership(self.room, self.user)
 
     @database_sync_to_async
     def _post(self, body: str):

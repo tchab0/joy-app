@@ -58,7 +58,7 @@ class PasswordlessStartForm(forms.Form):
         label="Recevoir le code par",
         choices=[
             (AuthChallenge.Channel.EMAIL, "E-mail"),
-            (AuthChallenge.Channel.SMS, "SMS"),
+            (AuthChallenge.Channel.NOTIFICATION, "Notification"),
         ],
         initial=AuthChallenge.Channel.EMAIL,
         widget=forms.RadioSelect,
@@ -73,7 +73,7 @@ class PasswordlessStartForm(forms.Form):
         if user is not None:
             if channel == AuthChallenge.Channel.EMAIL and not user.email:
                 user = None
-            elif channel == AuthChallenge.Channel.SMS and not normalize_phone(user.phone):
+            elif channel == AuthChallenge.Channel.NOTIFICATION and not normalize_phone(user.phone):
                 user = None
         cleaned["user"] = user
         return cleaned
@@ -135,5 +135,20 @@ class ChatNotificationPrefsForm(forms.ModelForm):
             "chat_auto_subscribe": (
                 "Vous recevrez un digest des nouveaux messages (notification push "
                 "si activée, sinon e-mail). Vous pourrez vous désabonner salon par salon."
+            ),
+        }
+
+
+class StaffContactNotifyPrefsForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ("notify_contact_messages",)
+        labels = {
+            "notify_contact_messages": "M’alerter des nouveaux messages de contact / prestations",
+        }
+        help_texts = {
+            "notify_contact_messages": (
+                "Notification push si activée, sinon e-mail, pour chaque demande "
+                "reçue via le formulaire public."
             ),
         }

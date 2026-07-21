@@ -34,12 +34,37 @@ from repertoire.pdf_utils import (
 from users.roles import MusicianRequiredMixin
 
 
-def _user_default_poste(user) -> str:
+def _user_postes(user) -> list[str]:
+    """Postes du musicien (titulaire puis remplaçants), sans doublon."""
     try:
         profile = user.musician_profile
     except MusicianProfile.DoesNotExist:
-        return ""
-    return profile.poste_titulaire or ""
+        return []
+    postes: list[str] = []
+    if profile.poste_titulaire:
+        postes.append(profile.poste_titulaire)
+    for poste in profile.postes_remplacant:
+        if poste not in postes:
+            postes.append(poste)
+    return postes
+
+
+def _user_default_poste(user) -> str:
+    """Poste affiché par défaut : titulaire s’il existe, sinon 1er remplaçant."""
+    postes = _user_postes(user)
+    return postes[0] if postes else ""
+
+
+def _poste_filter_choices(user) -> list[tuple[str, str]]:
+    """Postes du musicien en tête, puis le reste de l’orchestre."""
+    labels = dict(PartPoste.choices)
+    mine = _user_postes(user)
+    seen = set(mine)
+    ordered: list[tuple[str, str]] = [(p, labels.get(p, p)) for p in mine]
+    for value, label in PartPoste.choices:
+        if value not in seen:
+            ordered.append((value, label))
+    return ordered
 
 
 def _save_part_pdf(piece: Piece, poste: str, data: bytes, filename: str, source_name: str = "") -> Part:
@@ -78,7 +103,8 @@ class PieceListView(MusicianRequiredMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         poste = getattr(self, "_poste", "") or "all"
         ctx["selected_poste"] = poste if poste else "all"
-        ctx["poste_choices"] = PartPoste.choices
+        ctx["poste_choices"] = _poste_filter_choices(self.request.user)
+        ctx["user_postes"] = _user_postes(self.request.user)
         ctx["is_planning_staff"] = self.request.user.is_staff or self.request.user.is_superuser
         # Annotate matching part for current filter
         parts_by_piece = {}
@@ -86,6 +112,7 @@ class PieceListView(MusicianRequiredMixin, ListView):
             for piece in ctx["pieces"]:
                 part = next((p for p in piece.parts.all() if p.poste == poste), None)
                 parts_by_piece[piece.pk] = part
+                piece.matching_part = part
         ctx["parts_by_piece"] = parts_by_piece
         return ctx
 
@@ -112,7 +139,8 @@ class PieceDetailView(MusicianRequiredMixin, DetailView):
         else:
             filtered = parts
         ctx["selected_poste"] = poste if poste else "all"
-        ctx["poste_choices"] = PartPoste.choices
+        ctx["poste_choices"] = _poste_filter_choices(self.request.user)
+        ctx["user_postes"] = _user_postes(self.request.user)
         ctx["parts"] = filtered
         ctx["all_parts"] = parts
         ctx["is_planning_staff"] = self.request.user.is_staff or self.request.user.is_superuser
@@ -132,12 +160,33 @@ class PartDownloadView(MusicianRequiredMixin, View):
             raise Http404
         if not part.file:
             raise Http404
-        return FileResponse(
+        response = FileResponse(
             part.file.open("rb"),
-            as_attachment=False,
+            as_attachment=True,
             filename=Path(part.file.name).name,
             content_type="application/pdf",
         )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+class PieceAudioDownloadView(MusicianRequiredMixin, View):
+    def get(self, request, slug: str):
+        piece = get_object_or_404(Piece, slug=slug)
+        if not piece.is_published and not (
+            request.user.is_staff or request.user.is_superuser
+        ):
+            raise Http404
+        if not piece.audio_recording:
+            raise Http404
+        name = Path(piece.audio_recording.name).name
+        response = FileResponse(
+            piece.audio_recording.open("rb"),
+            as_attachment=False,
+            filename=name,
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class CreatePieceSalonView(MusicianRequiredMixin, View):

@@ -1,5 +1,5 @@
 [Unit]
-Description=JOY — digest SMS chat toutes les 30 min
+Description=JOY — digest notifications chat toutes les 30 min
 
 [Timer]
 OnCalendar=*:0/30

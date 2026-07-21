@@ -44,5 +44,6 @@ def _delete_compresse_sidecar(instance):
 @receiver(post_delete, sender=MediaItem)
 def media_files_cleanup(sender, instance, **kwargs):
     _delete_fieldfile_if_unused(sender, instance, "fichier")
+    _delete_fieldfile_if_unused(sender, instance, "fichier_edite")
     _delete_fieldfile_if_unused(sender, instance, "miniature")
     _delete_compresse_sidecar(instance)

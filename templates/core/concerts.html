@@ -1,8 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Concerts — JOY{% endblock %}
+{% block og_title %}Concerts — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Concerts — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
+{% block og_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
+{% block twitter_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
 {% block extra_css %}
 <style>
   .event-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; margin-bottom: 1px; display: grid; grid-template-columns: 80px 1fr; gap: 1.5rem; align-items: start; }
+  .event-card a.event-titre-link { color: inherit; text-decoration: none; }
+  .event-card a.event-titre-link:hover { color: var(--accent); }
   .event-date .day { font-family: var(--font-d); font-size: 2rem; font-weight: 700; color: var(--accent); display: block; line-height: 1; }
   .event-date .month { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
   .event-titre { font-weight: 600; font-size: 1.05rem; margin-bottom: .3rem; }
@@ -18,6 +25,7 @@
   .badge-annule    { background:rgba(180,60,60,.12);  color:#b43c3c; }
   .btn-billets { display:inline-block; margin-top:.75rem; }
 </style>
+{% include "includes/_weather_styles.html" %}
 {% endblock %}
 {% block content %}
 <section class="section">
@@ -26,17 +34,19 @@
     <p class="section-subtitle">À venir</p>
     {% if prochains %}
       {% for e in prochains %}
-      <div class="event-card">
+      <article class="event-card">
         <div class="event-date">
-          <span class="day">{{ e.date_debut|date:"d" }}</span>
-          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          <time datetime="{{ e.date_debut|date:'c' }}">
+            <span class="day">{{ e.date_debut|date:"d" }}</span>
+            <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          </time>
         </div>
         <div>
-          <div class="event-titre">
-            {{ e.titre }}
+          <h2 class="event-titre">
+            <a class="event-titre-link" href="{{ e.get_absolute_url }}">{{ e.titre }}</a>
             {% if e.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
             {% if e.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
-          </div>
+          </h2>
           {% if e.parent %}
           <div class="event-meta" style="margin-top:.25rem">Dans : {{ e.parent.titre }}</div>
           {% endif %}
@@ -44,6 +54,7 @@
           <div class="event-meta">Organisé par {{ e.organisme }}</div>
           {% endif %}
           <div class="event-meta">{{ e.lieu_affiche }} · {{ e.horaires_affiches }}</div>
+          {% include "includes/_weather.html" with weather=e.weather %}
           {% if e.show_contact %}
           <div class="event-meta" style="margin-top:.35rem">
             Contact{% if e.contact_nom %} : {{ e.contact_nom }}{% endif %}
@@ -56,7 +67,10 @@
           </div>
           {% endif %}
           {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
-          {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-billets">Billetterie →</a>{% endif %}
+          <div style="margin-top:.75rem;display:flex;flex-wrap:wrap;gap:.5rem">
+            <a href="{{ e.get_absolute_url }}" class="btn btn-outline">Détails</a>
+            {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary">Billetterie →</a>{% endif %}
+          </div>
           {% if e.venue.latitude %}
           <div class="event-map" style="position:relative">
             <iframe
@@ -82,7 +96,7 @@
           </div>
           {% endif %}
         </div>
-      </div>
+      </article>
       {% endfor %}
     {% else %}
       <p style="color:var(--muted);font-style:italic;padding:2rem 0">Prochains concerts à venir — revenez bientôt !</p>
@@ -91,18 +105,22 @@
     <p class="section-subtitle" style="margin-top:3rem">Passés</p>
     <div class="passes">
       {% for e in passes %}
-      <div class="event-card">
+      <article class="event-card">
         <div class="event-date">
-          <span class="day">{{ e.date_debut|date:"d" }}</span>
-          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          <time datetime="{{ e.date_debut|date:'c' }}">
+            <span class="day">{{ e.date_debut|date:"d" }}</span>
+            <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          </time>
         </div>
         <div>
-          <div class="event-titre">{{ e.titre }}</div>
+          <h2 class="event-titre">
+            <a class="event-titre-link" href="{{ e.get_absolute_url }}">{{ e.titre }}</a>
+          </h2>
           {% if e.parent %}<div class="event-meta">Dans : {{ e.parent.titre }}</div>{% endif %}
           {% if e.organisme %}<div class="event-meta">Organisé par {{ e.organisme }}</div>{% endif %}
           <div class="event-meta">{{ e.lieu_affiche }}</div>
         </div>
-      </div>
+      </article>
       {% endfor %}
     </div>
     {% endif %}

@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
@@ -13,11 +13,40 @@ import threading
 
 from events.models import Event, Venue, EventType
 from events.forms import EventForm, VenueForm
+from events.weather import attach_weather
 from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage
-from .forms import MediaSoumissionForm, ContactForm
+from .forms import MediaSoumissionForm, ContactForm, PrestationForm
+from .forms import EXTENSIONS_AUTORISEES
 from .utils_compression import compresser_media
+from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, website_jsonld
+from users.models import User
+from users.notify import notify_users
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_fichier_edite(media: MediaItem, uploaded) -> None:
+    """Enregistre une version retouchée et relance la compression."""
+    from pathlib import Path
+
+    dest_dir = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
+    # Ne pas effacer le compressé de la source (fichier) : c'est la base
+    # « originale » pour une future retouche / purge. On n'enlève que l'ancien
+    # sidecar de la version éditée précédente.
+    if media.fichier_edite:
+        old_stem = Path(media.fichier_edite.name).stem
+        cand = dest_dir / f"{old_stem}.webp"
+        if cand.exists():
+            cand.unlink()
+
+    if media.fichier_edite:
+        media.fichier_edite.delete(save=False)
+    media.fichier_edite = uploaded
+    media.edite_le = timezone.now()
+    media.save(update_fields=["fichier_edite", "edite_le"])
+    t = threading.Thread(target=compresser_media, args=(media,), daemon=True)
+    t.start()
+
 
 PAGE_LABELS = {
     (7,  "core",   "externallink"): "Liens externes",
@@ -45,7 +74,14 @@ def home(request):
             lng = float(e.venue.longitude)
             e.bbox = f"{lng-0.003},{lat-0.003},{lng+0.003},{lat+0.003}"
         prochains.append(e)
-    return render(request, "core/home.html", {"prochains": prochains})
+    return render(
+        request,
+        "core/home.html",
+        {
+            "prochains": prochains,
+            "json_ld": dumps_jsonld(music_group_jsonld(), website_jsonld()),
+        },
+    )
 
 
 def _add_bbox(qs):
@@ -65,14 +101,60 @@ def concerts(request):
     prochains = _add_bbox(
         _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")
     )
+    attach_weather(prochains)
     passes = _public_events_qs().filter(date_debut__lt=timezone.now()).order_by("-date_debut")[:10]
-    return render(request, "core/concerts.html", {"prochains": prochains, "passes": passes})
+    events_ld = [music_event_jsonld(e) for e in prochains]
+    return render(
+        request,
+        "core/concerts.html",
+        {
+            "prochains": prochains,
+            "passes": passes,
+            "json_ld": dumps_jsonld(music_group_jsonld(), *events_ld)
+            if events_ld
+            else dumps_jsonld(music_group_jsonld()),
+        },
+    )
+
+
+@cache_page(settings.CACHE_TTL_CONCERTS)
+def concert_detail(request, slug):
+    event = get_object_or_404(
+        _public_events_qs(),
+        slug=slug,
+        public=True,
+    )
+    events = _add_bbox([event])
+    event = events[0]
+    attach_weather([event])
+    desc = event.description.strip() if event.description else (
+        f"Concert de Jazz Orchestra Yonnais (JOY) — {event.titre} "
+        f"le {event.date_debut:%d/%m/%Y} à {event.lieu_affiche}."
+    )
+    return render(
+        request,
+        "core/concert_detail.html",
+        {
+            "event": event,
+            "meta_description": desc[:160],
+            "json_ld": dumps_jsonld(music_group_jsonld(), music_event_jsonld(event)),
+        },
+    )
 
 
 @cache_page(settings.CACHE_TTL_GOODIES)
 def goodies(request):
     lien = ExternalLink.objects.filter(slug="boutique-goodies", actif=True).first()
     return render(request, "core/goodies.html", {"lien": lien})
+
+
+@cache_page(settings.CACHE_TTL_ADHESION)
+def mentions_legales(request):
+    return render(
+        request,
+        "core/mentions_legales.html",
+        {"admin_email": settings.ADMIN_EMAIL},
+    )
 
 
 def medias(request):
@@ -92,15 +174,24 @@ def medias(request):
     audios = annoter(MediaItem.objects.filter(type="audio", publie=True))
     pdfs = annoter(MediaItem.objects.filter(type="pdf", publie=True))
 
-    evenements = EvenementMedia.objects.filter(items__type="photo").distinct().order_by("-date", "nom")
-
+    photos = list(
+        annoter(
+            MediaItem.objects.filter(
+                type="photo", publie=True, evenement__isnull=False
+            ).select_related("evenement")
+        ).order_by("-evenement__date", "evenement_id", "ordre", "id")
+    )
+    groupes_map: dict = {}
     groupes_photos = []
-    for ev in evenements:
-        photos = list(
-            annoter(MediaItem.objects.filter(evenement=ev, type="photo", publie=True)).order_by("ordre", "id")
-        )
-        if photos:
-            groupes_photos.append({"evenement": ev, "photos": photos})
+    for p in photos:
+        # Compute display URL once (avoids repeated Path.exists() in template).
+        p.display_url = p.url_affichage
+        key = p.evenement_id
+        if key not in groupes_map:
+            groupe = {"evenement": p.evenement, "photos": []}
+            groupes_map[key] = groupe
+            groupes_photos.append(groupe)
+        groupes_map[key]["photos"].append(p)
 
     return render(request, "core/medias.html", {
         "groupes_photos": groupes_photos,
@@ -129,9 +220,17 @@ def proposer_media(request):
                     return render(request, "core/proposer_media.html", {"form": form})
 
                 medias_crees = []
-                for f in fichiers:
+                for i, f in enumerate(fichiers):
                     if f.size > 1 * 1024 * 1024 * 1024:
                         continue
+                    ext = "." + f.name.rsplit(".", 1)[-1].lower() if "." in (f.name or "") else ""
+                    if ext not in EXTENSIONS_AUTORISEES["photo"]:
+                        form.add_error(
+                            "fichiers_multiples",
+                            f"Extension non autorisée pour « {f.name} ». "
+                            f"Acceptées : {', '.join(EXTENSIONS_AUTORISEES['photo'])}",
+                        )
+                        return render(request, "core/proposer_media.html", {"form": form})
                     media = MediaItem(
                         type="photo",
                         titre=evenement.nom,
@@ -143,8 +242,12 @@ def proposer_media(request):
                         statut="en_attente",
                     )
                     media.save()
-                    t = threading.Thread(target=compresser_media, args=(media,), daemon=True)
-                    t.start()
+                    edite = request.FILES.get(f"fichier_edite_{i}")
+                    if edite and edite.size and edite.size <= 1 * 1024 * 1024 * 1024:
+                        _attach_fichier_edite(media, edite)
+                    else:
+                        t = threading.Thread(target=compresser_media, args=(media,), daemon=True)
+                        t.start()
                     medias_crees.append(media)
 
                 if medias_crees:
@@ -188,25 +291,97 @@ def _notifier_admin(media, nb=1):
         logger.exception("Erreur notification admin media")
 
 
+def _contact_mode(request) -> str:
+    mode = (request.POST.get("mode") or request.GET.get("mode") or "contact").strip()
+    if mode not in ("contact", "prestation"):
+        return "contact"
+    return mode
+
+
+def _notify_staff_contact(msg: ContactMessage) -> None:
+    staff = User.objects.filter(
+        is_active=True,
+        is_staff=True,
+        notify_contact_messages=True,
+    )
+    if msg.is_prestation:
+        title = "JOY — Demande de prestation"
+        bits = [
+            f"{msg.nom}",
+            msg.type_evenement and msg.get_type_evenement_display(),
+            msg.ville,
+            msg.date_souhaitee and msg.date_souhaitee.strftime("%d/%m/%Y"),
+        ]
+        body = " · ".join(b for b in bits if b)
+    else:
+        title = "JOY — Message de contact"
+        body = f"{msg.nom} : {(msg.message or '')[:120]}"
+    try:
+        notify_users(staff, title=title, body=body or title, url="/admin-contact/")
+    except Exception:
+        logger.exception("Échec notification staff contact id=%s", msg.pk)
+
+
 def contact(request):
     success = False
+    mode = _contact_mode(request)
+    contact_form = ContactForm()
+    prestation_form = PrestationForm()
 
     if request.method == "POST":
-        form = ContactForm(request.POST)
-        if form.is_valid():
-            ContactMessage.objects.create(
-                nom=form.cleaned_data["nom"],
-                telephone=form.cleaned_data["telephone"],
-                email=form.cleaned_data["email"],
-                message=form.cleaned_data["message"],
-            )
-            form = ContactForm()
-            success = True
-    else:
-        form = ContactForm()
+        if mode == "prestation":
+            prestation_form = PrestationForm(request.POST)
+            if prestation_form.is_valid():
+                data = prestation_form.cleaned_data
+                msg = ContactMessage.objects.create(
+                    kind=ContactMessage.KIND_PRESTATION,
+                    nom=data["nom"],
+                    organisation=data.get("organisation") or "",
+                    telephone=data["telephone"],
+                    email=data["email"],
+                    profil=data["profil"],
+                    message=data.get("message") or "",
+                    type_evenement=data["type_evenement"],
+                    date_souhaitee=data["date_souhaitee"],
+                    date_flexible=data.get("date_flexible") or False,
+                    date_alternative=data.get("date_alternative"),
+                    ville=data["ville"],
+                    lieu_nom=data.get("lieu_nom") or "",
+                    lieu_adresse=data.get("lieu_adresse") or "",
+                    lieu_type=data["lieu_type"],
+                    heure_debut=data["heure_debut"],
+                    heure_fin=data.get("heure_fin"),
+                    duree_jeu=data["duree_jeu"],
+                    jauge=data["jauge"],
+                    role_ambiance=data["role_ambiance"],
+                    sono=data["sono"],
+                    scene_details=data.get("scene_details") or "",
+                    acces_logistique=data.get("acces_logistique") or "",
+                    budget=data["budget"],
+                    source=data.get("source") or "",
+                )
+                _notify_staff_contact(msg)
+                prestation_form = PrestationForm()
+                success = True
+        else:
+            contact_form = ContactForm(request.POST)
+            if contact_form.is_valid():
+                data = contact_form.cleaned_data
+                msg = ContactMessage.objects.create(
+                    kind=ContactMessage.KIND_CONTACT,
+                    nom=data["nom"],
+                    telephone=data["telephone"],
+                    email=data["email"],
+                    message=data["message"],
+                )
+                _notify_staff_contact(msg)
+                contact_form = ContactForm()
+                success = True
 
     return render(request, "core/contact.html", {
-        "form": form,
+        "mode": mode,
+        "contact_form": contact_form,
+        "prestation_form": prestation_form,
         "success": success,
         "send_error": False,
     })
@@ -215,16 +390,28 @@ def contact(request):
 @staff_member_required
 def admin_contact(request):
     statut = request.GET.get("statut", "")
+    kind = request.GET.get("kind", "")
     messages_qs = ContactMessage.objects.all()
     if statut:
         messages_qs = messages_qs.filter(statut=statut)
+    if kind in (ContactMessage.KIND_CONTACT, ContactMessage.KIND_PRESTATION):
+        messages_qs = messages_qs.filter(kind=kind)
     messages_qs = messages_qs.order_by("-created_at")
 
     return render(request, "core/admin_contact.html", {
         "messages_list": messages_qs,
         "statut_actif": statut,
+        "kind_actif": kind,
         "statut_choices": ContactMessage.STATUS_CHOICES,
+        "kind_choices": ContactMessage.KIND_CHOICES,
     })
+
+
+@staff_member_required
+def admin_contact_delete(request, pk):
+    if request.method == "POST":
+        ContactMessage.objects.filter(pk=pk).delete()
+    return redirect("admin_contact")
 
 
 def media_vote(request, pk):
@@ -236,8 +423,16 @@ def media_vote(request, pk):
     media = MediaItem.objects.filter(pk=pk, publie=True).first()
     if not media:
         return JsonResponse({"error": "introuvable"}, status=404)
-    vote, created = MediaVote.objects.get_or_create(media=media, session_key=session_key)
-    if not created:
+    from django.db import IntegrityError
+
+    try:
+        vote, created = MediaVote.objects.get_or_create(
+            media=media, session_key=session_key
+        )
+    except IntegrityError:
+        vote = MediaVote.objects.filter(media=media, session_key=session_key).first()
+        created = False
+    if not created and vote is not None:
         vote.delete()
         voted = False
     else:
@@ -272,7 +467,7 @@ def admin_medias(request):
 def admin_media_action(request, pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST requis"}, status=405)
-    media = MediaItem.objects.get(pk=pk)
+    media = get_object_or_404(MediaItem, pk=pk)
     action = request.POST.get("action")
     if action == "publier":
         media.publie = True
@@ -291,6 +486,27 @@ def admin_media_action(request, pk):
             media.object_id = obj_id
             media.save(update_fields=["content_type_id", "object_id"])
     return JsonResponse({"ok": True, "statut": media.statut})
+
+
+@staff_member_required
+def admin_media_edit(request, pk):
+    """Enregistre une version retouchée (JPEG HD) pour une photo."""
+    if request.method != "POST":
+        return JsonResponse({"error": "POST requis"}, status=405)
+    media = get_object_or_404(MediaItem, pk=pk)
+    if media.type != "photo":
+        return JsonResponse({"error": "Réservé aux photos"}, status=400)
+    uploaded = request.FILES.get("fichier_edite")
+    if not uploaded:
+        return JsonResponse({"error": "Fichier manquant"}, status=400)
+    if uploaded.size > 25 * 1024 * 1024:
+        return JsonResponse({"error": "Fichier trop volumineux"}, status=400)
+    _attach_fichier_edite(media, uploaded)
+    return JsonResponse({
+        "ok": True,
+        "url_edite": media.fichier_edite.url if media.fichier_edite else "",
+        "url_affichage": media.url_affichage,
+    })
 
 
 @cache_page(settings.CACHE_TTL_DON)
@@ -312,7 +528,7 @@ def admin_concerts(request):
 
 @staff_member_required
 def admin_concert_edit(request, pk=None):
-    instance = Event.objects.get(pk=pk) if pk else None
+    instance = get_object_or_404(Event, pk=pk) if pk else None
     if request.method == "POST":
         form = EventForm(request.POST, instance=instance)
         if form.is_valid():
@@ -338,7 +554,7 @@ def admin_venues(request):
 
 @staff_member_required
 def admin_venue_edit(request, pk=None):
-    instance = Venue.objects.get(pk=pk) if pk else None
+    instance = get_object_or_404(Venue, pk=pk) if pk else None
     if request.method == "POST":
         form = VenueForm(request.POST, instance=instance)
         if form.is_valid():

@@ -6,7 +6,8 @@ import logging
 from collections import defaultdict
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -47,7 +48,35 @@ RESPOND_MAP = {
 }
 
 
-def ensure_participation_statuses() -> dict[str, ParticipationStatus]:
+_STATUS_CACHE: dict[str, ParticipationStatus] | None = None
+
+
+def ensure_participation_statuses(*, force: bool = False) -> dict[str, ParticipationStatus]:
+    global _STATUS_CACHE
+    if _STATUS_CACHE is not None and not force:
+        return _STATUS_CACHE
+
+    existing = {
+        s.code: s
+        for s in ParticipationStatus.objects.filter(code__in=STATUS_CODES.keys())
+    }
+    if len(existing) == len(STATUS_CODES) and not force:
+        # Refresh labels/order if outdated without write on every call.
+        stale = False
+        for code, payload in STATUS_CODES.items():
+            s = existing[code]
+            if (
+                s.label != payload["label"]
+                or s.color_token != payload["color_token"]
+                or s.sort_order != payload["sort_order"]
+                or not s.is_active
+            ):
+                stale = True
+                break
+        if not stale:
+            _STATUS_CACHE = existing
+            return existing
+
     result: dict[str, ParticipationStatus] = {}
     for code, payload in STATUS_CODES.items():
         status, _ = ParticipationStatus.objects.update_or_create(
@@ -60,6 +89,7 @@ def ensure_participation_statuses() -> dict[str, ParticipationStatus]:
             },
         )
         result[code] = status
+    _STATUS_CACHE = result
     return result
 
 
@@ -102,6 +132,7 @@ def resolve_invite_slot(musician, poste: str) -> tuple[str, str]:
     Valide le poste convoqué pour un musicien.
 
     Retourne (poste, role_kind). Lève ValueError si incohérent.
+    Sans poste explicite : poste titulaire s’il existe, sinon l’unique slot.
     """
     poste = (poste or "").strip()
     try:
@@ -115,20 +146,26 @@ def resolve_invite_slot(musician, poste: str) -> tuple[str, str]:
             return "", ""
         raise ValueError("Ce musicien n’a aucun poste renseigné")
 
-    if len(slots) == 1 and not poste:
-        return slots[0]["poste"], slots[0]["role_kind"]
+    if not poste:
+        # Défaut : titulaire, sinon unique chaise de remplacement.
+        if profile.poste_titulaire:
+            return (
+                profile.poste_titulaire,
+                EventParticipation.RoleKind.TITULAIRE,
+            )
+        if len(slots) == 1:
+            return slots[0]["poste"], slots[0]["role_kind"]
+        raise ValueError("Choisissez le poste pour lequel convoquer ce musicien")
 
     for slot in slots:
         if slot["poste"] == poste:
             return slot["poste"], slot["role_kind"]
 
-    if not poste:
-        raise ValueError("Choisissez le poste pour lequel convoquer ce musicien")
     raise ValueError("Poste non associé à ce musicien")
 
 
 def invite_slots_for_profile(profile: MusicianProfile) -> list[dict]:
-    """Slots d’invitation (un par poste titulaire / remplaçant)."""
+    """Slots d’invitation (titulaire d’abord, puis remplaçants)."""
     slots: list[dict] = []
     if profile.poste_titulaire:
         slots.append(
@@ -136,16 +173,20 @@ def invite_slots_for_profile(profile: MusicianProfile) -> list[dict]:
                 "poste": profile.poste_titulaire,
                 "role_kind": EventParticipation.RoleKind.TITULAIRE,
                 "label": f"{profile.get_poste_titulaire_display()} (tit.)",
+                "is_default": True,
             }
         )
-    if profile.poste_remplacant:
+    for poste in profile.postes_remplacant:
         slots.append(
             {
-                "poste": profile.poste_remplacant,
+                "poste": poste,
                 "role_kind": EventParticipation.RoleKind.REMPLACANT,
-                "label": f"{profile.get_poste_remplacant_display()} (remp.)",
+                "label": f"{profile.get_poste_remplacant_label(poste)} (remp.)",
+                "is_default": False,
             }
         )
+    if slots and not any(s["is_default"] for s in slots):
+        slots[0]["is_default"] = True
     return slots
 
 
@@ -154,43 +195,74 @@ def invite_choices_for_musicians(musicians) -> list[dict]:
     Options d’invitation aplaties : une entrée par (musicien, poste).
 
     value = « {user_id}:{poste} » pour le select HTML.
+    Conservé pour compat ; préférer invite_musicians_for_form.
     """
     choices: list[dict] = []
+    for entry in invite_musicians_for_form(musicians):
+        if not entry["slots"]:
+            choices.append(
+                {
+                    "value": f"{entry['user_id']}:",
+                    "user_id": entry["user_id"],
+                    "poste": "",
+                    "label": entry["name"],
+                }
+            )
+            continue
+        for slot in entry["slots"]:
+            choices.append(
+                {
+                    "value": f"{entry['user_id']}:{slot['poste']}",
+                    "user_id": entry["user_id"],
+                    "poste": slot["poste"],
+                    "label": f"{entry['name']} · {slot['label']}",
+                }
+            )
+    return choices
+
+
+def invite_musicians_for_form(musicians) -> list[dict]:
+    """
+    Musiciens pour le formulaire d’invitation (titulaire par défaut).
+
+    Chaque entrée : user_id, name, default_poste, slots[].
+    """
+    entries: list[dict] = []
     for m in musicians:
         name = m.get_full_name() or m.username
         try:
             profile = m.musician_profile
         except MusicianProfile.DoesNotExist:
-            choices.append(
+            entries.append(
                 {
-                    "value": f"{m.pk}:",
                     "user_id": m.pk,
-                    "poste": "",
-                    "label": name,
+                    "name": name,
+                    "default_poste": "",
+                    "slots": [],
                 }
             )
             continue
         slots = invite_slots_for_profile(profile)
-        if not slots:
-            choices.append(
-                {
-                    "value": f"{m.pk}:",
-                    "user_id": m.pk,
-                    "poste": "",
-                    "label": name,
-                }
-            )
-            continue
-        for slot in slots:
-            choices.append(
-                {
-                    "value": f"{m.pk}:{slot['poste']}",
-                    "user_id": m.pk,
-                    "poste": slot["poste"],
-                    "label": f"{name} · {slot['label']}",
-                }
-            )
-    return choices
+        default = next((s["poste"] for s in slots if s.get("is_default")), "")
+        if not default and slots:
+            default = slots[0]["poste"]
+        entries.append(
+            {
+                "user_id": m.pk,
+                "name": name,
+                "default_poste": default,
+                "slots": [
+                    {
+                        "poste": s["poste"],
+                        "label": s["label"],
+                        "role_kind": s["role_kind"],
+                        "is_default": bool(s.get("is_default")),
+                    }
+                    for s in slots
+                ],
+            }
+        )
+    return entries
 
 
 def parse_invite_choice(raw: str) -> tuple[int | None, str]:
@@ -287,19 +359,44 @@ def invite_musician_to_event(
         raise ValueError("Utilisateur non musicien ou inactif")
     poste, role_kind = resolve_invite_slot(musician, poste)
     invited = get_status("invited")
-    part, created = EventParticipation.objects.get_or_create(
-        event=event,
-        user=musician,
-        defaults={
-            "status": invited,
-            "poste": poste,
-            "role_kind": role_kind,
-        },
-    )
+    try:
+        part, created = EventParticipation.objects.get_or_create(
+            event=event,
+            user=musician,
+            defaults={
+                "status": invited,
+                "poste": poste,
+                "role_kind": role_kind,
+            },
+        )
+    except IntegrityError:
+        part = EventParticipation.objects.select_related("status").get(
+            event=event, user=musician
+        )
+        created = False
+
+    reinvite = False
+    if not created:
+        updates = ["updated_at"]
+        if part.status_id != invited.pk:
+            part.status = invited
+            updates.append("status")
+            reinvite = True
+        if poste and part.poste != poste:
+            part.poste = poste
+            updates.append("poste")
+            reinvite = True
+        if part.role_kind != role_kind:
+            part.role_kind = role_kind
+            updates.append("role_kind")
+            reinvite = True
+        if reinvite or "poste" in updates or "role_kind" in updates:
+            part.save(update_fields=updates)
+
     from chat.services import sync_participation_to_chat
 
     sync_participation_to_chat(part)
-    if created and send_notification:
+    if (created or reinvite) and send_notification:
         notify_event_invite(event, [musician])
     return part, created
 
@@ -445,6 +542,28 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
     return proposal
 
 
+def _remplacant_any_q() -> Q:
+    """Profil avec au moins un poste remplaçant renseigné."""
+    q = Q()
+    for field in MusicianProfile.POSTE_REMPLACANT_FIELDS:
+        q |= Q(**{f"{field}__gt": ""})
+    return q
+
+
+def _remplacant_matches_poste_q(poste: str) -> Q:
+    q = Q()
+    for field in MusicianProfile.POSTE_REMPLACANT_FIELDS:
+        q |= Q(**{field: poste})
+    return q
+
+
+def _remplacant_in_postes_q(postes: list[str]) -> Q:
+    q = Q()
+    for field in MusicianProfile.POSTE_REMPLACANT_FIELDS:
+        q |= Q(**{f"{field}__in": postes})
+    return q
+
+
 def eligible_substitutes_for(participation: EventParticipation):
     """Remplaçants du même poste / pupitre non déjà inscrits confirmés / invités."""
     section = participation.section_for_roster()
@@ -452,22 +571,20 @@ def eligible_substitutes_for(participation: EventParticipation):
     qs = MusicianProfile.objects.select_related("user", "section").filter(
         user__is_active=True,
         user__is_musician=True,
-        poste_remplacant__gt="",
-    ).exclude(user_id=participation.user_id)
+    ).filter(_remplacant_any_q()).exclude(user_id=participation.user_id)
 
     if participation.poste:
         # Priorité : mêmes chaises en remplaçant, sinon même pupitre.
-        same_poste = qs.filter(poste_remplacant=participation.poste)
+        same_poste = qs.filter(_remplacant_matches_poste_q(participation.poste))
         if same_poste.exists():
             qs = same_poste
         elif section is not None:
-            qs = qs.filter(
-                poste_remplacant__in=[
-                    code
-                    for code, section_code in MusicianProfile.POSTE_SECTION_CODE.items()
-                    if section_code == section.code
-                ]
-            )
+            section_postes = [
+                code
+                for code, section_code in MusicianProfile.POSTE_SECTION_CODE.items()
+                if section_code == section.code
+            ]
+            qs = qs.filter(_remplacant_in_postes_q(section_postes))
     elif section is not None:
         qs = qs.filter(section=section)
 
@@ -508,15 +625,33 @@ def respond_substitute_request(
     *,
     accept: bool,
 ) -> SubstituteRequest:
+    request_obj = (
+        SubstituteRequest.objects.select_for_update()
+        .select_related("participation", "participation__event", "candidate")
+        .get(pk=request_obj.pk)
+    )
     if request_obj.status != SubstituteRequest.Status.PROPOSED:
         raise ValueError("Demande déjà traitée")
 
     if accept:
+        orig = (
+            EventParticipation.objects.select_for_update()
+            .select_related("status")
+            .get(pk=request_obj.participation_id)
+        )
+        # Another substitute may already have been accepted for this seat.
+        if orig.status.code == "declined" and EventParticipation.objects.filter(
+            event_id=orig.event_id,
+            role_kind=EventParticipation.RoleKind.REMPLACANT,
+            status__code="confirmed",
+            comment="Remplaçant",
+        ).exclude(user_id=request_obj.candidate_id).exists():
+            raise ValueError("Un remplaçant a déjà accepté pour ce poste")
+
         request_obj.status = SubstituteRequest.Status.ACCEPTED
         request_obj.save(update_fields=["status", "updated_at"])
         confirmed = get_status("confirmed")
         declined = get_status("declined")
-        orig = request_obj.participation
         EventParticipation.objects.update_or_create(
             event=orig.event,
             user=request_obj.candidate,
@@ -561,10 +696,29 @@ def lock_date_proposal(
 
 def vote_counts_for_option(option: DateOption) -> dict[str, int]:
     counts = {"yes": 0, "no": 0, "maybe": 0}
-    for choice in option.votes.values_list("choice", flat=True):
+    # Prefer prefetched cache when available (avoids N+1 on poll detail).
+    votes = option.votes.all()
+    if hasattr(votes, "_result_cache") and votes._result_cache is not None:
+        for vote in votes:
+            if vote.choice in counts:
+                counts[vote.choice] += 1
+        return counts
+    for choice in votes.values_list("choice", flat=True):
         if choice in counts:
             counts[choice] += 1
     return counts
+
+
+def user_can_access_poll(user, proposal: DateProposal) -> bool:
+    """Staff always; otherwise must be invited / participant on the linked event."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    event = proposal.linked_event
+    if event is None:
+        return False
+    return EventParticipation.objects.filter(event=event, user=user).exists()
 
 
 def cast_date_vote(option: DateOption, user, choice: str) -> DateVote:
@@ -573,6 +727,8 @@ def cast_date_vote(option: DateOption, user, choice: str) -> DateVote:
     proposal = option.proposal
     if not proposal.is_open:
         raise ValueError("Sondage fermé")
+    if not user_can_access_poll(user, proposal):
+        raise ValueError("Vous n’êtes pas concerné par ce sondage")
     vote, _ = DateVote.objects.update_or_create(
         option=option,
         user=user,

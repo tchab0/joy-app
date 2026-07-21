@@ -135,13 +135,39 @@ class MusicianProfile(models.Model):
         help_text="Chaise pour laquelle le musicien est titulaire "
         "(convoqué à chaque nouvelle date). Détermine le pupitre.",
     )
+    # Jusqu’à 4 chaises de remplacement (poste_remplacant = 1er slot).
+    MAX_POSTES_REMPLACANT = 4
+    POSTE_REMPLACANT_FIELDS = (
+        "poste_remplacant",
+        "poste_remplacant_2",
+        "poste_remplacant_3",
+        "poste_remplacant_4",
+    )
+
     poste_remplacant = models.CharField(
         max_length=30,
         blank=True,
         choices=Poste.choices,
         verbose_name="Poste remplaçant",
-        help_text="Chaise pour laquelle le musicien peut être sollicité "
-        "en remplacement. Laisser vide si non remplaçant.",
+        help_text="1re chaise de remplacement. Laisser vide si non remplaçant.",
+    )
+    poste_remplacant_2 = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=Poste.choices,
+        verbose_name="Poste remplaçant 2",
+    )
+    poste_remplacant_3 = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=Poste.choices,
+        verbose_name="Poste remplaçant 3",
+    )
+    poste_remplacant_4 = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=Poste.choices,
+        verbose_name="Poste remplaçant 4",
     )
 
     class Meta:
@@ -158,33 +184,71 @@ class MusicianProfile(models.Model):
 
     @property
     def is_remplacant(self) -> bool:
-        return bool(self.poste_remplacant)
+        return bool(self.postes_remplacant)
+
+    @property
+    def postes_remplacant(self) -> list[str]:
+        """Postes de remplacement renseignés, sans doublon, ordre conservé."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for field in self.POSTE_REMPLACANT_FIELDS:
+            value = getattr(self, field) or ""
+            if value and value not in seen:
+                seen.add(value)
+                out.append(value)
+        return out
+
+    def set_postes_remplacant(self, postes: list[str]) -> None:
+        """Normalise et écrit jusqu’à MAX_POSTES_REMPLACANT postes distincts."""
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in postes:
+            value = (raw or "").strip()
+            if not value or value not in self.Poste.values:
+                continue
+            if value in seen:
+                continue
+            seen.add(value)
+            cleaned.append(value)
+            if len(cleaned) >= self.MAX_POSTES_REMPLACANT:
+                break
+        for i, field in enumerate(self.POSTE_REMPLACANT_FIELDS):
+            setattr(self, field, cleaned[i] if i < len(cleaned) else "")
+
+    def get_poste_remplacant_label(self, poste: str) -> str:
+        return dict(self.Poste.choices).get(poste, poste)
+
+    @property
+    def postes_remplacant_display(self) -> list[str]:
+        return [self.get_poste_remplacant_label(p) for p in self.postes_remplacant]
 
     def roles_label(self) -> str:
         """Libellé compact des rôles (liste admin, roster)."""
         parts: list[str] = []
         if self.poste_titulaire:
             parts.append(f"{self.get_poste_titulaire_display()} (tit.)")
-        if self.poste_remplacant:
-            parts.append(f"{self.get_poste_remplacant_display()} (remp.)")
+        for label in self.postes_remplacant_display:
+            parts.append(f"{label} (remp.)")
         return " · ".join(parts) if parts else "—"
 
     @classmethod
-    def section_for_poste(cls, poste: str) -> OrchestraSection | None:
-        """Résout (ou crée) le pupitre correspondant à un poste."""
+    def section_for_poste(cls, poste: str, *, create: bool = False) -> OrchestraSection | None:
+        """Résout le pupitre correspondant à un poste (création optionnelle)."""
         code = cls.POSTE_SECTION_CODE.get(poste or "")
         if not code:
             return None
-        name, order = cls.SECTION_DEFAULTS[code]
-        section, _ = OrchestraSection.objects.get_or_create(
-            code=code,
-            defaults={"name": name, "sort_order": order, "is_active": True},
-        )
-        return section
+        if create:
+            name, order = cls.SECTION_DEFAULTS[code]
+            section, _ = OrchestraSection.objects.get_or_create(
+                code=code,
+                defaults={"name": name, "sort_order": order, "is_active": True},
+            )
+            return section
+        return OrchestraSection.objects.filter(code=code).first()
 
     def sync_section_from_poste(self) -> None:
         """Pupitre = pupitre du poste titulaire (source de vérité)."""
-        self.section = self.section_for_poste(self.poste_titulaire)
+        self.section = self.section_for_poste(self.poste_titulaire, create=True)
 
     def save(self, *args, **kwargs):
         self.sync_section_from_poste()
@@ -247,6 +311,10 @@ class EventParticipation(models.Model):
                 fields=["event", "user"],
                 name="unique_event_participation_per_user",
             )
+        ]
+        indexes = [
+            models.Index(fields=["event", "status"], name="plan_part_event_status_idx"),
+            models.Index(fields=["user", "event"], name="plan_part_user_event_idx"),
         ]
 
     def __str__(self):
@@ -333,6 +401,9 @@ class DateProposal(models.Model):
         ordering = ["-created_at"]
         verbose_name = "Sondage de dates"
         verbose_name_plural = "Sondages de dates"
+        indexes = [
+            models.Index(fields=["status"], name="plan_proposal_status_idx"),
+        ]
 
     def __str__(self):
         return self.title

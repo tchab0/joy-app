@@ -13,14 +13,7 @@
     <p class="pl-sub">Effectifs, sondages et matériel.</p>
   </header>
 
-  <nav class="pl-nav">
-    <a href="{% url 'planning:dashboard' %}">← Calendrier</a>
-    <a href="{% url 'planning:my_board' %}">Mes dates</a>
-    <a href="{% url 'repertoire:list' %}">Répertoire</a>
-    <a href="{% url 'repertoire:staff_list' %}">Atelier</a>
-    <a href="{% url 'planning:admin' %}" class="is-active">Admin</a>
-    <a href="{% url 'planning:admin_musicians' %}">Musiciens</a>
-  </nav>
+  {% include "planning/_module_nav.html" with active="admin" %}
 
   <section class="pl-section">
     <h2>Prochains événements</h2>

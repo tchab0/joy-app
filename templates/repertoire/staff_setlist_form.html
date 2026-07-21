@@ -12,9 +12,7 @@
 {{ builder_selected|json_script:"builder-selected-data" }}
 
 <div class="pl pl--wide">
-  <nav class="pl-nav">
-    <a href="{% url 'repertoire:staff_setlist_list' %}">← Setlists</a>
-  </nav>
+  {% include "planning/_module_nav.html" with active="setlists" %}
 
   <header class="pl-head">
     <h1>{% if setlist %}{{ setlist.title }}{% else %}Nouvelle setlist{% endif %}</h1>

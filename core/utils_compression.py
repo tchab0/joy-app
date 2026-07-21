@@ -1,24 +1,54 @@
 import subprocess
-import os
 from pathlib import Path
+
 from django.conf import settings
 
 
 def compresser_media(media_item):
     """
     Compresse le fichier selon son type.
-    Version compatible avec le schéma actuel sans fichier_compresse.
+    Pour les photos, source = fichier_edite si présent, sinon original.
+
+    Ne bascule pas un média déjà classé (publie / refuse) vers en_cours :
+    sinon un reload juste après retouche le fait disparaître de son onglet.
     """
-    if not media_item.fichier:
+    src_path = media_item.source_compression()
+    if not src_path or not src_path.exists():
         return
 
-    src = media_item.fichier.path
+    src = str(src_path)
     dest_dir = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    nom_base = Path(src).stem
-    media_item.statut = "en_cours"
-    media_item.save(update_fields=["statut"])
+    # Stem : version éditée si présente (sidecar d'affichage distinct),
+    # sinon source — pour ne pas écraser le compressé « original ».
+    if media_item.fichier_edite:
+        base_name = media_item.fichier_edite.name
+    else:
+        base_name = media_item.fichier.name if media_item.fichier else ""
+    if not base_name:
+        return
+    nom_base = Path(base_name).stem
+
+    prev_statut = media_item.statut
+    prev_publie = bool(media_item.publie)
+    # Progress UI only for items still in the submission pipeline
+    track_progress = prev_statut not in ("publie", "refuse")
+    if track_progress:
+        media_item.statut = "en_cours"
+        media_item.save(update_fields=["statut"])
+
+    def _restore_statut(success):
+        if prev_publie:
+            return "publie"
+        if prev_statut == "refuse":
+            return "refuse"
+        if success:
+            return "en_attente"
+        # failure: keep prior pipeline status if sensible
+        if prev_statut in ("en_attente", "en_cours"):
+            return "en_attente"
+        return prev_statut or "en_attente"
 
     try:
         if media_item.type == "video":
@@ -60,16 +90,21 @@ def compresser_media(media_item):
                         object_stream_mode=pikepdf.ObjectStreamMode.generate
                     )
             except ImportError:
-                media_item.statut = "publie" if media_item.publie else "en_attente"
-                media_item.save(update_fields=["statut"])
+                new_statut = _restore_statut(True)
+                if media_item.statut != new_statut:
+                    media_item.statut = new_statut
+                    media_item.save(update_fields=["statut"])
                 return
         else:
             return
 
-        media_item.statut = "publie" if media_item.publie else "en_attente"
-        media_item.save(update_fields=["statut"])
+        new_statut = _restore_statut(True)
+        if media_item.statut != new_statut:
+            media_item.statut = new_statut
+            media_item.save(update_fields=["statut"])
 
     except Exception as e:
-        media_item.statut = "en_attente"
+        new_statut = _restore_statut(False)
+        media_item.statut = new_statut
         media_item.note_admin = f"Erreur compression : {e}"
         media_item.save(update_fields=["statut", "note_admin"])

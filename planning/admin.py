@@ -32,9 +32,30 @@ class OrchestraSectionAdmin(admin.ModelAdmin):
 
 @admin.register(MusicianProfile)
 class MusicianProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "section", "poste_titulaire", "poste_remplacant")
-    list_filter = ("section", "poste_titulaire", "poste_remplacant")
-    list_editable = ("poste_titulaire", "poste_remplacant")
+    list_display = (
+        "user",
+        "section",
+        "poste_titulaire",
+        "poste_remplacant",
+        "poste_remplacant_2",
+        "poste_remplacant_3",
+        "poste_remplacant_4",
+    )
+    list_filter = (
+        "section",
+        "poste_titulaire",
+        "poste_remplacant",
+        "poste_remplacant_2",
+        "poste_remplacant_3",
+        "poste_remplacant_4",
+    )
+    list_editable = (
+        "poste_titulaire",
+        "poste_remplacant",
+        "poste_remplacant_2",
+        "poste_remplacant_3",
+        "poste_remplacant_4",
+    )
     search_fields = ("user__username", "user__first_name", "user__last_name")
     autocomplete_fields = ("user", "section")
 

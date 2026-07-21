@@ -37,7 +37,7 @@
         {% if field.name == "audio_recording" and piece.audio_recording %}
         <p class="rep-muted" style="margin-top:.35rem">
           Fichier actuel :
-          <a href="{{ piece.audio_recording.url }}" style="color:var(--accent)" target="_blank" rel="noopener">écouter</a>
+          <a href="{% url 'repertoire:piece_audio' piece.slug %}" style="color:var(--accent)" target="_blank" rel="noopener">écouter</a>
         </p>
         {% endif %}
       </div>

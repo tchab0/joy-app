@@ -9,12 +9,12 @@
 
 {% block content %}
 <div class="pl">
-  <nav class="pl-nav">
-    <a href="{% url 'repertoire:list' %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">← Répertoire</a>
-    {% if is_planning_staff %}
+  {% include "planning/_module_nav.html" with active="repertoire" %}
+  {% if is_planning_staff %}
+  <div class="pl-nav-context">
     <a href="{% url 'repertoire:staff_piece_edit' piece.slug %}">Éditer</a>
-    {% endif %}
-  </nav>
+  </div>
+  {% endif %}
 
   <header class="pl-head">
     <h1>{{ piece.title }}</h1>
@@ -25,7 +25,7 @@
     <select id="poste" name="poste" onchange="this.form.submit()">
       <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
       {% for value, label in poste_choices %}
-      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}</option>
+      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
       {% endfor %}
     </select>
   </form>
@@ -52,7 +52,7 @@
     <h2>Écoute</h2>
     {% if piece.audio_recording %}
     <p class="rep-muted" style="margin-bottom:.4rem">Enregistrement propre</p>
-    <audio class="rep-audio" controls preload="metadata" src="{{ piece.audio_recording.url }}">
+    <audio class="rep-audio" controls preload="metadata" src="{% url 'repertoire:piece_audio' piece.slug %}">
       Votre navigateur ne lit pas l’audio.
     </audio>
     {% endif %}

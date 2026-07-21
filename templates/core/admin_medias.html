@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Gestion des médias — JOY{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/photo-editor.css' %}">
 <style>
 .tab-bar { display:flex; gap:.25rem; margin-bottom:2rem; border-bottom:1px solid var(--border); }
 .tab-btn { padding:.5rem 1.2rem; font-size:.82rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; border:none; background:none; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color var(--trans),border-color var(--trans); text-decoration:none; display:inline-block; }
@@ -39,11 +41,11 @@
     {% endif %}
 
     {% for m in medias %}
-    <div class="media-card" x-data="{ open_rattach: false, saving: false }">
+    <div class="media-card" x-data="{ open_rattach: false, saving: false, editing: false }">
 
       <div class="media-thumb">
-        {% if m.type == "photo" and m.fichier %}
-          <img src="{{ m.fichier.url }}" alt="{{ m.titre }}">
+        {% if m.type == "photo" and m.fichier_actif %}
+          <img src="{{ m.url_affichage }}" alt="{{ m.titre }}" id="thumb-{{ m.pk }}">
         {% elif m.type == "video" %}<span>🎬</span>
         {% elif m.type == "audio" %}<span>🎵</span>
         {% else %}<span>📄</span>
@@ -58,10 +60,13 @@
           {% if m.soumis_par_nom %}&middot; <strong>{{ m.soumis_par_nom }}</strong>{% endif %}
           {% if m.soumis_par_email %}&lt;{{ m.soumis_par_email }}&gt;{% endif %}
         </div>
-        {% if m.fichier %}
+        {% if m.fichier or m.fichier_edite %}
         <div class="media-meta">
-          <a href="{{ m.fichier.url }}" target="_blank" style="color:var(--accent)">Fichier original ↗</a>
-          {% if m.url_compressee %}&nbsp;·&nbsp;<a href="{{ m.url_compressee }}" target="_blank" style="color:var(--ok)">Compressé ✓</a>{% elif m.est_compresse %}&nbsp;·&nbsp;<span style="color:var(--ok)">Compressé ✓</span>{% endif %}
+          {% if m.fichier %}
+          <a href="{{ m.fichier.url }}" target="_blank" style="color:var(--accent)">Original ↗</a>
+          {% endif %}
+          {% if m.fichier_edite %}{% if m.fichier %}&nbsp;·&nbsp;{% endif %}<a href="{{ m.fichier_edite.url }}" target="_blank" style="color:var(--ok)">Édité ✓</a>{% endif %}
+          {% if m.url_compressee %}{% if not m.fichier or m.fichier.url != m.url_compressee %}&nbsp;·&nbsp;<a href="{{ m.url_compressee }}" target="_blank" style="color:var(--ok)">Compressé ✓</a>{% endif %}{% elif m.est_compresse %}&nbsp;·&nbsp;<span style="color:var(--ok)">Compressé ✓</span>{% endif %}
         </div>
         {% endif %}
         {% if m.url_externe %}
@@ -87,7 +92,6 @@
           </span>
         </div>
 
-        <!-- Rattachement à une page -->
         <div class="rattach-form" x-show="open_rattach" x-cloak>
           <label style="font-weight:600">Rattacher à une page</label>
           <select x-ref="page_{{ m.pk }}">
@@ -113,6 +117,44 @@
       </div>
 
       <div class="media-actions">
+        {% if m.type == "photo" and m.fichier %}
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem;min-height:44px" :disabled="editing"
+          @click="
+            {% if m.statut == 'publie' %}
+            if (!confirm('Cette photo est déjà publiée. La modifier remplacera la version visible sur le site (la compression sera relancée). Continuer ?')) return;
+            {% endif %}
+            editing=true;
+            const originalUrl = '{% if m.fichier %}{{ m.fichier.url|escapejs }}{% endif %}';
+            const editedUrl = '{% if m.fichier_edite %}{{ m.fichier_edite.url|escapejs }}{% endif %}';
+            const launch = (src) => {
+              if (!src) { editing=false; return; }
+              JoyPhotoEditor.open({
+                source: src,
+                onSave: async (file) => {
+                  const fd = new FormData();
+                  fd.append('fichier_edite', file, file.name);
+                  const r = await fetch('{% url 'admin_media_edit' m.pk %}', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    body: fd
+                  });
+                  editing=false;
+                  if (r.ok) {
+                    const u = new URL(location.href);
+                    u.searchParams.set('statut', '{{ m.statut }}');
+                    location.assign(u.toString());
+                  } else alert('Échec de l’enregistrement');
+                },
+                onCancel: () => { editing=false; }
+              });
+            };
+            if (editedUrl && originalUrl && editedUrl !== originalUrl) {
+              JoyPhotoEditor.chooseSource({ original: originalUrl, edited: editedUrl }).then(launch);
+            } else {
+              launch(editedUrl || originalUrl);
+            }
+          ">{% if m.statut == 'publie' %}Modifier{% else %}Améliorer{% endif %}</button>
+        {% endif %}
         {% if m.statut != 'publie' %}
         <button class="btn btn-primary" style="font-size:.78rem;padding:.4rem .9rem"
           @click="fetch('{% url 'admin_media_action' m.pk %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},body:'action=publier'}).then(()=>location.reload())">
@@ -130,4 +172,7 @@
     {% endfor %}
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'core/photo-editor.js' %}"></script>
 {% endblock %}

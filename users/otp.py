@@ -135,7 +135,7 @@ def create_challenge(
         destination = (user.email or "").strip().lower()
         if not destination:
             raise ValueError("Aucun e-mail associé à ce compte.")
-    elif channel == AuthChallenge.Channel.SMS:
+    elif channel == AuthChallenge.Channel.NOTIFICATION:
         destination = normalize_phone(user.phone)
         if not destination:
             raise ValueError("Aucun téléphone associé à ce compte.")
@@ -154,7 +154,14 @@ def create_challenge(
     )
 
     if send:
-        _deliver_code(user, challenge, code)
+        try:
+            _deliver_code(user, challenge, code)
+        except Exception as exc:
+            challenge.consumed_at = timezone.now()
+            challenge.save(update_fields=["consumed_at"])
+            raise ValueError(
+                "Impossible d’envoyer le code pour le moment. Réessayez plus tard."
+            ) from exc
         mark_otp_sent(user, purpose, channel)
 
     return challenge, code
@@ -175,7 +182,7 @@ def _deliver_code(user: User, challenge: AuthChallenge, code: str) -> None:
             recipient_list=[challenge.destination],
             fail_silently=False,
         )
-    elif challenge.channel == AuthChallenge.Channel.SMS:
+    elif challenge.channel == AuthChallenge.Channel.NOTIFICATION:
         send_sms(
             challenge.destination,
             f"JOY — code {code} (valide {OTP_TTL_SECONDS // 60} min)",
@@ -209,7 +216,7 @@ def verify_challenge(
             if not challenge.user.email_verified:
                 challenge.user.email_verified = True
                 challenge.user.save(update_fields=["email_verified"])
-        elif challenge.channel == AuthChallenge.Channel.SMS:
+        elif challenge.channel == AuthChallenge.Channel.NOTIFICATION:
             if not challenge.user.phone_verified:
                 challenge.user.phone_verified = True
                 challenge.user.save(update_fields=["phone_verified"])
@@ -241,7 +248,7 @@ def available_2fa_channels(user: User) -> list[str]:
     if user.email:
         channels.append(AuthChallenge.Channel.EMAIL)
     if normalize_phone(user.phone):
-        channels.append(AuthChallenge.Channel.SMS)
+        channels.append(AuthChallenge.Channel.NOTIFICATION)
     return channels
 
 

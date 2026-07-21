@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -161,6 +164,16 @@ class ChatMessage(models.Model):
         ordering = ["created_at"]
         verbose_name = "message"
         verbose_name_plural = "messages"
+        indexes = [
+            models.Index(
+                fields=["room", "created_at"],
+                name="chat_msg_room_created_idx",
+            ),
+            models.Index(
+                fields=["room", "deleted_at", "created_at"],
+                name="chat_msg_room_del_created_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         preview = (self.body or "")[:40]
@@ -176,7 +189,26 @@ class ChatMessage(models.Model):
 
 
 def chat_attachment_upload_to(instance: "ChatAttachment", filename: str) -> str:
-    return f"chat/{timezone.now():%Y/%m}/{filename}"
+    ext = Path(filename or "").suffix.lower()[:16]
+    if ext not in {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".pdf",
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".m4a",
+        ".mp4",
+        ".webm",
+        ".txt",
+        ".doc",
+        ".docx",
+    }:
+        ext = ""
+    return f"chat/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{ext}"
 
 
 class ChatAttachment(models.Model):
@@ -202,7 +234,11 @@ class ChatAttachment(models.Model):
 
     @property
     def is_image(self) -> bool:
-        return (self.content_type or "").startswith("image/")
+        ct = (self.content_type or "").lower()
+        if not ct.startswith("image/"):
+            return False
+        # Never treat SVG as displayable image (XSS vector).
+        return ct != "image/svg+xml"
 
     @property
     def is_pdf(self) -> bool:

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Mentions légales — JOY{% endblock %}
+{% block og_title %}Mentions légales — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Mentions légales — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Mentions légales du site Jazz Orchestra Yonnais (JOY), association musicale à La Roche-sur-Yon.{% endblock %}
+{% block og_description %}Mentions légales du site Jazz Orchestra Yonnais (JOY), association musicale à La Roche-sur-Yon.{% endblock %}
+{% block twitter_description %}Mentions légales du site Jazz Orchestra Yonnais (JOY), association musicale à La Roche-sur-Yon.{% endblock %}
+{% block extra_css %}
+<style>
+  .legal { max-width: 720px; color: var(--text); }
+  .legal h1 { margin-bottom: 1.5rem; }
+  .legal h2 {
+    font-family: var(--font-d);
+    font-size: 1.25rem;
+    margin: 2rem 0 .75rem;
+    color: var(--text);
+  }
+  .legal p, .legal li { color: var(--muted); line-height: 1.65; margin-bottom: .75rem; }
+  .legal ul { padding-left: 1.25rem; margin-bottom: 1rem; }
+  .legal a { color: var(--accent); }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container legal">
+    <h1 class="section-title">Mentions légales</h1>
+
+    <h2>Éditeur du site</h2>
+    <p>
+      Le site <strong style="color:var(--text)">jazz-orchestra-yonnais.fr</strong> est édité par
+      l’association <strong style="color:var(--text)">Jazz Orchestra Yonnais</strong> (JOY),
+      big band associatif basé à La Roche-sur-Yon (Vendée).
+    </p>
+    <p>
+      Contact&nbsp;:
+      <a href="mailto:{{ admin_email }}">{{ admin_email }}</a>
+      — également via la page <a href="{% url 'contact' %}">Contact</a>.
+    </p>
+    <p>Localisation&nbsp;: La Roche-sur-Yon, Vendée, France.</p>
+
+    <h2>Directeur de la publication</h2>
+    <p>Le président de l’association Jazz Orchestra Yonnais, en exercice.</p>
+
+    <h2>Hébergement</h2>
+    <p>
+      Le site est hébergé sur un serveur dédié administré pour l’association.
+      Pour toute question technique&nbsp;:
+      <a href="mailto:{{ admin_email }}">{{ admin_email }}</a>.
+    </p>
+
+    <h2>Propriété intellectuelle</h2>
+    <p>
+      L’ensemble des contenus présents sur ce site (textes, photographies, logos, éléments graphiques,
+      enregistrements audio ou vidéo), sauf mention contraire, sont la propriété de l’association
+      Jazz Orchestra Yonnais ou de leurs auteurs respectifs. Toute reproduction non autorisée est interdite.
+    </p>
+
+    <h2>Données personnelles</h2>
+    <p>
+      Les formulaires de contact, de demande de prestation et de proposition de médias collectent
+      les données nécessaires au traitement de votre demande (identité, coordonnées, message).
+      Ces données sont destinées à l’association et ne sont pas vendues à des tiers.
+    </p>
+    <p>
+      Conformément au RGPD, vous pouvez demander l’accès, la rectification ou la suppression de vos
+      données en écrivant à <a href="mailto:{{ admin_email }}">{{ admin_email }}</a>.
+    </p>
+    {% if GA_MEASUREMENT_ID %}
+    <p>
+      Le site utilise Google Analytics (mesure d’audience) avec anonymisation de l’adresse IP.
+      Vous pouvez vous opposer au dépôt de cookies via les réglages de votre navigateur.
+    </p>
+    {% else %}
+    <p>
+      Aucun outil de mesure d’audience tiers n’est activé sur ce site tant qu’un identifiant
+      Analytics n’est pas configuré.
+    </p>
+    {% endif %}
+
+    <h2>Espace membre</h2>
+    <p>
+      Les espaces authentifiés (compte, planning, répertoire, chat) sont réservés aux musiciens
+      et adhérents. Ils ne sont pas destinés à l’indexation par les moteurs de recherche.
+    </p>
+
+    <h2>Crédits</h2>
+    <p>
+      Cartes&nbsp;: © contributeurs <a href="https://www.openstreetmap.org/copyright" rel="noopener" target="_blank">OpenStreetMap</a>.
+    </p>
+  </div>
+</section>
+{% endblock %}

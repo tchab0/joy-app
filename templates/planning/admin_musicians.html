@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Gestion des musiciens — JOY{% endblock %}
 {% block extra_css %}
+{% include "planning/_styles.html" %}
 <style>
-  .admin-header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:2rem; }
   .admin-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--r); overflow:hidden; }
   .admin-table th { background:var(--text); color:rgba(255,255,255,.7); font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; text-align:left; }
   .admin-table td { padding:.85rem 1rem; border-bottom:1px solid var(--border); font-size:.9rem; vertical-align:middle; color:var(--text); }
@@ -28,62 +28,68 @@
 </style>
 {% endblock %}
 {% block content %}
-<section class="section">
-  <div class="container">
-    <div class="admin-header">
-      <h1 class="section-title" style="margin-bottom:0">Gestion des musiciens</h1>
-      <a href="{% url 'planning:admin_musician_add' %}" class="btn btn-primary">+ Ajouter un musicien</a>
+<div class="pl">
+  <header class="pl-head">
+    <div class="pl-head__row">
+      <div>
+        <h1>Musiciens</h1>
+        <p class="pl-sub">Comptes, postes titulaires et remplaçants.</p>
+      </div>
+      <a href="{% url 'planning:admin_musician_add' %}" class="btn btn-primary">+ Ajouter</a>
     </div>
-    {% if profiles %}
-    <table class="admin-table">
-      <thead>
-        <tr>
-          <th>Nom</th>
-          <th>Coordonnées</th>
-          <th>Pupitre</th>
-          <th>Rôles</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in profiles %}
-        <tr>
-          <td data-label="Nom">
-            <strong>{{ p.user.last_name }} {{ p.user.first_name }}</strong>
-            {% if not p.user.is_active %}<span class="badge badge-off">inactif</span>{% endif %}
-          </td>
-          <td data-label="Coordonnées">
-            {% if p.user.email %}<div>{{ p.user.email }}</div>{% endif %}
-            {% if p.user.phone %}<div class="muted">{{ p.user.phone }}</div>{% elif not p.user.email %}<span class="muted">—</span>{% endif %}
-          </td>
-          <td data-label="Pupitre">{{ p.section|default:"—" }}</td>
-          <td data-label="Rôles">
-            {% if p.poste_titulaire %}
-            <span class="badge badge-tit">Tit. {{ p.get_poste_titulaire_display }}</span>
-            {% endif %}
-            {% if p.poste_remplacant %}
-            <span class="badge badge-rem">Remp. {{ p.get_poste_remplacant_display }}</span>
-            {% endif %}
-            {% if not p.poste_titulaire and not p.poste_remplacant %}
-            <span class="muted">—</span>
-            {% endif %}
-          </td>
-          <td data-label="">
-            <div class="row-actions">
-              <a href="{% url 'planning:admin_musician_edit' p.pk %}" class="btn btn-outline btn-sm">Modifier</a>
-              <form method="post" action="{% url 'planning:admin_musician_remove' p.pk %}" onsubmit="return confirm('Retirer ce musicien de l’orchestre ?')">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger btn-sm">Retirer</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty-state">Aucun musicien enregistré. <a href="{% url 'planning:admin_musician_add' %}">Ajouter le premier →</a></div>
-    {% endif %}
-  </div>
-</section>
+  </header>
+
+  {% include "planning/_module_nav.html" with active="musiciens" %}
+
+  {% if profiles %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Coordonnées</th>
+        <th>Pupitre</th>
+        <th>Rôles</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr>
+        <td data-label="Nom">
+          <strong>{{ p.user.last_name }} {{ p.user.first_name }}</strong>
+          {% if not p.user.is_active %}<span class="badge badge-off">inactif</span>{% endif %}
+        </td>
+        <td data-label="Coordonnées">
+          {% if p.user.email %}<div>{{ p.user.email }}</div>{% endif %}
+          {% if p.user.phone %}<div class="muted">{{ p.user.phone }}</div>{% elif not p.user.email %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td data-label="Pupitre">{{ p.section|default:"—" }}</td>
+        <td data-label="Rôles">
+          {% if p.poste_titulaire %}
+          <span class="badge badge-tit">Tit. {{ p.get_poste_titulaire_display }}</span>
+          {% endif %}
+          {% for label in p.postes_remplacant_display %}
+          <span class="badge badge-rem">Remp. {{ label }}</span>
+          {% endfor %}
+          {% if not p.poste_titulaire and not p.postes_remplacant %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td data-label="">
+          <div class="row-actions">
+            <a href="{% url 'planning:admin_musician_edit' p.pk %}" class="btn btn-outline btn-sm">Modifier</a>
+            <form method="post" action="{% url 'planning:admin_musician_remove' p.pk %}" onsubmit="return confirm('Retirer ce musicien de l’orchestre ?')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Retirer</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">Aucun musicien enregistré. <a href="{% url 'planning:admin_musician_add' %}">Ajouter le premier →</a></div>
+  {% endif %}
+</div>
 {% endblock %}

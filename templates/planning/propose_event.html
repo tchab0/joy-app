@@ -16,6 +16,8 @@
     </p>
   </header>
 
+  {% include "planning/_module_nav.html" with active="calendrier" %}
+
   <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}">
     {% csrf_token %}
     <div>

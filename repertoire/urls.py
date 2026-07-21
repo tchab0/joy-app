@@ -13,6 +13,11 @@ urlpatterns = [
         name="create_salon",
     ),
     path("partition/<int:pk>/", views.PartDownloadView.as_view(), name="part_pdf"),
+    path(
+        "morceau/<slug:slug>/audio/",
+        views.PieceAudioDownloadView.as_view(),
+        name="piece_audio",
+    ),
     # Staff
     path("staff/", views.StaffPieceListView.as_view(), name="staff_list"),
     path("staff/nouveau/", views.StaffPieceCreateView.as_view(), name="staff_piece_create"),

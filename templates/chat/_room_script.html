@@ -1,8 +1,18 @@
 <script>
 function chatRoom(cfg) {
   cfg = cfg || {};
+  function loadMessages(scriptId) {
+    if (!scriptId) return cfg.messages || [];
+    const el = document.getElementById(scriptId);
+    if (!el) return [];
+    try {
+      return JSON.parse(el.textContent);
+    } catch (e) {
+      return [];
+    }
+  }
   return {
-    messages: cfg.messages || [],
+    messages: loadMessages(cfg.messagesScriptId),
     currentUserId: cfg.currentUserId,
     wsUrl: cfg.wsUrl,
     apiSendUrl: cfg.apiSendUrl || '',

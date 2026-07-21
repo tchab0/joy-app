@@ -28,19 +28,9 @@
       <button type="submit" class="btn-launch" style="width:100%">Valider la date</button>
     </form>
     {% endif %}
-    {% if invite_choices %}
-    <form class="chat-staff-invite" method="post" action="{% url 'planning:invite_musician' room.event.pk %}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.path }}">
-      <label class="visually-hidden" for="chat_invite_slot">Inviter un musicien</label>
-      <select name="invite_slot" id="chat_invite_slot" required>
-        <option value="">Inviter (musicien + poste)…</option>
-        {% for choice in invite_choices %}
-        <option value="{{ choice.value }}">{{ choice.label }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn-launch">Inviter + notification</button>
-    </form>
+    {% if invite_musicians %}
+    {% url 'planning:invite_musician' room.event.pk as chat_invite_action %}
+    {% include "planning/_invite_musician_form.html" with form_action=chat_invite_action invite_musicians=invite_musicians next_path=request.path submit_label="Inviter + notification" submit_class="btn-launch" id_prefix="chat_invite" %}
     {% endif %}
   </div>
 </aside>

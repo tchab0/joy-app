@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Médias — JOY{% endblock %}
+{% block og_title %}Médias — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Médias — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Photos, vidéos et enregistrements du Jazz Orchestra Yonnais — concerts et ambiances big band en Vendée.{% endblock %}
+{% block og_description %}Photos, vidéos et enregistrements du Jazz Orchestra Yonnais — concerts et ambiances big band en Vendée.{% endblock %}
+{% block twitter_description %}Photos, vidéos et enregistrements du Jazz Orchestra Yonnais — concerts et ambiances big band en Vendée.{% endblock %}
 {% block extra_css %}
 <style>
 .media-groupe { margin-bottom: 3rem; }
@@ -81,8 +86,8 @@
       <div class="media-grid">
         {% for p in groupe.photos %}
         <div class="photo-wrap">
-          <a href="{{ p.fichier.url }}" onclick="openLightbox('groupe_{{ forloop.parentloop.counter0 }}', {{ forloop.counter0 }}); return false;">
-            <img src="{{ p.fichier.url }}" alt="{{ p.titre }}" loading="lazy">
+          <a href="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}" onclick="openLightbox('groupe_{{ forloop.parentloop.counter0 }}', {{ forloop.counter0 }}); return false;">
+            <img src="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}" alt="{{ p.titre }}" loading="lazy">
           </a>
           <button
             class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
@@ -151,7 +156,7 @@ const MEDIA_GROUPS = {
   "groupe_{{ forloop.counter0 }}": [
     {% for p in groupe.photos %}
     {
-      url: "{{ p.fichier.url|escapejs }}",
+      url: "{{ p.display_url|default:p.url_affichage|default:p.fichier.url|escapejs }}",
       titre: "{{ p.titre|default:groupe.evenement.nom|escapejs }}",
       votes: {{ p.nb_votes|default:0 }}
     }{% if not forloop.last %},{% endif %}

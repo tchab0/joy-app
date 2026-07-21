@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import uuid
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from django.conf import settings
@@ -37,11 +39,17 @@ def extract_youtube_id(url: str) -> str | None:
 
 
 def part_upload_to(instance: "Part", filename: str) -> str:
-    return f"repertoire/parts/{timezone.now():%Y/%m}/{filename}"
+    ext = Path(filename or "").suffix.lower()[:16] or ".pdf"
+    if ext != ".pdf":
+        ext = ".pdf"
+    return f"repertoire/parts/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{ext}"
 
 
 def piece_audio_upload_to(instance: "Piece", filename: str) -> str:
-    return f"repertoire/audio/{timezone.now():%Y/%m}/{filename}"
+    ext = Path(filename or "").suffix.lower()[:16]
+    if ext not in {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".aac"}:
+        ext = ".mp3"
+    return f"repertoire/audio/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{ext}"
 
 
 class Piece(models.Model):

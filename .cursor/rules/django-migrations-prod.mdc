@@ -31,7 +31,7 @@ Ce site tourne en **prod PostgreSQL** (`config.settings.prod` + gunicorn) **et**
 
 Après déploiement chat / ASGI : si les units Daphne ou le proxy `/ws/` manquent,
 relancer `sudo bash scripts/install_chat_infra.sh` (Daphne + nginx + timer digest).
-Le digest SMS a aussi un fallback crontab user (`chat_send_digests` toutes les 30 min).
+Le digest de notifications a aussi un fallback crontab user (`chat_send_digests` toutes les 30 min).
 
 ## À ne pas faire
 

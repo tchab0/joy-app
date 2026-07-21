@@ -26,12 +26,7 @@
        }
      })"
      @pl-toast.window="onToast($event.detail)">
-  <nav class="pl-nav">
-    <a href="{% url 'planning:dashboard' %}">← Planning</a>
-    {% if is_planning_staff %}
-    <a href="{% url 'planning:admin' %}">Admin</a>
-    {% endif %}
-  </nav>
+  {% include "planning/_module_nav.html" with active="calendrier" %}
 
   <header class="pl-accept__head">
     <h1 class="pl-accept__title">{{ proposal.title }}</h1>
@@ -50,7 +45,7 @@
   <section class="pl-section pl-accept__staff">
     <h2>Lancer le sondage</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
-      Autorise les musiciens à répondre et envoie un SMS aux personnes concernées.
+      Autorise les musiciens à répondre et envoie une notification aux personnes concernées.
     </p>
     <form method="post" action="{% url 'planning:launch_poll' proposal.pk %}">
       {% csrf_token %}

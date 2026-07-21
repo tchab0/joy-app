@@ -1,0 +1,50 @@
+{# Icône météo — attend ``icon`` (sun|cloud-sun|cloud|rain|snow|storm|fog) #}
+{% if icon == "sun" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <circle cx="12" cy="12" r="4.2" fill="currentColor" opacity=".92"/>
+  <g stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none" opacity=".85">
+    <path d="M12 2.2v2.2M12 19.6v2.2M2.2 12h2.2M19.6 12h2.2"/>
+    <path d="M5.05 5.05l1.55 1.55M17.4 17.4l1.55 1.55M5.05 18.95l1.55-1.55M17.4 6.6l1.55-1.55"/>
+  </g>
+</svg>
+{% elif icon == "cloud-sun" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <circle cx="8.2" cy="8.2" r="3.1" fill="currentColor" opacity=".9"/>
+  <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".75">
+    <path d="M8.2 2.6v1.4M2.6 8.2h1.4M4.4 4.4l1 1"/>
+  </g>
+  <path fill="currentColor" opacity=".88" d="M17.2 18.2a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 18.2h10.1z"/>
+</svg>
+{% elif icon == "rain" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path fill="currentColor" opacity=".88" d="M17.2 14.2a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 14.2h10.1z"/>
+  <g stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".9">
+    <path d="M8.2 16.4l-1.1 2.6M12 16.4l-1.1 2.6M15.8 16.4l-1.1 2.6"/>
+  </g>
+</svg>
+{% elif icon == "snow" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path fill="currentColor" opacity=".88" d="M17.2 13.8a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 13.8h10.1z"/>
+  <g fill="currentColor" opacity=".95">
+    <circle cx="8.3" cy="17.2" r=".95"/>
+    <circle cx="12" cy="18.5" r=".95"/>
+    <circle cx="15.7" cy="17.2" r=".95"/>
+  </g>
+</svg>
+{% elif icon == "storm" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path fill="currentColor" opacity=".88" d="M17.2 13.2a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 13.2h10.1z"/>
+  <path fill="currentColor" d="M13.1 13.4 9.4 19h3.15l-1.7 4.2 5.1-6.7h-3.2l1.35-3.1z"/>
+</svg>
+{% elif icon == "fog" %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path fill="currentColor" opacity=".75" d="M17.2 11.2a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 11.2h10.1z"/>
+  <g stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".85">
+    <path d="M4.5 14.2h15M6 17h12M8 19.8h8"/>
+  </g>
+</svg>
+{% else %}
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path fill="currentColor" opacity=".9" d="M17.2 18.2a3.7 3.7 0 0 0-.25-7.35 5.15 5.15 0 0 0-9.7 1.55A3.25 3.25 0 0 0 7.1 18.2h10.1z"/>
+</svg>
+{% endif %}

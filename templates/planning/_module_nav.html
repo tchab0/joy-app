@@ -1,0 +1,33 @@
+{% comment %}
+Nav commune planning + répertoire.
+Usage : {% include "planning/_module_nav.html" with active="calendrier" %}
+active : calendrier | mes_dates | repertoire | admin | musiciens | atelier | setlists
+{% endcomment %}
+<nav class="pl-nav" aria-label="Planning et répertoire">
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Planning</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'planning:dashboard' %}"{% if active == "calendrier" %} class="is-active" aria-current="page"{% endif %}>Calendrier</a>
+      <a href="{% url 'planning:my_board' %}"{% if active == "mes_dates" %} class="is-active" aria-current="page"{% endif %}>Mes dates</a>
+    </div>
+  </div>
+
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Répertoire</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'repertoire:list' %}"{% if active == "repertoire" %} class="is-active" aria-current="page"{% endif %}>Morceaux</a>
+    </div>
+  </div>
+
+  {% if is_planning_staff or request.user.is_staff or request.user.is_superuser %}
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Staff</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'planning:admin' %}"{% if active == "admin" %} class="is-active" aria-current="page"{% endif %}>Admin</a>
+      <a href="{% url 'planning:admin_musicians' %}"{% if active == "musiciens" %} class="is-active" aria-current="page"{% endif %}>Musiciens</a>
+      <a href="{% url 'repertoire:staff_list' %}"{% if active == "atelier" %} class="is-active" aria-current="page"{% endif %}>Atelier</a>
+      <a href="{% url 'repertoire:staff_setlist_list' %}"{% if active == "setlists" %} class="is-active" aria-current="page"{% endif %}>Setlists</a>
+    </div>
+  </div>
+  {% endif %}
+</nav>

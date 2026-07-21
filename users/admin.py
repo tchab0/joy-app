@@ -89,6 +89,10 @@ class UserAdmin(DjangoUserAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         sync_user_groups(obj)
+        if obj.is_musician:
+            from planning.services import get_or_create_profile
+
+            get_or_create_profile(obj)
 
 
 @admin.register(AuthChallenge)

@@ -15,6 +15,7 @@ from .forms import (
     OTPVerifyForm,
     PasswordlessStartForm,
     ProfileSecurityForm,
+    StaffContactNotifyPrefsForm,
     TwoFactorChannelForm,
 )
 from .models import AuthChallenge, User
@@ -151,7 +152,7 @@ def login_otp_view(request: HttpRequest) -> HttpResponse:
             login(request, challenge.user, backend="django.contrib.auth.backends.ModelBackend")
             request.session.pop(SESSION_PENDING_LOGIN_CHALLENGE, None)
             if challenge.user.two_factor_enabled and challenge.purpose == AuthChallenge.Purpose.LOGIN:
-                # OTP login already proves possession of email/SMS; skip 2FA if same channel
+                # OTP login already proves possession of email/phone; skip 2FA if same channel
                 pass
             messages.success(request, "Connexion réussie.")
             return redirect(_safe_next(request))
@@ -236,11 +237,32 @@ def account_home(request: HttpRequest) -> HttpResponse:
         build_page_feedback_vote_requests_context,
     )
 
+    staff_notify_form = None
+    if request.user.is_staff or request.user.is_superuser:
+        if (
+            request.method == "POST"
+            and request.POST.get("action") == "staff_notify"
+        ):
+            staff_notify_form = StaffContactNotifyPrefsForm(
+                request.POST, instance=request.user
+            )
+            if staff_notify_form.is_valid():
+                staff_notify_form.save()
+                messages.success(
+                    request, "Préférence de notification enregistrée."
+                )
+                return redirect("account_home")
+        else:
+            staff_notify_form = StaffContactNotifyPrefsForm(
+                instance=request.user
+            )
+
     roles = get_user_roles(request.user)
     context = {
         "roles": [ROLE_LABELS[r] for r in roles if r in ROLE_LABELS],
         "can_planning": user_can_access_planning(request.user),
         "can_members": user_can_access_member_area(request.user),
+        "staff_notify_form": staff_notify_form,
     }
     context.update(build_page_feedback_author_responses_context(request.user))
     context.update(build_page_feedback_vote_requests_context(request.user))

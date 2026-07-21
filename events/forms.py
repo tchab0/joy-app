@@ -22,7 +22,7 @@ class EventForm(forms.ModelForm):
     class Meta:
         model = Event
         fields = [
-            'titre', 'type', 'venue', 'date_debut', 'date_fin',
+            'titre', 'slug', 'type', 'venue', 'date_debut', 'date_fin',
             'statut', 'public', 'parent', 'organisme', 'url_billets',
             'contact_nom', 'contact_telephone', 'contact_email',
             'description',
@@ -47,3 +47,5 @@ class EventForm(forms.ModelForm):
         self.fields['parent'].queryset = parents
         self.fields['parent'].required = False
         self.fields['parent'].empty_label = "— Aucun —"
+        self.fields['slug'].required = False
+        self.fields['slug'].help_text = "Laisser vide pour génération automatique."

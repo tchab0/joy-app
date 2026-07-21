@@ -1,5 +1,6 @@
 from django import forms
-from .models import MediaItem, EvenementMedia
+
+from .models import ContactMessage, MediaItem, EvenementMedia
 
 MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024
 
@@ -10,13 +11,17 @@ EXTENSIONS_AUTORISEES = {
     "pdf":   [".pdf"],
 }
 
+_INPUT = {"class": "form-input"}
+_SELECT = {"class": "form-select"}
+_TEXTAREA = {"class": "form-input", "rows": 4}
+
 
 class ContactForm(forms.Form):
     nom = forms.CharField(
         max_length=150,
         label="Nom",
         widget=forms.TextInput(attrs={
-            "class": "form-input",
+            **_INPUT,
             "autocomplete": "name",
             "placeholder": "Votre nom",
         }),
@@ -26,7 +31,7 @@ class ContactForm(forms.Form):
         max_length=50,
         label="Téléphone",
         widget=forms.TextInput(attrs={
-            "class": "form-input",
+            **_INPUT,
             "autocomplete": "tel",
             "placeholder": "06 12 34 56 78",
         }),
@@ -34,7 +39,7 @@ class ContactForm(forms.Form):
     email = forms.EmailField(
         label="Email",
         widget=forms.EmailInput(attrs={
-            "class": "form-input",
+            **_INPUT,
             "autocomplete": "email",
             "placeholder": "vous@exemple.fr",
         }),
@@ -42,10 +47,15 @@ class ContactForm(forms.Form):
     message = forms.CharField(
         label="Message",
         widget=forms.Textarea(attrs={
-            "class": "form-input",
+            **_INPUT,
             "rows": 6,
             "placeholder": "Décrivez votre demande",
         }),
+    )
+    rgpd = forms.BooleanField(
+        label="J’accepte que mes informations soient utilisées pour traiter ma demande.",
+        required=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check"}),
     )
 
     def clean_nom(self):
@@ -59,6 +69,213 @@ class ContactForm(forms.Form):
         if len(message) < 10:
             raise forms.ValidationError("Merci de préciser un peu plus votre demande.")
         return message
+
+
+class PrestationForm(forms.Form):
+    nom = forms.CharField(
+        max_length=150,
+        label="Nom",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "autocomplete": "name",
+            "placeholder": "Votre nom",
+        }),
+    )
+    organisation = forms.CharField(
+        required=False,
+        max_length=200,
+        label="Organisation",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "placeholder": "Association, entreprise, mairie…",
+        }),
+    )
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={
+            **_INPUT,
+            "autocomplete": "email",
+            "placeholder": "vous@exemple.fr",
+        }),
+    )
+    telephone = forms.CharField(
+        max_length=50,
+        label="Téléphone",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "autocomplete": "tel",
+            "placeholder": "06 12 34 56 78",
+        }),
+    )
+    profil = forms.ChoiceField(
+        label="Vous êtes",
+        choices=ContactMessage.PROFIL_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+
+    type_evenement = forms.ChoiceField(
+        label="Type d’événement",
+        choices=ContactMessage.TYPE_EVENEMENT_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    date_souhaitee = forms.DateField(
+        label="Date souhaitée",
+        widget=forms.DateInput(attrs={**_INPUT, "type": "date"}),
+    )
+    date_flexible = forms.BooleanField(
+        required=False,
+        label="La date est flexible",
+        widget=forms.CheckboxInput(attrs={"class": "form-check"}),
+    )
+    date_alternative = forms.DateField(
+        required=False,
+        label="Autre date possible",
+        widget=forms.DateInput(attrs={**_INPUT, "type": "date"}),
+    )
+    ville = forms.CharField(
+        max_length=120,
+        label="Ville / commune",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "placeholder": "La Roche-sur-Yon",
+        }),
+    )
+    lieu_nom = forms.CharField(
+        required=False,
+        max_length=200,
+        label="Nom du lieu",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "placeholder": "Salle, salle des fêtes…",
+        }),
+    )
+    lieu_adresse = forms.CharField(
+        required=False,
+        max_length=300,
+        label="Adresse du lieu",
+        widget=forms.TextInput(attrs={
+            **_INPUT,
+            "placeholder": "Adresse si déjà connue",
+        }),
+    )
+    lieu_type = forms.ChoiceField(
+        label="Lieu",
+        choices=ContactMessage.LIEU_TYPE_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    heure_debut = forms.TimeField(
+        label="Début de prestation",
+        widget=forms.TimeInput(attrs={**_INPUT, "type": "time"}),
+    )
+    heure_fin = forms.TimeField(
+        required=False,
+        label="Fin de prestation",
+        widget=forms.TimeInput(attrs={**_INPUT, "type": "time"}),
+    )
+    duree_jeu = forms.ChoiceField(
+        label="Durée de jeu souhaitée",
+        choices=ContactMessage.DUREE_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    jauge = forms.ChoiceField(
+        label="Public approximatif",
+        choices=ContactMessage.JAUGE_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    role_ambiance = forms.ChoiceField(
+        label="Rôle / ambiance",
+        choices=ContactMessage.ROLE_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+
+    sono = forms.ChoiceField(
+        label="Sonorisation",
+        choices=ContactMessage.SONO_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    scene_details = forms.CharField(
+        required=False,
+        label="Scène / espace de jeu",
+        widget=forms.Textarea(attrs={
+            **_TEXTAREA,
+            "placeholder": "Dimensions, hauteur sous plafond, accès…",
+        }),
+    )
+    acces_logistique = forms.CharField(
+        required=False,
+        label="Accès / parking / déchargement",
+        widget=forms.Textarea(attrs={
+            **_TEXTAREA,
+            "rows": 3,
+            "placeholder": "Optionnel",
+        }),
+    )
+    budget = forms.ChoiceField(
+        label="Budget indicatif",
+        choices=ContactMessage.BUDGET_CHOICES,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    message = forms.CharField(
+        required=False,
+        label="Demandes particulières",
+        widget=forms.Textarea(attrs={
+            **_TEXTAREA,
+            "rows": 5,
+            "placeholder": "Répertoire, dress code, contraintes…",
+        }),
+    )
+    source = forms.ChoiceField(
+        required=False,
+        label="Comment nous avez-vous connus ?",
+        choices=[("", "—")] + list(ContactMessage.SOURCE_CHOICES),
+        widget=forms.Select(attrs=_SELECT),
+    )
+    rgpd = forms.BooleanField(
+        label="J’accepte que mes informations soient utilisées pour traiter ma demande.",
+        required=True,
+        widget=forms.CheckboxInput(attrs={"class": "form-check"}),
+    )
+
+    def clean_nom(self):
+        return self.cleaned_data["nom"].strip()
+
+    def clean_organisation(self):
+        return self.cleaned_data["organisation"].strip()
+
+    def clean_telephone(self):
+        return self.cleaned_data["telephone"].strip()
+
+    def clean_ville(self):
+        return self.cleaned_data["ville"].strip()
+
+    def clean_lieu_nom(self):
+        return self.cleaned_data["lieu_nom"].strip()
+
+    def clean_lieu_adresse(self):
+        return self.cleaned_data["lieu_adresse"].strip()
+
+    def clean_scene_details(self):
+        return self.cleaned_data["scene_details"].strip()
+
+    def clean_acces_logistique(self):
+        return self.cleaned_data["acces_logistique"].strip()
+
+    def clean_message(self):
+        return self.cleaned_data["message"].strip()
+
+    def clean(self):
+        cleaned = super().clean()
+        debut = cleaned.get("heure_debut")
+        fin = cleaned.get("heure_fin")
+        if debut and fin and fin <= debut:
+            self.add_error(
+                "heure_fin",
+                "L’heure de fin doit être après l’heure de début.",
+            )
+        if cleaned.get("date_flexible") and not cleaned.get("date_alternative"):
+            # Alternative optional even if flexible — no error
+            pass
+        return cleaned
 
 
 class MultipleFileInput(forms.FileInput):
@@ -139,6 +356,14 @@ class MediaSoumissionForm(forms.ModelForm):
             raise forms.ValidationError("Choisissez un événement existant ou créez-en un nouveau.")
 
         if type_media == "photo":
+            # Extension checks happen in the view for multi-upload; single file too.
+            fichier = cleaned.get("fichier")
+            if fichier:
+                ext = "." + fichier.name.rsplit(".", 1)[-1].lower() if "." in fichier.name else ""
+                if ext not in EXTENSIONS_AUTORISEES["photo"]:
+                    raise forms.ValidationError(
+                        f"Extension non autorisée. Acceptées : {', '.join(EXTENSIONS_AUTORISEES['photo'])}"
+                    )
             return cleaned
 
         if type_media == "video" and not fichier and not url_ext:

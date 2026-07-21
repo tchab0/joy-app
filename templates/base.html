@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}JOY — Jazz Orchestra Yonnais{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <link rel="canonical" href="{% block canonical %}{{ SITE_URL }}{{ request.path }}{% endblock %}">
+  <meta name="robots" content="{% block robots %}{% if SEO_NOINDEX %}noindex, nofollow{% else %}index, follow{% endif %}{% endblock %}">
+  {% if GOOGLE_SITE_VERIFICATION %}
+  <meta name="google-site-verification" content="{{ GOOGLE_SITE_VERIFICATION }}">
+  {% endif %}
   <link rel="manifest" href="{% url 'web_manifest' %}">
   <meta name="theme-color" content="#1a1714">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,12 +18,23 @@
   <link rel="icon" href="/static/users/icons/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/static/users/icons/favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="/static/users/icons/icon-180.png">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
   <meta property="og:site_name" content="Jazz Orchestra Yonnais">
+  <meta property="og:locale" content="fr_FR">
   <meta property="og:title" content="{% block og_title %}JOY — Jazz Orchestra Yonnais{% endblock %}">
-  <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}/static/users/icons/logo-joy.webp{% endblock %}">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}/static/users/icons/logo-joy.webp{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <meta property="og:url" content="{% block og_url %}{{ SITE_URL }}{{ request.path }}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ SITE_URL }}/static/users/icons/og-image.jpg{% endblock %}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block twitter_title %}JOY — Jazz Orchestra Yonnais{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <meta name="twitter:image" content="{% block twitter_image %}{{ SITE_URL }}/static/users/icons/og-image.jpg{% endblock %}">
+  {% if json_ld %}
+  <script type="application/ld+json">{{ json_ld|safe }}</script>
+  {% endif %}
+  {% block extra_head %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -46,8 +63,8 @@
     body { font-family: var(--font-b); font-size: 1rem; color: var(--text); background: var(--bg); line-height: 1.6; }
     a { color: var(--accent); }
 
-    /* NAV */
-    nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
+    /* NAV — scoped to the site chrome only (not in-page <nav class="pl-nav"> etc.) */
+    body > nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
     .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
     .nav-logo {
       display: flex; flex-direction: column; justify-content: center; gap: .1rem;
@@ -276,7 +293,7 @@
 </main>
 <footer>
   <div>
-    <a href="#">Mentions légales</a>
+    <a href="{% url 'mentions_legales' %}">Mentions légales</a>
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
     {% include "includes/_page_feedback_footer.html" %}
   </div>
@@ -298,6 +315,15 @@
   </div>
   {% endif %}
 </footer>
+{% if GA_MEASUREMENT_ID %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ GA_MEASUREMENT_ID }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '{{ GA_MEASUREMENT_ID }}', { anonymize_ip: true });
+</script>
+{% endif %}
 {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{% if profile %}Modifier{% else %}Ajouter{% endif %} un musicien — JOY{% endblock %}
 {% block extra_css %}
+{% include "planning/_styles.html" %}
 <style>
   .form-card { background:var(--surface); border-radius:var(--r); padding:1.5rem; max-width:720px; color:var(--text); }
   @media (min-width:640px) { .form-card { padding:2rem; } }
@@ -21,73 +22,91 @@
 </style>
 {% endblock %}
 {% block content %}
-<section class="section">
-  <div class="container">
-    <div style="margin-bottom:1.5rem">
-      <a href="{% url 'planning:admin_musicians' %}" style="color:var(--muted);font-size:.85rem">← Retour à la liste</a>
-    </div>
-    <h1 class="section-title">{% if profile %}Modifier « {{ profile.user }} »{% else %}Ajouter un musicien{% endif %}</h1>
-    <div class="form-card">
-      <form method="post">
-        {% csrf_token %}
-        {% if form.non_field_errors %}
-        <div class="form-group full">{{ form.non_field_errors }}</div>
-        {% endif %}
-        <div class="form-grid">
-          <p class="form-section-title">Coordonnées</p>
-          <div class="form-group">
-            <label for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
-            {{ form.first_name }}
-            {{ form.first_name.errors }}
-          </div>
-          <div class="form-group">
-            <label for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
-            {{ form.last_name }}
-            {{ form.last_name.errors }}
-          </div>
-          <div class="form-group">
-            <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
-            {{ form.email }}
-            {{ form.email.errors }}
-          </div>
-          <div class="form-group">
-            <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
-            {{ form.phone }}
-            {{ form.phone.errors }}
-          </div>
+<div class="pl">
+  <header class="pl-head">
+    <h1>{% if profile %}Modifier « {{ profile.user }} »{% else %}Ajouter un musicien{% endif %}</h1>
+  </header>
 
-          <p class="form-section-title">Postes</p>
-          <div class="form-group">
-            <label for="{{ form.poste_titulaire.id_for_label }}">{{ form.poste_titulaire.label }}</label>
-            {{ form.poste_titulaire }}
-            {% if form.poste_titulaire.help_text %}<p class="help">{{ form.poste_titulaire.help_text }}</p>{% endif %}
-            {{ form.poste_titulaire.errors }}
-          </div>
-          <div class="form-group">
-            <label for="{{ form.poste_remplacant.id_for_label }}">{{ form.poste_remplacant.label }}</label>
-            {{ form.poste_remplacant }}
-            {% if form.poste_remplacant.help_text %}<p class="help">{{ form.poste_remplacant.help_text }}</p>{% endif %}
-            {{ form.poste_remplacant.errors }}
-          </div>
-          {% if profile and profile.section %}
-          <div class="form-group full">
-            <p class="help">Pupitre actuel : <strong style="color:var(--text)">{{ profile.section }}</strong> (déduit du poste titulaire)</p>
-          </div>
-          {% endif %}
-          <div class="form-group full">
-            <div class="check-row">
-              {{ form.is_active }}
-              <label for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
-            </div>
-            {{ form.is_active.errors }}
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">{% if profile %}Enregistrer{% else %}Créer le musicien{% endif %}</button>
-          <a href="{% url 'planning:admin_musicians' %}" class="btn btn-outline">Annuler</a>
-        </div>
-      </form>
-    </div>
+  {% include "planning/_module_nav.html" with active="musiciens" %}
+  <div class="pl-nav-context">
+    <a href="{% url 'planning:admin_musicians' %}">← Liste des musiciens</a>
   </div>
-</section>
+
+  <div class="form-card">
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="form-group full">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="form-grid">
+        <p class="form-section-title">Coordonnées</p>
+        <div class="form-group">
+          <label for="{{ form.first_name.id_for_label }}">{{ form.first_name.label }}</label>
+          {{ form.first_name }}
+          {{ form.first_name.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.last_name.id_for_label }}">{{ form.last_name.label }}</label>
+          {{ form.last_name }}
+          {{ form.last_name.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+          {{ form.email }}
+          {{ form.email.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
+          {{ form.phone }}
+          {{ form.phone.errors }}
+        </div>
+
+        <p class="form-section-title">Postes</p>
+        <div class="form-group">
+          <label for="{{ form.poste_titulaire.id_for_label }}">{{ form.poste_titulaire.label }}</label>
+          {{ form.poste_titulaire }}
+          {% if form.poste_titulaire.help_text %}<p class="help">{{ form.poste_titulaire.help_text }}</p>{% endif %}
+          {{ form.poste_titulaire.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.poste_remplacant.id_for_label }}">{{ form.poste_remplacant.label }}</label>
+          {{ form.poste_remplacant }}
+          {% if form.poste_remplacant.help_text %}<p class="help">{{ form.poste_remplacant.help_text }}</p>{% endif %}
+          {{ form.poste_remplacant.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.poste_remplacant_2.id_for_label }}">{{ form.poste_remplacant_2.label }}</label>
+          {{ form.poste_remplacant_2 }}
+          {{ form.poste_remplacant_2.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.poste_remplacant_3.id_for_label }}">{{ form.poste_remplacant_3.label }}</label>
+          {{ form.poste_remplacant_3 }}
+          {{ form.poste_remplacant_3.errors }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.poste_remplacant_4.id_for_label }}">{{ form.poste_remplacant_4.label }}</label>
+          {{ form.poste_remplacant_4 }}
+          {{ form.poste_remplacant_4.errors }}
+        </div>
+        {% if profile and profile.section %}
+        <div class="form-group full">
+          <p class="help">Pupitre actuel : <strong style="color:var(--text)">{{ profile.section }}</strong> (déduit du poste titulaire)</p>
+        </div>
+        {% endif %}
+        <div class="form-group full">
+          <div class="check-row">
+            {{ form.is_active }}
+            <label for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+          </div>
+          {{ form.is_active.errors }}
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{% if profile %}Enregistrer{% else %}Créer le musicien{% endif %}</button>
+        <a href="{% url 'planning:admin_musicians' %}" class="btn btn-outline">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

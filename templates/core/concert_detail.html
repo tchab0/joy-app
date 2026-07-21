@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ event.titre }} — Concert JOY{% endblock %}
+{% block og_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block twitter_description %}{{ meta_description }}{% endblock %}
+{% block og_type %}event{% endblock %}
+{% block extra_css %}
+<style>
+  .event-detail { max-width: 720px; }
+  .event-detail .when {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    color: var(--accent);
+    margin-bottom: .5rem;
+  }
+  .event-detail .meta { color: var(--muted); font-size: .95rem; margin-bottom: .35rem; }
+  .event-detail .desc { margin-top: 1.25rem; line-height: 1.65; color: var(--text); }
+  .event-detail .actions { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: .75rem; }
+  .event-map { margin-top: 1.25rem; width: 100%; height: 280px; border-radius: var(--r); border: 1px solid var(--border); overflow: hidden; position: relative; }
+  .event-map iframe { height: calc(100% + 30px); margin-bottom: -30px; }
+  .badge { display: inline-block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: .15rem .5rem; border-radius: var(--r); margin-left: .5rem; vertical-align: middle; }
+  .badge-tentative { background: rgba(184,137,42,.12); color: var(--gold-text); }
+  .badge-annule { background: rgba(180,60,60,.12); color: #b43c3c; }
+  .back-link { display: inline-block; margin-bottom: 1.25rem; color: var(--accent); text-decoration: none; font-size: .9rem; }
+  .back-link:hover { text-decoration: underline; }
+</style>
+{% include "includes/_weather_styles.html" %}
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container event-detail">
+    <a class="back-link" href="{% url 'concerts' %}">← Tous les concerts</a>
+    <h1 class="section-title" style="margin-bottom:.75rem">
+      {{ event.titre }}
+      {% if event.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
+      {% if event.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
+    </h1>
+    <p class="when">
+      <time datetime="{{ event.date_debut|date:'c' }}">{{ event.date_debut|date:"l d F Y" }} · {{ event.horaires_affiches }}</time>
+    </p>
+    {% if event.parent %}
+    <p class="meta">Dans : {{ event.parent.titre }}</p>
+    {% endif %}
+    {% if event.organisme %}
+    <p class="meta">Organisé par {{ event.organisme }}</p>
+    {% endif %}
+    <p class="meta">{{ event.lieu_affiche }}</p>
+    {% include "includes/_weather.html" with weather=event.weather %}
+    {% if event.show_contact %}
+    <p class="meta" style="margin-top:.5rem">
+      Contact{% if event.contact_nom %} : {{ event.contact_nom }}{% endif %}
+      {% if event.contact_telephone %}
+        · <a href="tel:{{ event.contact_telephone }}" style="color:var(--accent)">{{ event.contact_telephone }}</a>
+      {% endif %}
+      {% if event.contact_email %}
+        · <a href="mailto:{{ event.contact_email }}" style="color:var(--accent)">{{ event.contact_email }}</a>
+      {% endif %}
+    </p>
+    {% endif %}
+    {% if event.description %}
+    <div class="desc">{{ event.description|linebreaks }}</div>
+    {% endif %}
+    <div class="actions">
+      {% if event.url_billets %}
+      <a href="{{ event.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary">Billetterie →</a>
+      {% endif %}
+      <a href="{% url 'contact' %}?mode=prestation" class="btn btn-outline">Demande de prestation</a>
+    </div>
+    {% if event.venue.latitude %}
+    <div class="event-map">
+      <iframe
+        src="https://www.openstreetmap.org/export/embed.html?bbox={{ event.bbox }}&layer=mapnik&mlat={{ event.venue.latitude|stringformat:"f" }}&mlon={{ event.venue.longitude|stringformat:"f" }}"
+        style="width:100%;height:100%;border:0;border-radius:var(--r)"
+        loading="lazy"
+        title="Carte — {{ event.venue.nom }}"
+        referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+      <a href="https://www.openstreetmap.org/?mlat={{ event.venue.latitude|stringformat:"f" }}&mlon={{ event.venue.longitude|stringformat:"f" }}#map=15/{{ event.venue.latitude|stringformat:"f" }}/{{ event.venue.longitude|stringformat:"f" }}"
+         target="_blank" rel="noopener"
+         title="Voir en plein écran"
+         style="position:absolute;bottom:8px;right:8px;z-index:10;background:white;border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;display:flex;align-items:center;gap:4px;font-size:.75rem;color:#333;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)">
+        OSM
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

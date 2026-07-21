@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json
+import mimetypes
+from pathlib import Path
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -15,6 +16,31 @@ from django.utils import timezone
 from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 
 ORCHESTRA_ROOM_TITLE = "Orchestre"
+CHAT_HISTORY_LIMIT = 100
+CHAT_ALLOWED_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".pdf",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".m4a",
+    ".mp4",
+    ".webm",
+    ".txt",
+    ".doc",
+    ".docx",
+}
+CHAT_ALLOWED_CONTENT_PREFIXES = ("image/", "audio/", "video/")
+CHAT_ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 User = get_user_model()
 
 
@@ -198,10 +224,13 @@ def user_can_access_room(user, room: ChatRoom) -> bool:
 
 
 def serialize_attachment(att: ChatAttachment) -> dict:
+    url = ""
+    if att.pk:
+        url = reverse("chat:attachment", kwargs={"pk": att.pk})
     return {
         "id": att.pk,
         "name": att.original_name,
-        "url": att.file.url if att.file else "",
+        "url": url,
         "content_type": att.content_type,
         "size": att.size,
         "is_image": att.is_image,
@@ -236,6 +265,82 @@ def serialize_message(message: ChatMessage) -> dict:
     }
 
 
+def _validate_chat_file(f) -> tuple[str, str]:
+    """Return (safe_ext, content_type) or raise ValueError."""
+    name = getattr(f, "name", "fichier") or "fichier"
+    ext = Path(name).suffix.lower()
+    if ext not in CHAT_ALLOWED_EXTENSIONS:
+        raise ValueError(
+            f"Type de fichier non autorisé ({ext or 'sans extension'}). "
+            f"Acceptés : {', '.join(sorted(CHAT_ALLOWED_EXTENSIONS))}"
+        )
+    content_type = (getattr(f, "content_type", "") or "").split(";")[0].strip().lower()
+    guessed, _ = mimetypes.guess_type(f"x{ext}")
+    if not content_type or content_type == "application/octet-stream":
+        content_type = guessed or "application/octet-stream"
+    ok = content_type in CHAT_ALLOWED_CONTENT_TYPES or any(
+        content_type.startswith(p) for p in CHAT_ALLOWED_CONTENT_PREFIXES
+    )
+    # SVG / HTML never allowed even if client claims image/*
+    if ext in {".svg", ".html", ".htm", ".js", ".xhtml"} or content_type in {
+        "image/svg+xml",
+        "text/html",
+        "application/javascript",
+        "text/javascript",
+    }:
+        raise ValueError("Type de fichier non autorisé.")
+    if not ok:
+        raise ValueError(f"Type MIME non autorisé ({content_type or 'inconnu'}).")
+    return ext, content_type
+
+
+def post_message(
+    *,
+    room: ChatRoom,
+    author,
+    body: str = "",
+    files=None,
+    kind: str = ChatMessage.Kind.NORMAL,
+    related_proposal=None,
+) -> ChatMessage:
+    body = (body or "").strip()
+    files = list(files or [])
+    if not body and not files:
+        raise ValueError("Message vide.")
+
+    max_bytes = getattr(settings, "CHAT_ATTACHMENT_MAX_BYTES", 25 * 1024 * 1024)
+    validated: list[tuple[object, str, str]] = []
+    for f in files:
+        if f.size > max_bytes:
+            name = getattr(f, "name", "fichier")
+            raise ValueError(f"Le fichier {name} dépasse la limite.")
+        ext, content_type = _validate_chat_file(f)
+        validated.append((f, ext, content_type))
+
+    message = ChatMessage.objects.create(
+        room=room,
+        author=author,
+        body=body,
+        kind=kind,
+        related_proposal=related_proposal,
+    )
+    for f, _ext, content_type in validated:
+        ChatAttachment.objects.create(
+            message=message,
+            file=f,
+            original_name=getattr(f, "name", "fichier")[:255],
+            content_type=content_type,
+            size=f.size,
+        )
+    message = (
+        ChatMessage.objects.select_related("author", "related_proposal")
+        .prefetch_related("attachments")
+        .get(pk=message.pk)
+    )
+    broadcast_message(message)
+    return message
+
+
 def broadcast_message(message: ChatMessage) -> None:
     layer = get_channel_layer()
     if layer is None:
@@ -247,49 +352,6 @@ def broadcast_message(message: ChatMessage) -> None:
             "message": serialize_message(message),
         },
     )
-
-
-@transaction.atomic
-def post_message(
-    *,
-    room: ChatRoom,
-    author,
-    body: str = "",
-    files: list | None = None,
-    kind: str = ChatMessage.Kind.NORMAL,
-    related_proposal=None,
-) -> ChatMessage:
-    body = (body or "").strip()
-    files = list(files or [])
-    if not body and not files:
-        raise ValueError("Message vide.")
-
-    max_bytes = getattr(settings, "CHAT_ATTACHMENT_MAX_BYTES", 25 * 1024 * 1024)
-    message = ChatMessage.objects.create(
-        room=room,
-        author=author,
-        body=body,
-        kind=kind,
-        related_proposal=related_proposal,
-    )
-    for f in files:
-        if f.size > max_bytes:
-            name = getattr(f, "name", "fichier")
-            raise ValueError(f"Le fichier {name} dépasse la limite.")
-        ChatAttachment.objects.create(
-            message=message,
-            file=f,
-            original_name=getattr(f, "name", "fichier")[:255],
-            content_type=getattr(f, "content_type", "") or "",
-            size=f.size,
-        )
-    message = (
-        ChatMessage.objects.select_related("author", "related_proposal")
-        .prefetch_related("attachments")
-        .get(pk=message.pk)
-    )
-    broadcast_message(message)
-    return message
 
 
 def mark_room_read(room: ChatRoom, user) -> None:
@@ -323,10 +385,14 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
 
     mark_room_read(room, user)
     history = list(
-        ChatMessage.objects.filter(room=room)
-        .select_related("author", "related_proposal")
-        .prefetch_related("attachments")
-        .order_by("created_at")
+        reversed(
+            list(
+                ChatMessage.objects.filter(room=room)
+                .select_related("author", "related_proposal")
+                .prefetch_related("attachments")
+                .order_by("-created_at")[:CHAT_HISTORY_LIMIT]
+            )
+        )
     )
 
     participation = None
@@ -349,7 +415,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
             from planning.models import DateProposal
             from planning.services import (
                 draft_proposal_for_event,
-                invite_choices_for_musicians,
+                invite_musicians_for_form,
             )
 
             draft_proposal = draft_proposal_for_event(room.event)
@@ -368,25 +434,26 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
             already = set(
                 room.event.participations.values_list("user_id", flat=True)
             )
-            invite_musicians = list(
+            invite_users = list(
                 User.objects.filter(is_musician=True, is_active=True)
                 .exclude(pk__in=already)
                 .select_related("musician_profile")
                 .order_by("last_name", "first_name")[:200]
             )
-            invite_choices = invite_choices_for_musicians(invite_musicians)
+            invite_musicians = invite_musicians_for_form(invite_users)
+            invite_choices = invite_musicians  # truthy check in templates
 
     ws_scheme = "wss" if request.is_secure() else "ws"
     ws_url = f"{ws_scheme}://{request.get_host()}/ws/chat/{room.pk}/"
     api_send_url = reverse("chat:api_send", kwargs={"room_id": room.pk})
+    messages_data = [serialize_message(m) for m in history]
 
     return {
         "room": room,
         "membership": membership,
         "messages": history,
-        "messages_json": json.dumps(
-            [serialize_message(m) for m in history], ensure_ascii=False
-        ),
+        "messages_data": messages_data,
+        "messages_script_id": f"chat-messages-{room.pk}",
         "participation": participation,
         "show_leave_hint": show_leave_hint,
         "ws_url": ws_url,

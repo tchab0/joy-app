@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -13,7 +12,7 @@ class User(AbstractUser):
 
     class Preferred2FA(models.TextChoices):
         APP = "app", "Application d’authentification"
-        SMS = "sms", "SMS"
+        NOTIFICATION = "sms", "Notification"
         EMAIL = "email", "E-mail"
 
     phone = models.CharField(
@@ -54,7 +53,7 @@ class User(AbstractUser):
     two_factor_enabled = models.BooleanField(
         "Double authentification obligatoire",
         default=False,
-        help_text="Après le mot de passe, exige un second facteur (app, SMS ou e-mail).",
+        help_text="Après le mot de passe, exige un second facteur (app, notification ou e-mail).",
     )
     preferred_2fa_channel = models.CharField(
         "Canal 2FA préféré",
@@ -68,6 +67,14 @@ class User(AbstractUser):
         help_text=(
             "À la création d’un événement, s’abonner automatiquement "
             "aux alertes (push ou e-mail) du salon associé."
+        ),
+    )
+    notify_contact_messages = models.BooleanField(
+        "Alertes messages de contact",
+        default=True,
+        help_text=(
+            "Recevoir une notification (push ou e-mail) lorsqu’un message "
+            "de contact ou une demande de prestation arrive."
         ),
     )
 
@@ -89,7 +96,7 @@ class User(AbstractUser):
             return False
         if self.membership_expires_at is None:
             return True
-        return self.membership_expires_at >= date.today()
+        return self.membership_expires_at >= timezone.localdate()
 
     def clear_role_cache(self) -> None:
         for attr in (
@@ -114,7 +121,7 @@ class AuthChallenge(models.Model):
 
     class Channel(models.TextChoices):
         EMAIL = "email", "E-mail"
-        SMS = "sms", "SMS"
+        NOTIFICATION = "sms", "Notification"
         APP = "app", "Application"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

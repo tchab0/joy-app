@@ -2,18 +2,23 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import (
+    FileResponse,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseForbidden,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from chat.models import ChatMembership, ChatMessage, ChatRoom
+from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 from chat.services import (
     active_membership,
     build_room_embed_context,
     ensure_staff_membership,
     post_message,
     serialize_message,
-    unread_count,
     user_can_access_room,
 )
 from users.forms import ChatNotificationPrefsForm
@@ -35,26 +40,43 @@ def room_list(request: HttpRequest) -> HttpResponse:
     if denied:
         return denied
 
-    memberships = (
+    from django.db.models import Count, F, OuterRef, Q, Subquery
+
+    last_msg = ChatMessage.objects.filter(
+        room_id=OuterRef("room_id"), deleted_at__isnull=True
+    ).order_by("-created_at")
+    memberships = list(
         ChatMembership.objects.filter(user=request.user, left_at__isnull=True)
         .select_related("room", "room__event", "room__piece")
+        .annotate(
+            last_msg_id=Subquery(last_msg.values("pk")[:1]),
+            unread=Count(
+                "room__messages",
+                filter=Q(room__messages__deleted_at__isnull=True)
+                & ~Q(room__messages__author_id=F("user_id"))
+                & (
+                    Q(last_read_at__isnull=True)
+                    | Q(room__messages__created_at__gt=F("last_read_at"))
+                ),
+                distinct=True,
+            ),
+        )
         .order_by("room__kind", "-room__created_at")
     )
-    rooms = []
-    for m in memberships:
-        last = (
-            ChatMessage.objects.filter(room=m.room, deleted_at__isnull=True)
-            .order_by("-created_at")
-            .first()
-        )
-        rooms.append(
-            {
-                "membership": m,
-                "room": m.room,
-                "unread": unread_count(m),
-                "last_message": last,
-            }
-        )
+    last_ids = [m.last_msg_id for m in memberships if m.last_msg_id]
+    last_by_id = {
+        msg.pk: msg
+        for msg in ChatMessage.objects.filter(pk__in=last_ids).select_related("author")
+    }
+    rooms = [
+        {
+            "membership": m,
+            "room": m.room,
+            "unread": m.unread,
+            "last_message": last_by_id.get(m.last_msg_id),
+        }
+        for m in memberships
+    ]
     return render(request, "chat/room_list.html", {"rooms": rooms})
 
 
@@ -98,12 +120,12 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
         if action == "subscribe":
             membership.subscribed = True
             membership.save(update_fields=["subscribed"])
-            messages.success(request, "Alertes SMS activées pour ce salon.")
+            messages.success(request, "Notifications activées pour ce salon.")
             return redirect("chat:room", room_id=room.pk)
         if action == "unsubscribe":
             membership.subscribed = False
             membership.save(update_fields=["subscribed"])
-            messages.success(request, "Alertes SMS désactivées pour ce salon.")
+            messages.success(request, "Notifications désactivées pour ce salon.")
             return redirect("chat:room", room_id=room.pk)
         if action == "leave":
             membership.leave()
@@ -174,3 +196,33 @@ def api_send(request: HttpRequest, room_id: int) -> JsonResponse:
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     return JsonResponse({"ok": True, "message": serialize_message(message)})
+
+
+@login_required
+@require_GET
+def attachment_download(request: HttpRequest, pk: int) -> HttpResponse:
+    """Serve chat attachments behind auth (never via public /media/)."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    att = get_object_or_404(
+        ChatAttachment.objects.select_related("message__room"),
+        pk=pk,
+    )
+    room = att.message.room
+    if not user_can_access_room(request.user, room):
+        return HttpResponseForbidden("Accès refusé.")
+    if not att.file:
+        return HttpResponseForbidden("Fichier introuvable.")
+
+    as_attachment = not att.is_image
+    response = FileResponse(
+        att.file.open("rb"),
+        as_attachment=as_attachment,
+        filename=att.original_name or "fichier",
+        content_type=att.content_type or "application/octet-stream",
+    )
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    return response

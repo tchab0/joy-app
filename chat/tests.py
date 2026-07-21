@@ -40,10 +40,9 @@ class ChatCoreTests(TestCase):
             phone="+33601020304",
             chat_auto_subscribe=True,
         )
-        MusicianProfile.objects.create(
-            user=cls.musician,
-            poste_titulaire=MusicianProfile.Poste.TROMPETTE_1,
-        )
+        profile = cls.musician.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_1
+        profile.save()
         cls.other = User.objects.create_user(
             username="chat_other",
             password="pass",
@@ -52,10 +51,9 @@ class ChatCoreTests(TestCase):
             phone="+33601020305",
             chat_auto_subscribe=True,
         )
-        MusicianProfile.objects.create(
-            user=cls.other,
-            poste_titulaire=MusicianProfile.Poste.TROMPETTE_2,
-        )
+        other_profile = cls.other.musician_profile
+        other_profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_2
+        other_profile.save()
 
     def test_orchestra_room_on_musician(self):
         room = ensure_orchestra_room()
@@ -99,13 +97,13 @@ class ChatCoreTests(TestCase):
         self.musician.chat_auto_subscribe = False
         self.musician.save(update_fields=["chat_auto_subscribe"])
         event = Event.objects.create(
-            titre="Sans SMS",
+            titre="Sans notification",
             type=self.etype,
             venue=self.venue,
             date_debut="2030-07-01T20:00:00+02:00",
             statut="confirme",
         )
-        invite_musician_to_event(event, self.musician, send_sms=False)
+        invite_musician_to_event(event, self.musician, send_notification=False)
         room = ChatRoom.objects.get(event=event)
         membership = ChatMembership.objects.get(room=room, user=self.musician)
         self.assertFalse(membership.subscribed)
@@ -129,7 +127,7 @@ class ChatCoreTests(TestCase):
             date_debut="2030-08-01T20:00:00+02:00",
             statut="confirme",
         )
-        part, _ = invite_musician_to_event(event, self.musician, send_sms=False)
+        part, _ = invite_musician_to_event(event, self.musician, send_notification=False)
         part.status = get_status("declined")
         part.save(update_fields=["status"])
         room = ChatRoom.objects.get(event=event)
@@ -164,7 +162,7 @@ class ChatCoreTests(TestCase):
             statut="confirme",
             organisme="Festival Test",
         )
-        invite_musician_to_event(event, self.musician, send_sms=False)
+        invite_musician_to_event(event, self.musician, send_notification=False)
         room = ChatRoom.objects.get(event=event)
         client = Client()
         client.login(username="chat_musi", password="pass")
