@@ -9,7 +9,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="JOY">
-  <link rel="apple-touch-icon" href="/static/users/icons/icon-192.png">
+  <link rel="icon" href="/static/users/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/users/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/users/icons/icon-180.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Jazz Orchestra Yonnais">
+  <meta property="og:title" content="{% block og_title %}JOY — Jazz Orchestra Yonnais{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}/static/users/icons/logo-joy.webp{% endblock %}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}/static/users/icons/logo-joy.webp{% endblock %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -41,14 +49,37 @@
     /* NAV */
     nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
     .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
-        .nav-logo { font-family: var(--font-d); font-style: normal; font-weight: 900; font-size: 1.2rem; color: #fff; text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
-    .nav-logo span { color: var(--accent); }
+    .nav-logo {
+      display: flex; flex-direction: column; justify-content: center; gap: .1rem;
+      font-family: var(--font-d); font-style: normal; font-weight: 900; font-size: 1.05rem;
+      color: #fff; text-decoration: none; letter-spacing: .06em; text-transform: uppercase;
+      line-height: 1.15;
+    }
+    .nav-logo .nav-logo-joy,
+    .nav-logo:link .nav-logo-joy,
+    .nav-logo:visited .nav-logo-joy,
+    .nav-logo:hover .nav-logo-joy {
+      color: var(--accent);
+    }
+    .nav-logo-full {
+      display: block;
+      letter-spacing: .08em; color: #fff; font-weight: 700;
+    }
+    .nav-logo-full-svg { display: none; }
+    .nav-logo-full-text { font-size: .85rem; }
+    @media (min-width: 769px) {
+      .nav-logo {
+        flex-direction: row; align-items: baseline; gap: .4rem;
+        font-size: 1.2rem; line-height: 1.2;
+      }
+      .nav-logo-full-text {
+        font-size: inherit; font-weight: 900; letter-spacing: .06em; color: #fff;
+      }
+    }
     .nav-links { display: flex; gap: 0; list-style: none; }
     .nav-links a { display: block; padding: .75rem 1rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); }
     .nav-links a:hover, .nav-links a.active { color: #fff; }
     .nav-links a.active { border-bottom: 2px solid var(--accent); }
-    .nav-fb { color: rgba(255,255,255,.6); text-decoration: none; font-size: .8rem; transition: color var(--trans); }
-    .nav-fb:hover { color: #fff; }
     .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
     .nav-burger span { display: block; width: 22px; height: 2px; background: #fff; margin: 5px 0; transition: var(--trans); }
     .nav-burger span { transition: transform var(--trans), opacity var(--trans); }
@@ -65,7 +96,24 @@
     }
     footer > div > a:hover,
     footer > p a:hover { color: #fff; }
-    .footer-staff a { color: rgba(255,255,255,.55) !important; font-size: .75rem; letter-spacing: .06em; }
+    .footer-staff {
+      margin-top: 1.25rem; padding-top: 1rem;
+      border-top: 1px solid rgba(255,255,255,.12);
+      max-width: 1100px; margin-left: auto; margin-right: auto;
+    }
+    .footer-staff-label {
+      display: block; margin-bottom: .5rem;
+      font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+      color: rgba(255,255,255,.4);
+    }
+    .footer-staff-links {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem .5rem;
+    }
+    .footer-staff a {
+      color: rgba(255,255,255,.55) !important; font-size: .75rem; letter-spacing: .06em;
+      display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .65rem;
+      margin: 0 !important;
+    }
     .footer-staff a:hover { color: #fff !important; }
 
     /* UTILS */
@@ -152,10 +200,31 @@
 
     /* RESPONSIVE NAV */
     @media (max-width: 768px) {
-      .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
+      .nav-inner { height: 64px; gap: .5rem; }
+      .nav-logo {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .nav-logo-full {
+        width: 100%;
+        line-height: 1;
+      }
+      .nav-logo-full-text { display: none; }
+      .nav-logo-full-svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .nav-logo-full-svg text {
+        fill: #fff;
+        font-family: var(--font-d), Georgia, serif;
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .nav-links { display: none; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
       .nav-links.open { display: flex; }
       .nav-links a { padding: .75rem 1.5rem; }
-      .nav-burger { display: block; }
+      .nav-burger { display: block; flex-shrink: 0; }
     }
   </style>
   {% block extra_css %}{% endblock %}
@@ -163,7 +232,15 @@
 <body>
 <nav x-data="{ open: false }">
   <div class="nav-inner">
-    <a class="nav-logo" href="{% url 'home' %}"><span>J.O.Y</span> Jazz Orchestra Yonnais</a>
+    <a class="nav-logo" href="{% url 'home' %}">
+      <span class="nav-logo-joy">J.O.Y</span>
+      <span class="nav-logo-full">
+        <span class="nav-logo-full-text">Jazz Orchestra Yonnais</span>
+        <svg class="nav-logo-full-svg" viewBox="0 0 280 20" preserveAspectRatio="xMinYMid meet" aria-hidden="true" focusable="false">
+          <text x="0" y="15" textLength="280" lengthAdjust="spacingAndGlyphs">JAZZ ORCHESTRA YONNAIS</text>
+        </svg>
+      </span>
+    </a>
     <button class="nav-burger" aria-label="Menu" @click="open = !open" :aria-expanded="open.toString()">
       <span :style="open ? 'transform:rotate(45deg) translate(5px,5px)' : ''"></span>
       <span :style="open ? 'opacity:0' : ''"></span>
@@ -174,18 +251,17 @@
       <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
-      {% if request.user.is_authenticated %}
-      {% if request.user.is_musician or request.user.is_staff %}
+      {% if show_musician_nav %}
       <li><a href="{% url 'planning:dashboard' %}" {% if request.resolver_match and request.resolver_match.namespace == 'planning' %}class="active"{% endif %}>Planning</a></li>
       <li><a href="{% url 'repertoire:list' %}" {% if request.resolver_match and request.resolver_match.namespace == 'repertoire' %}class="active"{% endif %}>Répertoire</a></li>
       <li><a href="{% url 'chat:list' %}" {% if request.resolver_match and request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Chat</a></li>
       {% endif %}
-      <li><a href="{% url 'account_home' %}" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' %}class="active"{% endif %}>{{ request.user.get_full_name|default:request.user.username }}</a></li>
+      {% if request.user.is_authenticated %}
+      <li><a href="{% url 'account_home' %}" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' or request.resolver_match.url_name == 'account_member_area' %}class="active"{% endif %}>Mon compte</a></li>
       {% else %}
       <li><a href="{% url 'account_login' %}">Mon compte</a></li>
       {% endif %}
     </ul>
-    <a class="nav-fb" href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook ↗</a>
   </div>
 </nav>
 <main>
@@ -200,21 +276,26 @@
 </main>
 <footer>
   <div>
-    <a href="{% url 'contact' %}">Contact</a>
     <a href="#">Mentions légales</a>
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
     {% include "includes/_page_feedback_footer.html" %}
   </div>
   <p style="margin-top:.75rem">© {% now "Y" %} Jazz Orchestra Yonnais — La Roche-sur-Yon</p>
-  {% if request.user.is_staff %}
-  <p class="footer-staff" style="margin-top:.5rem">
-    <a href="{% url 'admin_feedback' %}">⚙ Retours</a>
-    <a href="/admin-concerts/">⚙ Concerts</a>
-    <a href="/admin-lieux/">⚙ Lieux</a>
-    <a href="{% url 'planning:admin_musicians' %}">⚙ Musiciens</a>
-    <a href="/admin/">Django admin</a>
-    <a href="{% url 'planning:admin' %}">⚙ Planning</a>
-  </p>
+  {% if show_staff_nav %}
+  <div class="footer-staff">
+    <span class="footer-staff-label">Administration</span>
+    <div class="footer-staff-links">
+      <a href="{% url 'admin_feedback' %}">Retours</a>
+      <a href="{% url 'admin_concerts' %}">Concerts</a>
+      <a href="{% url 'admin_venues' %}">Lieux</a>
+      <a href="{% url 'admin_medias' %}">Médias</a>
+      <a href="{% url 'admin_contact' %}">Contact</a>
+      <a href="{% url 'planning:admin_musicians' %}">Musiciens</a>
+      <a href="{% url 'planning:admin' %}">Planning</a>
+      <a href="{% url 'repertoire:staff_list' %}">Atelier</a>
+      <a href="/admin/">Django admin</a>
+    </div>
+  </div>
   {% endif %}
 </footer>
 {% block extra_js %}{% endblock %}
