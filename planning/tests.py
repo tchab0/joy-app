@@ -663,6 +663,9 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertContains(r, "Inviter")
         self.assertContains(r, f'name="invite_slot"')
         self.assertContains(r, f"{self.sub.pk}:trompette_2")
+        self.assertContains(r, "data-missing-invite-locks")
+        self.assertContains(r, f'data-user-id="{self.sub.pk}"')
+        self.assertContains(r, "initMissingInviteLocks")
 
     def test_calendar_shows_concert_and_presence_stats(self):
         from planning.services import invite_musician_to_event

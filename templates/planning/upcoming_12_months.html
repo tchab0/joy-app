@@ -146,7 +146,8 @@
                   <dt>Instruments manquants</dt>
                   <dd class="{% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
                     {% if s.instruments_manquants_detail %}
-                    <ul class="pl-missing__list">
+                    <ul class="pl-missing__list"
+                        {% if is_planning_staff %}data-missing-invite-locks{% endif %}>
                       {% for m in s.instruments_manquants_detail %}
                       <li class="pl-missing__item">
                         <span class="pl-missing__name">{{ m.name }}</span>
@@ -162,7 +163,8 @@
                                     aria-label="Remplaçant pour {{ m.name }}">
                               <option value="">Remplaçant…</option>
                               {% for e in m.eligible %}
-                              <option value="{{ e.invite_slot }}">{{ e.name }}</option>
+                              <option value="{{ e.invite_slot }}"
+                                      data-user-id="{{ e.user_id }}">{{ e.name }}</option>
                               {% endfor %}
                             </select>
                             <button type="submit" class="pl-btn pl-btn--primary">
@@ -330,6 +332,52 @@
 </div>
 
 <script>
+/** Un remplacant multi-postes ne reste sélectionnable que sur un pupitre à la fois. */
+function initMissingInviteLocks(root) {
+  (root || document).querySelectorAll('[data-missing-invite-locks]').forEach((list) => {
+    if (list.dataset.locksReady) return;
+    list.dataset.locksReady = '1';
+    const selects = [...list.querySelectorAll('select[name="invite_slot"]')];
+    selects.forEach((sel) => {
+      sel._inviteOptions = [...sel.options].map((o) => ({
+        value: o.value,
+        text: o.textContent,
+        userId: o.dataset.userId || '',
+      }));
+    });
+    const sync = () => {
+      const taken = new Map();
+      selects.forEach((sel) => {
+        const opt = sel.selectedOptions[0];
+        const uid = opt && opt.dataset.userId;
+        if (uid) taken.set(uid, sel);
+      });
+      selects.forEach((sel) => {
+        const current = sel.value;
+        const keep = sel._inviteOptions.filter((o) => {
+          if (!o.value) return true;
+          const owner = taken.get(o.userId);
+          return !owner || owner === sel;
+        });
+        sel.replaceChildren();
+        keep.forEach((o) => {
+          const opt = document.createElement('option');
+          opt.value = o.value;
+          opt.textContent = o.text;
+          if (o.userId) opt.dataset.userId = o.userId;
+          sel.appendChild(opt);
+        });
+        sel.value = keep.some((o) => o.value === current) ? current : '';
+      });
+    };
+    list.addEventListener('change', (e) => {
+      if (e.target.matches && e.target.matches('select[name="invite_slot"]')) sync();
+    });
+    sync();
+  });
+}
+document.addEventListener('DOMContentLoaded', () => initMissingInviteLocks());
+
 function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl }) {
   let savedLayer = 'all';
   try { savedLayer = localStorage.getItem('pl-cal-layer') || 'all'; } catch (e) {}
