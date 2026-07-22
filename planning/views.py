@@ -970,12 +970,22 @@ class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
     """Rendre un événement public / privé et renseigner organisme + parent."""
 
     def post(self, request, pk):
-        event = get_object_or_404(Event, pk=pk)
+        event = get_object_or_404(
+            Event.objects.select_related("venue", "type"), pk=pk
+        )
         event.public = request.POST.get("public") == "on"
         event.organisme = (request.POST.get("organisme") or "").strip()
-        event.parent = _resolve_parent_event(
-            request.POST.get("parent_id"), exclude_pk=event.pk
-        )
+        try:
+            event.parent = _resolve_or_create_parent_event(
+                request.POST,
+                venue=event.venue,
+                event_type=event.type,
+                date_debut=event.date_debut,
+                exclude_pk=event.pk,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:event_roster", pk=event.pk)
         event.save(update_fields=["public", "organisme", "parent"])
         if event.public:
             messages.success(

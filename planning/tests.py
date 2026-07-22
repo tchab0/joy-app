@@ -521,6 +521,78 @@ class RosterStatusTests(PlanningBaseTestCase):
         )
 
 
+class PublicationTests(PlanningBaseTestCase):
+    def test_roster_publication_form_has_parent_modes(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'name="parent_mode"')
+        self.assertContains(r, 'name="parent_titre"')
+        self.assertContains(r, 'class="pl-check"')
+        self.assertContains(r, "Visible sur le site public")
+
+    def test_publication_can_create_new_parent(self):
+        self.client.login(username="staff1", password="pass12345")
+        before = Event.objects.count()
+        r = self.client.post(
+            reverse("planning:event_publication", args=[self.event.pk]),
+            {
+                "organisme": "Festival JOY",
+                "parent_mode": "new",
+                "parent_titre": "Saison jazz 2026",
+                "public": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Event.objects.count(), before + 1)
+        self.event.refresh_from_db()
+        self.assertTrue(self.event.public)
+        self.assertEqual(self.event.organisme, "Festival JOY")
+        self.assertIsNotNone(self.event.parent_id)
+        self.assertEqual(self.event.parent.titre, "Saison jazz 2026")
+        self.assertFalse(
+            EventParticipation.objects.filter(event=self.event.parent).exists()
+        )
+
+    def test_publication_can_link_existing_parent(self):
+        parent = Event.objects.create(
+            titre="Festival existant",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=30),
+            statut=Event.Statut.TENTATIVE,
+            public=False,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:event_publication", args=[self.event.pk]),
+            {
+                "organisme": "",
+                "parent_mode": "existing",
+                "parent_id": str(parent.pk),
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.parent_id, parent.pk)
+        self.assertFalse(self.event.public)
+
+    def test_publication_new_parent_requires_titre(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:event_publication", args=[self.event.pk]),
+            {
+                "parent_mode": "new",
+                "parent_titre": "  ",
+                "public": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.event.refresh_from_db()
+        self.assertIsNone(self.event.parent_id)
+        self.assertFalse(self.event.public)
+
+
 class SubstituteTests(PlanningBaseTestCase):
     def test_propose_and_accept(self):
         set_participation_response(self.participation, "no")
