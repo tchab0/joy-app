@@ -143,11 +143,6 @@
       <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
-      {% if request.user.is_authenticated %}
-      <li><a href="{% url 'account_home' %}" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' %}class="active"{% endif %}>{{ request.user.get_full_name|default:request.user.username }}</a></li>
-      {% else %}
-      <li><a href="{% url 'account_login' %}">Mon compte</a></li>
-      {% endif %}
     </ul>
     <a class="nav-fb" href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook ↗</a>
   </div>
@@ -167,16 +162,13 @@
     <a href="{% url 'contact' %}">Contact</a>
     <a href="#">Mentions légales</a>
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
-    {% include "includes/_page_feedback_footer.html" %}
   </div>
   <p style="margin-top:.75rem">© {% now "Y" %} Jazz Orchestra Yonnais — La Roche-sur-Yon</p>
   {% if request.user.is_staff %}
   <p style="margin-top:.5rem">
-    <a href="{% url 'admin_feedback' %}" style="color:rgba(255,255,255,.35);font-size:.75rem;letter-spacing:.06em">⚙ Retours</a>
-    <a href="/admin-concerts/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Concerts</a>
+    <a href="/admin-concerts/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em">⚙ Concerts</a>
     <a href="/admin-lieux/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Lieux</a>
     <a href="/admin/" style="color:rgba(255,255,255,.15);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">Django admin</a>
-    <a href="{% url 'planning:admin' %}" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Planning</a>
   </p>
   {% endif %}
 </footer>
