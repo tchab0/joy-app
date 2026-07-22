@@ -608,3 +608,14 @@ class MissingBigBandPartsTests(TestCase):
         self.assertContains(r, "rep-missing-alert")
         self.assertContains(r, "1er alto")
         self.assertContains(r, "sans partition")
+
+    def test_musician_list_shows_alert_dot(self):
+        musician = User.objects.create_user(
+            username="alert-player", password="x", is_musician=True
+        )
+        self.client.login(username="alert-player", password="x")
+        r = self.client.get(reverse("repertoire:list"), {"poste": "all"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Splanky Incomplete")
+        self.assertContains(r, 'class="rep-alert-dot"')
+        self.assertContains(r, "postes manquants")
