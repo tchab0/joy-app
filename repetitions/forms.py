@@ -19,7 +19,7 @@ class RehearsalCreateForm(forms.Form):
         label="Début",
         widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
         input_formats=["%H:%M", "%H:%M:%S"],
-        initial="20:00",
+        initial="20:15",
     )
     time_end = forms.TimeField(
         label="Fin",

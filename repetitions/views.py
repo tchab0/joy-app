@@ -191,7 +191,6 @@ class ToggleAbsenceView(MusicianRequiredMixin, View):
             absent = raw.lower() in ("1", "true", "yes", "on")
         else:
             absent = bool(raw)
-
         try:
             part = set_rehearsal_absence(participation, absent=absent)
         except ValueError as exc:
@@ -242,7 +241,7 @@ class StaffRehearsalCreateView(PlanningStaffRequiredMixin, View):
         form = RehearsalCreateForm(
             initial={
                 "date": preset,
-                "time_start": time(20, 0),
+                "time_start": time(20, 15),
             }
         )
         return self._render(request, form, None)
