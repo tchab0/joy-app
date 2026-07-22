@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
@@ -11,6 +12,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from events.models import Event
 from planning.models import (
@@ -104,11 +106,74 @@ def get_or_create_profile(user) -> MusicianProfile:
     return profile
 
 
+def _parse_maybe_remind_at(value) -> date | None:
+    """Accepte date, datetime ou chaîne ISO (YYYY-MM-DD)."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return timezone.localtime(value).date() if timezone.is_aware(value) else value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        parsed = parse_date(value.strip())
+        if parsed is None:
+            raise ValueError("Date de relance invalide.")
+        return parsed
+    raise ValueError("Date de relance invalide.")
+
+
+def apply_maybe_remind_schedule(
+    participation: EventParticipation,
+    *,
+    remind_at: date | None = None,
+    remind_weekly: bool = False,
+) -> None:
+    """
+    Planifie la prochaine relance pour un « peut-être ».
+
+    - Date choisie → rappel à cette date, puis hebdo tant que le statut reste maybe.
+    - « Je ne sais pas » (remind_weekly, sans date) → première relance dans 7 jours.
+    """
+    today = timezone.localdate()
+    event_day = timezone.localtime(participation.event.date_debut).date()
+    participation.maybe_last_reminded_at = None
+
+    if remind_at is not None:
+        if remind_at < today:
+            raise ValueError("La date de relance ne peut pas être dans le passé.")
+        if remind_at > event_day:
+            raise ValueError(
+                "La date de relance doit être avant ou le jour de l’événement."
+            )
+        participation.maybe_remind_at = remind_at
+        # Après la date choisie, on continue chaque semaine si toujours « peut-être ».
+        participation.maybe_remind_weekly = True
+    elif remind_weekly:
+        participation.maybe_remind_at = today + timedelta(days=7)
+        if participation.maybe_remind_at > event_day:
+            participation.maybe_remind_at = event_day
+        participation.maybe_remind_weekly = True
+    else:
+        # Défaut : hebdomadaire (si le client n’envoie rien).
+        participation.maybe_remind_at = today + timedelta(days=7)
+        if participation.maybe_remind_at > event_day:
+            participation.maybe_remind_at = event_day
+        participation.maybe_remind_weekly = True
+
+
+def clear_maybe_remind_schedule(participation: EventParticipation) -> None:
+    participation.maybe_remind_at = None
+    participation.maybe_remind_weekly = False
+    participation.maybe_last_reminded_at = None
+
+
 def set_participation_response(
     participation: EventParticipation,
     response: str,
     *,
     comment: str = "",
+    maybe_remind_at=None,
+    maybe_remind_weekly: bool | None = None,
 ) -> EventParticipation:
     if response not in RESPOND_MAP:
         raise ValueError("Réponse invalide")
@@ -124,12 +189,110 @@ def set_participation_response(
     participation.status = get_status(new_code)
     if comment:
         participation.comment = comment
-    participation.save(update_fields=["status", "comment", "updated_at"])
+
+    update_fields = ["status", "comment", "updated_at"]
+    if new_code == "maybe":
+        remind_date = _parse_maybe_remind_at(maybe_remind_at)
+        weekly = bool(maybe_remind_weekly) if maybe_remind_weekly is not None else (
+            remind_date is None
+        )
+        apply_maybe_remind_schedule(
+            participation,
+            remind_at=remind_date,
+            remind_weekly=weekly,
+        )
+        update_fields.extend(
+            ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
+        )
+    else:
+        clear_maybe_remind_schedule(participation)
+        update_fields.extend(
+            ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
+        )
+
+    participation.save(update_fields=update_fields)
     if leaving_confirmed:
         notify_staff_presence_invalidated(
             participation, old_code=old_code, new_code=new_code
         )
     return participation
+
+
+def notify_maybe_remind(participation: EventParticipation) -> int:
+    """Relance le musicien pour qu’il tranche Oui / Peut-être / Non."""
+    event = participation.event
+    local = timezone.localtime(event.date_debut)
+    date_label = local.strftime("%d/%m/%Y %H:%M")
+    poste = participation.poste_label
+    poste_bit = f" — {poste}" if poste and poste != "—" else ""
+    body = (
+        f"Toujours en « peut-être » pour « {event.titre} » "
+        f"({date_label}{poste_bit}). "
+        f"Pouvez-vous confirmer ou décliner ?"
+    )
+    try:
+        url = reverse("planning:event_detail", kwargs={"pk": event.pk})
+    except Exception:
+        url = "/planning/moi/"
+    try:
+        return notify_users(
+            [participation.user],
+            title="JOY — Relance disponibilité",
+            body=body,
+            url=url,
+        )
+    except Exception:
+        logger.exception(
+            "Échec relance maybe participation_id=%s", participation.pk
+        )
+        return 0
+
+
+def send_due_maybe_reminds(
+    *,
+    as_of: date | None = None,
+    dry_run: bool = False,
+) -> tuple[int, int]:
+    """
+    Envoie les relances « peut-être » dues.
+
+    Retourne (nb participations traitées, nb notifications envoyées).
+    """
+    today = as_of or timezone.localdate()
+    now = timezone.now()
+    qs = (
+        EventParticipation.objects.filter(
+            status__code="maybe",
+            maybe_remind_at__isnull=False,
+            maybe_remind_at__lte=today,
+            event__date_debut__gte=now,
+        )
+        .exclude(event__statut=Event.Statut.ANNULE)
+        .select_related("event", "user", "status")
+        .order_by("maybe_remind_at", "pk")
+    )
+    treated = 0
+    sent = 0
+    for part in qs:
+        treated += 1
+        if dry_run:
+            continue
+        sent += notify_maybe_remind(part)
+        part.maybe_last_reminded_at = now
+        if part.maybe_remind_weekly:
+            event_day = timezone.localtime(part.event.date_debut).date()
+            nxt = today + timedelta(days=7)
+            part.maybe_remind_at = nxt if nxt <= event_day else None
+        else:
+            part.maybe_remind_at = None
+        part.save(
+            update_fields=[
+                "maybe_remind_at",
+                "maybe_last_reminded_at",
+                "updated_at",
+            ]
+        )
+    return treated, sent
 
 
 def notify_staff_presence_invalidated(
@@ -918,6 +1081,7 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
     expected_ids = {s.pk for s in expected}
     remplacants_idx = remplacants_by_section_code()
     by_event_confirmed: dict[int, list] = defaultdict(list)
+    by_event_maybe: dict[int, list] = defaultdict(list)
     by_event_taken: dict[int, set[int]] = defaultdict(set)
 
     parts = (
@@ -932,10 +1096,13 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
         by_event_taken[p.event_id].add(p.user_id)
         if p.status.code == "confirmed":
             by_event_confirmed[p.event_id].append(p)
+        elif p.status.code == "maybe":
+            by_event_maybe[p.event_id].append(p)
 
     summaries: dict[int, dict] = {}
     for event in events:
         confirmed = by_event_confirmed.get(event.pk, [])
+        maybes = by_event_maybe.get(event.pk, [])
         n_tit = 0
         n_rem = 0
         covered_section_ids: set[int] = set()
@@ -960,6 +1127,24 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
             if section is not None and section.pk in expected_ids:
                 covered_section_ids.add(section.pk)
 
+        maybe_by_section: dict[int, list[dict]] = defaultdict(list)
+        maybe_entries: list[dict] = []
+        for p in maybes:
+            user = p.user
+            name = user.get_full_name() or user.username
+            entry = {
+                "user_id": user.pk,
+                "name": name,
+                "poste": p.poste or "",
+                "poste_label": p.poste_label if p.poste else "",
+                "remind_at": p.maybe_remind_at,
+                "remind_weekly": bool(p.maybe_remind_weekly),
+            }
+            maybe_entries.append(entry)
+            section = p.section_for_roster()
+            if section is not None:
+                maybe_by_section[section.pk].append(entry)
+
         missing_sections = [s for s in expected if s.pk not in covered_section_ids]
         missing = [s.name for s in missing_sections]
         taken = by_event_taken.get(event.pk, set())
@@ -976,6 +1161,7 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
                     "code": section.code,
                     "name": section.name,
                     "eligible": eligible,
+                    "maybe": maybe_by_section.get(section.pk, []),
                 }
             )
         local_start = timezone.localtime(event.date_debut)
@@ -1018,6 +1204,8 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
             "n_titulaires": n_tit,
             "n_remplacants": n_rem,
             "n_presents": n_tit + n_rem,
+            "n_maybe": len(maybe_entries),
+            "maybe_detail": maybe_entries,
             "instruments_manquants": missing,
             "instruments_manquants_label": (
                 ", ".join(missing) if missing else "Aucun"

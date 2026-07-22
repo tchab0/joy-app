@@ -221,6 +221,48 @@ class RespondTests(PlanningBaseTestCase):
         set_participation_response(self.participation, "maybe")
         self.participation.refresh_from_db()
         self.assertEqual(self.participation.status.code, "maybe")
+        self.assertTrue(self.participation.maybe_remind_weekly)
+        self.assertIsNotNone(self.participation.maybe_remind_at)
+
+    def test_respond_maybe_with_date(self):
+        event_day = timezone.localtime(self.event.date_debut).date()
+        remind = timezone.localdate() + timedelta(days=2)
+        if remind > event_day:
+            remind = event_day
+        set_participation_response(
+            self.participation,
+            "maybe",
+            maybe_remind_at=remind.isoformat(),
+            maybe_remind_weekly=False,
+        )
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "maybe")
+        self.assertEqual(self.participation.maybe_remind_at, remind)
+        self.assertTrue(self.participation.maybe_remind_weekly)
+
+    def test_respond_maybe_weekly_via_api(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:respond", args=[self.participation.pk]),
+            data='{"response":"maybe","maybe_remind_weekly":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["status"]["code"], "maybe")
+        self.assertTrue(data["maybe_remind"]["weekly"])
+        self.participation.refresh_from_db()
+        self.assertTrue(self.participation.maybe_remind_weekly)
+
+    def test_yes_clears_maybe_remind(self):
+        set_participation_response(
+            self.participation, "maybe", maybe_remind_weekly=True
+        )
+        set_participation_response(self.participation, "yes")
+        self.participation.refresh_from_db()
+        self.assertIsNone(self.participation.maybe_remind_at)
+        self.assertFalse(self.participation.maybe_remind_weekly)
 
     def test_confirmed_cannot_become_maybe(self):
         set_participation_response(self.participation, "yes")
@@ -715,6 +757,30 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertIn("Trompettes", summary["instruments_manquants"])
         self.assertIn("Saxophones altos", summary["instruments_manquants"])
 
+    def test_summary_maybe_shows_remind_on_missing_section(self):
+        remind = timezone.localdate() + timedelta(days=3)
+        set_participation_response(
+            self.participation,
+            "maybe",
+            maybe_remind_at=remind.isoformat(),
+        )
+        self.participation.poste = MusicianProfile.Poste.TROMPETTE_1
+        self.participation.role_kind = EventParticipation.RoleKind.TITULAIRE
+        self.participation.save(update_fields=["poste", "role_kind"])
+        summary = calendar_summaries_for_events([self.event])[self.event.pk]
+        self.assertEqual(summary["n_maybe"], 1)
+        self.assertEqual(summary["n_presents"], 0)
+        self.assertIn("Trompettes", summary["instruments_manquants"])
+        tromp = next(
+            m
+            for m in summary["instruments_manquants_detail"]
+            if m["name"] == "Trompettes"
+        )
+        self.assertEqual(len(tromp["maybe"]), 1)
+        self.assertEqual(tromp["maybe"][0]["name"], "Ada Lovelace")
+        self.assertEqual(tromp["maybe"][0]["remind_at"], remind)
+        self.assertTrue(tromp["eligible"] or tromp["eligible"] == [])
+
     def test_missing_detail_lists_eligible_remplacants(self):
         summary = calendar_summaries_for_events([self.event])[self.event.pk]
         self.assertIn("Trompettes", summary["instruments_manquants"])
@@ -1094,3 +1160,60 @@ class EventPhotosRequestTests(TestCase):
         self.assertContains(r, f'value="{media_ev.pk}"')
         self.assertContains(r, 'name="event"')
         self.assertContains(r, "sélectionné")
+
+
+class MaybeRemindTests(PlanningBaseTestCase):
+    @patch("planning.services.notify_users", return_value=1)
+    def test_send_due_maybe_reminds(self, mock_notify):
+        from planning.services import send_due_maybe_reminds
+
+        set_participation_response(
+            self.participation, "maybe", maybe_remind_weekly=True
+        )
+        self.participation.maybe_remind_at = timezone.localdate()
+        self.participation.save(update_fields=["maybe_remind_at"])
+
+        treated, sent = send_due_maybe_reminds()
+        self.assertEqual(treated, 1)
+        self.assertEqual(sent, 1)
+        mock_notify.assert_called_once()
+        self.assertIn("Relance disponibilité", mock_notify.call_args.kwargs["title"])
+        self.participation.refresh_from_db()
+        self.assertIsNotNone(self.participation.maybe_last_reminded_at)
+        self.assertEqual(
+            self.participation.maybe_remind_at,
+            timezone.localdate() + timedelta(days=7),
+        )
+
+    @patch("planning.services.notify_users", return_value=1)
+    def test_command_dry_run(self, mock_notify):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        set_participation_response(
+            self.participation, "maybe", maybe_remind_weekly=True
+        )
+        self.participation.maybe_remind_at = timezone.localdate()
+        self.participation.save(update_fields=["maybe_remind_at"])
+        out = StringIO()
+        call_command("remind_maybe_participations", "--dry-run", stdout=out)
+        self.assertIn("1 participation", out.getvalue())
+        mock_notify.assert_not_called()
+        self.participation.refresh_from_db()
+        self.assertIsNone(self.participation.maybe_last_reminded_at)
+
+    def test_event_detail_shows_poste_and_date(self):
+        concert_type = EventType.objects.create(nom="Concert")
+        self.event.type = concert_type
+        self.event.save(update_fields=["type"])
+        self.client.login(username="musi", password="pass12345")
+        self.participation.poste = MusicianProfile.Poste.TROMPETTE_1
+        self.participation.role_kind = EventParticipation.RoleKind.TITULAIRE
+        self.participation.save(update_fields=["poste", "role_kind"])
+        r = self.client.get(
+            reverse("planning:event_detail", args=[self.event.pk])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Votre poste")
+        self.assertContains(r, "1er trompette")

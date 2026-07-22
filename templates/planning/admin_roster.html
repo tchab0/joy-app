@@ -101,6 +101,17 @@
           {% if p.poste %}
           <p class="pl-row__meta">{{ p.poste_label }}</p>
           {% endif %}
+          {% if p.status.code == "maybe" %}
+          <p class="pl-row__meta" style="color:var(--text);margin-top:.25rem">
+            {% if p.maybe_remind_at %}
+            Relance prévue le {{ p.maybe_remind_at|date:"d/m/Y" }}{% if p.maybe_remind_weekly %} (puis chaque semaine){% endif %}
+            {% elif p.maybe_remind_weekly %}
+            Relance chaque semaine
+            {% else %}
+            Pas de date de relance
+            {% endif %}
+          </p>
+          {% endif %}
           {% if p.comment %}
           <p class="pl-row__meta" style="color:var(--text);margin-top:.2rem">{{ p.comment }}</p>
           {% endif %}

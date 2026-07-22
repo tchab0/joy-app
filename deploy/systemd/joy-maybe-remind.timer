@@ -1,0 +1,10 @@
+[Unit]
+Description=JOY — relance RSVP peut-être (quotidien 10h15)
+
+[Timer]
+OnCalendar=*-*-* 10:15:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -712,25 +712,43 @@ class RespondParticipationView(MusicianRequiredMixin, View):
         )
         data = _parse_json_body(request)
         response = data.get("response", "")
+        maybe_remind_weekly = data.get("maybe_remind_weekly")
+        if isinstance(maybe_remind_weekly, str):
+            maybe_remind_weekly = maybe_remind_weekly.strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
         try:
             set_participation_response(
                 participation,
                 response,
                 comment=data.get("comment", "") or "",
+                maybe_remind_at=data.get("maybe_remind_at"),
+                maybe_remind_weekly=maybe_remind_weekly,
             )
         except ValueError as exc:
             return _json_error(str(exc))
         participation.refresh_from_db()
-        return JsonResponse(
-            {
-                "ok": True,
-                "status": {
-                    "code": participation.status.code,
-                    "label": participation.status.label,
-                    "color_token": participation.status.color_token,
-                },
+        payload = {
+            "ok": True,
+            "status": {
+                "code": participation.status.code,
+                "label": participation.status.label,
+                "color_token": participation.status.color_token,
+            },
+        }
+        if participation.status.code == "maybe":
+            payload["maybe_remind"] = {
+                "at": (
+                    participation.maybe_remind_at.isoformat()
+                    if participation.maybe_remind_at
+                    else None
+                ),
+                "weekly": participation.maybe_remind_weekly,
             }
-        )
+        return JsonResponse(payload)
 
 
 class ProposeSubstituteView(MusicianRequiredMixin, View):

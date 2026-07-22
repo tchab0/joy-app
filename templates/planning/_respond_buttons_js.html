@@ -5,21 +5,35 @@ function respondButtons(pk, initialCode, opts) {
     invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
     declined: 'Refusé', replacement_needed: 'Remplacement demandé'
   };
+  const today = new Date();
+  const todayISO = today.toISOString().slice(0, 10);
   return {
     pk,
     code: initialCode,
     label: labels[initialCode] || initialCode,
     busy: false,
     eventConfirmed: !!opts.eventConfirmed,
+    eventDateISO: opts.eventDateISO || '',
+    eventDateLabel: opts.eventDateLabel || '',
+    posteLabel: opts.posteLabel || '',
+    todayISO,
     showInvalidate: false,
     pendingResponse: null,
     justification: '',
     invalidateError: '',
+    showMaybeRemind: false,
+    maybeRemindDate: '',
+    maybeRemindError: '',
     closeInvalidate() {
       this.showInvalidate = false;
       this.pendingResponse = null;
       this.justification = '';
       this.invalidateError = '';
+    },
+    closeMaybeRemind() {
+      this.showMaybeRemind = false;
+      this.maybeRemindDate = '';
+      this.maybeRemindError = '';
     },
     async respond(response) {
       if (this.code === 'confirmed' && response === 'maybe') {
@@ -32,6 +46,12 @@ function respondButtons(pk, initialCode, opts) {
         this.showInvalidate = true;
         return;
       }
+      if (response === 'maybe') {
+        this.maybeRemindDate = '';
+        this.maybeRemindError = '';
+        this.showMaybeRemind = true;
+        return;
+      }
       await this._submit(response, '');
     },
     async confirmInvalidate() {
@@ -39,17 +59,48 @@ function respondButtons(pk, initialCode, opts) {
       const ok = await this._submit(this.pendingResponse, text);
       if (ok) this.closeInvalidate();
     },
-    async _submit(response, comment) {
+    async confirmMaybeRemindDate() {
+      const d = (this.maybeRemindDate || '').trim();
+      if (!d) {
+        this.maybeRemindError = 'Choisissez une date, ou « Je ne sais pas ».';
+        return;
+      }
+      if (this.todayISO && d < this.todayISO) {
+        this.maybeRemindError = 'La date ne peut pas être dans le passé.';
+        return;
+      }
+      if (this.eventDateISO && d > this.eventDateISO) {
+        this.maybeRemindError = 'La date doit être avant ou le jour de l’événement.';
+        return;
+      }
+      const ok = await this._submit('maybe', '', {
+        maybe_remind_at: d,
+        maybe_remind_weekly: false,
+      });
+      if (ok) this.closeMaybeRemind();
+    },
+    async confirmMaybeRemindWeekly() {
+      const ok = await this._submit('maybe', '', {
+        maybe_remind_weekly: true,
+      });
+      if (ok) this.closeMaybeRemind();
+    },
+    async _submit(response, comment, extra) {
       this.busy = true;
       this.invalidateError = '';
+      this.maybeRemindError = '';
       try {
+        const body = Object.assign(
+          { response, comment: comment || '' },
+          extra || {}
+        );
         const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
           method: 'POST',
           headers: {
             'X-CSRFToken': '{{ csrf_token }}',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ response, comment: comment || '' }),
+          body: JSON.stringify(body),
         });
         const d = await r.json();
         if (d.ok) {
@@ -60,10 +111,12 @@ function respondButtons(pk, initialCode, opts) {
         }
         const err = d.error || 'Erreur';
         this.invalidateError = err;
+        this.maybeRemindError = err;
         window.dispatchEvent(new CustomEvent('pl-toast', { detail: err }));
         return false;
       } catch (e) {
         this.invalidateError = 'Erreur réseau';
+        this.maybeRemindError = 'Erreur réseau';
         window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Erreur réseau' }));
         return false;
       } finally {

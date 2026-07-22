@@ -23,7 +23,7 @@
     <h2>À répondre</h2>
     {% for p in pending %}
     <div class="pl-row"
-         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %} })"
+         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
          x-show="true"
          x-transition.opacity.duration.200ms>
       <div class="pl-row__main">
@@ -41,6 +41,7 @@
         <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy" @click="respond('no')">Non</button>
       </div>
       {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
+      {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=p.pk %}
     </div>
     {% endfor %}
   </section>
@@ -99,7 +100,7 @@
            {% if p.event.is_rehearsal %}
            x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
            {% else %}
-           x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %} })"
+           x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
            {% endif %}>
         <div class="pl-row__main">
           <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
@@ -134,6 +135,9 @@
           {% endif %}
         </div>
         {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
+        {% if not p.event.is_rehearsal %}
+        {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=p.pk %}
+        {% endif %}
       </div>
       {% endfor %}
     {% else %}

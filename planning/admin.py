@@ -65,10 +65,20 @@ class MusicianProfileAdmin(admin.ModelAdmin):
 
 @admin.register(EventParticipation)
 class EventParticipationAdmin(admin.ModelAdmin):
-    list_display = ("event", "user", "poste", "role_kind", "status", "updated_at")
-    list_filter = ("status", "role_kind", "poste")
+    list_display = (
+        "event",
+        "user",
+        "poste",
+        "role_kind",
+        "status",
+        "maybe_remind_at",
+        "maybe_remind_weekly",
+        "updated_at",
+    )
+    list_filter = ("status", "role_kind", "poste", "maybe_remind_weekly")
     search_fields = ("user__username", "user__first_name", "user__last_name", "event__titre")
     autocomplete_fields = ("event", "user", "status")
+    readonly_fields = ("maybe_last_reminded_at",)
 
 
 class DateOptionInline(admin.TabularInline):

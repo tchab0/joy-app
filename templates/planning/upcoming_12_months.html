@@ -99,6 +99,12 @@
                   <p class="pl-cal-tip__line {% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
                     Manquants : {{ s.instruments_manquants_label }}
                   </p>
+                  {% if s.n_maybe %}
+                  <p class="pl-cal-tip__line is-warn">
+                    Peut-être : {{ s.n_maybe }}
+                    {% for mb in s.maybe_detail %}{% if not forloop.first %}, {% endif %}{{ mb.name }}{% if mb.remind_at %} (relance {{ mb.remind_at|date:"d/m" }}){% endif %}{% endfor %}
+                  </p>
+                  {% endif %}
                 </div>
                 {% endwith %}
                 {% endfor %}
@@ -161,6 +167,21 @@
                       {% for m in s.instruments_manquants_detail %}
                       <li class="pl-missing__item">
                         <span class="pl-missing__name">{{ m.name }}</span>
+                        {% if m.maybe %}
+                        <ul class="pl-missing__maybe">
+                          {% for mb in m.maybe %}
+                          <li>
+                            <span class="pl-badge pl-badge--warning">Peut-être</span>
+                            {{ mb.name }}{% if mb.poste_label %} · {{ mb.poste_label }}{% endif %}
+                            {% if mb.remind_at %}
+                            <span class="pl-missing__remind">— relance le {{ mb.remind_at|date:"d/m/Y" }}</span>
+                            {% elif mb.remind_weekly %}
+                            <span class="pl-missing__remind">— relance chaque semaine</span>
+                            {% endif %}
+                          </li>
+                          {% endfor %}
+                        </ul>
+                        {% endif %}
                         {% if is_planning_staff %}
                           {% if m.eligible %}
                           <form class="pl-missing__invite"

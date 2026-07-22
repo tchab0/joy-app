@@ -306,6 +306,22 @@ class EventParticipation(models.Model):
         blank=True,
         verbose_name="Commentaire",
     )
+    maybe_remind_at = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Prochaine relance « peut-être »",
+        help_text="Date à laquelle renvoyer la question de disponibilité.",
+    )
+    maybe_remind_weekly = models.BooleanField(
+        default=False,
+        verbose_name="Relance hebdomadaire",
+        help_text="Si vrai, après chaque relance la suivante est planifiée +7 jours.",
+    )
+    maybe_last_reminded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Dernière relance « peut-être »",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Modifié le")
 

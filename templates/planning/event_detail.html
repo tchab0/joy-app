@@ -43,6 +43,12 @@
       <span class="pl-accept__venue">{{ event.lieu_affiche }}</span>
       {% endif %}
     </p>
+    {% if participation and participation.poste %}
+    <p class="pl-accept__poste" style="margin:.55rem 0 0;font-size:.95rem;color:var(--text)">
+      Votre poste&nbsp;: <strong style="font-weight:600">{{ participation.poste_label }}</strong>
+      <span class="pl-row__meta" style="display:inline;margin:0"> — {{ event.date_debut|date:"D d/m/Y H:i" }}</span>
+    </p>
+    {% endif %}
     {% include "includes/_weather.html" with weather=event.weather %}
   </header>
 
@@ -106,7 +112,7 @@
 
   {% if participation %}
   <section class="pl-accept__response"
-           x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}', { eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %} })">
+           x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}', { eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if participation.poste %}{{ participation.poste_label|escapejs }}{% endif %}' })">
     <div class="pl-row__actions pl-accept__actions" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
       <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
       <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
@@ -132,6 +138,7 @@
     </div>
     {% endif %}
     {% include "planning/_rsvp_invalidate_modal.html" with prefix=participation.pk %}
+    {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=participation.pk %}
   </section>
   {% else %}
   <p class="pl-empty">Vous n’êtes pas invité à cette date.</p>
