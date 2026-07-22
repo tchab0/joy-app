@@ -1,6 +1,6 @@
 from django.urls import path
 
-from repertoire import views
+from repertoire import split_views, views
 
 app_name = "repertoire"
 
@@ -35,6 +35,41 @@ urlpatterns = [
         "staff/morceau/<slug:slug>/images/",
         views.StaffPartImagesView.as_view(),
         name="staff_part_images",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/",
+        split_views.StaffPieceDecoupeView.as_view(),
+        name="staff_piece_decoupe",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/upload/",
+        split_views.StaffPieceDecoupeUploadView.as_view(),
+        name="staff_piece_decoupe_upload",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/from-server/",
+        split_views.StaffPieceDecoupeFromServerView.as_view(),
+        name="staff_piece_decoupe_from_server",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/page/<int:page>/",
+        split_views.StaffPieceDecoupeThumbView.as_view(),
+        name="staff_piece_decoupe_thumb",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/preview/<int:page>/",
+        split_views.StaffPieceDecoupePreviewView.as_view(),
+        name="staff_piece_decoupe_preview",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/commit/",
+        split_views.StaffPieceDecoupeCommitView.as_view(),
+        name="staff_piece_decoupe_commit",
+    ),
+    path(
+        "staff/morceau/<slug:slug>/decoupe/clear/",
+        split_views.StaffPieceDecoupeClearView.as_view(),
+        name="staff_piece_decoupe_clear",
     ),
     path(
         "staff/morceau/<slug:slug>/split/",

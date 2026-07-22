@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+
+{% block title %}Découpe — {{ piece.title }} — Atelier{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+{{ postes_json|json_script:"split-postes-data" }}
+{{ existing_postes_json|json_script:"split-existing-data" }}
+{{ server_files_json|json_script:"split-server-files" }}
+
+<div class="pl pl--wide" x-data="pdfSplitEditor()" x-cloak>
+  {% include "planning/_module_nav.html" with active="atelier" %}
+  <div class="pl-nav-context">
+    <a href="{% url 'repertoire:staff_piece_edit' piece.slug %}">← Fiche atelier</a>
+  </div>
+
+  <header class="pl-head">
+    <h1>Découpe PDF</h1>
+    <p class="pl-sub">{{ piece.title }} — assignez une plage contiguë de pages par poste, puis enregistrez.</p>
+  </header>
+
+  {# Source : serveur d’abord, upload local en secours #}
+  <section class="rep-block" x-show="!ready">
+    <h2>PDF source</h2>
+    <p class="rep-muted" style="margin-bottom:.75rem">
+      Ouvrez un fichier déjà sur le serveur (inbox), ou importez un PDF depuis cet appareil.
+    </p>
+
+    <div x-show="serverFiles.length" style="margin-bottom:1rem">
+      <h3 style="font-family:var(--font-d);font-size:1rem;margin:0 0 .5rem;color:var(--text)">Sur le serveur</h3>
+      <ul class="rep-split__server-list">
+        <template x-for="f in serverFiles" :key="f.id">
+          <li>
+            <div class="rep-split__server-main">
+              <span class="rep-split__server-name" x-text="f.name"></span>
+              <span class="rep-muted" x-text="f.size_label + ' · ' + (f.where === 'needs_split' ? 'à découper' : 'inbox')"></span>
+            </div>
+            <button type="button" class="pl-btn pl-btn--primary"
+                    @click="loadServer(f.id)"
+                    :disabled="busy"
+                    x-text="busy && selectedServerId === f.id ? 'Chargement…' : 'Ouvrir'"></button>
+          </li>
+        </template>
+      </ul>
+    </div>
+    <p class="rep-muted" x-show="!serverFiles.length" style="margin-bottom:1rem">
+      Aucun PDF correspondant trouvé dans l’inbox serveur.
+    </p>
+
+    <details class="rep-split__local">
+      <summary>Importer depuis cet appareil</summary>
+      <form class="rep-form-stack" style="margin-top:.75rem" @submit.prevent="upload($event)">
+        <div>
+          <label for="split-pdf">Fichier local</label>
+          <input id="split-pdf" class="pl-input" type="file" accept="application/pdf,.pdf"
+                 x-ref="fileInput">
+        </div>
+        <button type="submit" class="pl-btn" :disabled="busy"
+                x-text="busy ? 'Chargement…' : 'Charger le PDF local'"></button>
+      </form>
+    </details>
+    <p class="rep-muted" x-show="error" x-text="error" style="color:var(--accent);margin-top:.75rem"></p>
+  </section>
+
+  {# Editor #}
+  <template x-if="ready">
+    <div class="rep-split">
+      <div class="rep-split__meta">
+        <span class="rep-muted" x-text="sourceName + ' · ' + pageCount + ' page' + (pageCount > 1 ? 's' : '')"></span>
+        <button type="button" class="pl-btn" @click="clearSource()" :disabled="busy">Changer de PDF</button>
+      </div>
+
+      <div class="rep-split__stage">
+        <button type="button" class="rep-split__nav" @click="prevPage()"
+                :disabled="current <= 1" aria-label="Page précédente">‹</button>
+        <div class="rep-split__preview">
+          <img :src="previewUrl(current)" :alt="'Page ' + current"
+               width="900" height="1270" decoding="async">
+          <p class="rep-split__page-label" x-text="current + ' / ' + pageCount"></p>
+        </div>
+        <button type="button" class="rep-split__nav" @click="nextPage()"
+                :disabled="current >= pageCount" aria-label="Page suivante">›</button>
+      </div>
+
+      <div class="rep-split__film" role="list" aria-label="Pages du PDF">
+        <template x-for="n in pageNumbers" :key="n">
+          <button type="button" class="rep-split__thumb"
+                  role="listitem"
+                  :class="thumbClass(n)"
+                  :style="thumbStyle(n)"
+                  @click="onThumbClick(n)"
+                  :aria-label="'Page ' + n + (pagePoste(n) ? ' — ' + posteLabel(pagePoste(n)) : '')"
+                  :aria-current="n === current ? 'true' : null">
+            <img :src="thumbUrl(n)" :alt="''" loading="lazy" width="72" height="100" decoding="async">
+            <span class="rep-split__thumb-n" x-text="n"></span>
+          </button>
+        </template>
+      </div>
+
+      <section class="rep-block rep-split__assign" aria-labelledby="split-assign-title">
+        <h2 id="split-assign-title">Assigner une plage</h2>
+        <p class="rep-muted" style="margin-bottom:.65rem"
+           x-text="hintText"></p>
+
+        <div class="rep-split__postes" role="listbox" aria-label="Postes">
+          <template x-for="p in postes" :key="p.value">
+            <button type="button" class="rep-split__chip"
+                    role="option"
+                    :class="{
+                      'is-active': activePoste === p.value,
+                      'is-used': rangeFor(p.value),
+                      'is-existing': existingPostes.includes(p.value) && !rangeFor(p.value)
+                    }"
+                    :style="rangeFor(p.value) ? ('--chip-c:' + colorFor(p.value)) : null"
+                    @click="pickPoste(p.value)"
+                    :aria-selected="activePoste === p.value">
+              <span x-text="p.label"></span>
+              <span class="rep-split__chip-tag" x-show="rangeFor(p.value)"
+                    x-text="rangeFor(p.value).start + '–' + rangeFor(p.value).end"></span>
+              <span class="rep-split__chip-tag" x-show="!rangeFor(p.value) && existingPostes.includes(p.value)">en base</span>
+            </button>
+          </template>
+        </div>
+
+        <div class="rep-split__sel" x-show="activePoste">
+          <p>
+            <strong x-text="posteLabel(activePoste)"></strong>
+            <span class="rep-muted" x-show="selStart">
+              — pages
+              <span x-text="selStart"></span>
+              <span x-show="selEnd && selEnd !== selStart">–<span x-text="selEnd"></span></span>
+            </span>
+          </p>
+          <div class="rep-form-actions">
+            <button type="button" class="pl-btn pl-btn--primary"
+                    @click="confirmRange()"
+                    :disabled="!canConfirm"
+                    x-text="rangeFor(activePoste) ? 'Remplacer la plage' : 'Valider la plage'"></button>
+            <button type="button" class="pl-btn" @click="cancelSelect()">Annuler</button>
+            <button type="button" class="pl-btn" @click="suggestNext()"
+                    x-show="nextFreeStart">Pages suivantes libres</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="rep-block" aria-labelledby="split-ranges-title">
+        <h2 id="split-ranges-title">Plages</h2>
+        <ul class="rep-split__ranges" x-show="ranges.length">
+          <template x-for="r in rangesSorted" :key="r.poste">
+            <li>
+              <span class="rep-split__swatch" :style="'background:' + colorFor(r.poste)"></span>
+              <span class="rep-split__range-label"
+                    x-text="posteLabel(r.poste) + ' · p. ' + r.start + '–' + r.end"></span>
+              <button type="button" class="pl-btn" @click="removeRange(r.poste)"
+                      :aria-label="'Retirer ' + posteLabel(r.poste)">Retirer</button>
+            </li>
+          </template>
+        </ul>
+        <p class="rep-muted" x-show="!ranges.length">Aucune plage pour l’instant.</p>
+        <p class="rep-muted" x-show="error" x-text="error" style="color:var(--accent);margin-top:.5rem"></p>
+        <div class="rep-form-actions">
+          <button type="button" class="pl-btn pl-btn--primary"
+                  @click="commit()"
+                  :disabled="busy || !ranges.length"
+                  x-text="busy ? 'Enregistrement…' : ('Enregistrer ' + ranges.length + ' partition' + (ranges.length > 1 ? 's' : ''))"></button>
+        </div>
+      </section>
+    </div>
+  </template>
+</div>
+
+<script>
+(function () {
+  function readJson(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
+  }
+
+  const COLORS = [
+    '#c45c3e', '#2f6f5e', '#8a6a1a', '#3d5a80', '#9b4d6c',
+    '#5c6b4a', '#b35c1e', '#4a6fa5', '#7a4e3a', '#2a7a7a',
+    '#8b4513', '#556b2f', '#6b3fa0', '#a0522d', '#4682b4',
+    '#cd5c5c', '#708090', '#d2691e', '#2e8b57', '#bc8f8f',
+    '#5f9ea0', '#a0525d', '#6a5acd'
+  ];
+
+  window.pdfSplitEditor = function () {
+    const postes = readJson('split-postes-data', []);
+    const existing = readJson('split-existing-data', []);
+    const serverFiles = readJson('split-server-files', []);
+    const initialCount = {{ page_count|default:0 }};
+    return {
+      postes,
+      existingPostes: existing,
+      serverFiles,
+      selectedServerId: '',
+      pageCount: initialCount,
+      sourceName: '{% if source_name %}{{ source_name|escapejs }}{% endif %}',
+      ready: initialCount > 0,
+      current: 1,
+      ranges: [],
+      activePoste: '',
+      selStart: null,
+      selEnd: null,
+      busy: false,
+      error: '',
+      colorMap: {},
+
+      get pageNumbers() {
+        const n = this.pageCount | 0;
+        return Array.from({ length: n }, (_, i) => i + 1);
+      },
+      get rangesSorted() {
+        return this.ranges.slice().sort((a, b) => a.start - b.start);
+      },
+      get canConfirm() {
+        return !!(this.activePoste && this.selStart && this.selEnd);
+      },
+      get nextFreeStart() {
+        if (!this.pageCount) return 0;
+        const occupied = this.ranges.slice().sort((a, b) => a.start - b.start);
+        let cursor = 1;
+        for (const r of occupied) {
+          if (cursor < r.start) return cursor;
+          cursor = r.end + 1;
+        }
+        return cursor <= this.pageCount ? cursor : 0;
+      },
+      get hintText() {
+        if (!this.activePoste) {
+          return '1. Choisissez un poste · 2. Touchez la 1ʳᵉ page · 3. Touchez la dernière page · 4. Validez.';
+        }
+        if (!this.selStart) {
+          return 'Touchez la première page de « ' + this.posteLabel(this.activePoste) + ' ».';
+        }
+        if (!this.selEnd || this.selEnd === this.selStart) {
+          return 'Touchez la dernière page (ou re-validez si une seule page).';
+        }
+        return 'Vérifiez la plage puis validez.';
+      },
+
+      posteLabel(v) {
+        const p = this.postes.find(x => x.value === v);
+        return p ? p.label : v;
+      },
+      colorFor(poste) {
+        if (!this.colorMap[poste]) {
+          const idx = this.postes.findIndex(p => p.value === poste);
+          this.colorMap[poste] = COLORS[(idx >= 0 ? idx : 0) % COLORS.length];
+        }
+        return this.colorMap[poste];
+      },
+      rangeFor(poste) {
+        return this.ranges.find(r => r.poste === poste) || null;
+      },
+      pagePoste(n) {
+        const r = this.ranges.find(x => n >= x.start && n <= x.end);
+        return r ? r.poste : '';
+      },
+      thumbUrl(n) {
+        return '{% url "repertoire:staff_piece_decoupe_thumb" piece.slug 1 %}'.replace('/page/1/', '/page/' + n + '/');
+      },
+      previewUrl(n) {
+        return '{% url "repertoire:staff_piece_decoupe_preview" piece.slug 1 %}'.replace('/preview/1/', '/preview/' + n + '/')
+          + '?t=' + encodeURIComponent(this.sourceName || 'x');
+      },
+      thumbClass(n) {
+        return {
+          'is-current': n === this.current,
+          'is-in-sel': this.selStart && this.selEnd && n >= Math.min(this.selStart, this.selEnd)
+            && n <= Math.max(this.selStart, this.selEnd),
+          'is-assigned': !!this.pagePoste(n),
+        };
+      },
+      thumbStyle(n) {
+        const poste = this.pagePoste(n);
+        if (!poste) return null;
+        return { '--thumb-c': this.colorFor(poste) };
+      },
+
+      pickPoste(v) {
+        this.error = '';
+        this.activePoste = v;
+        const existing = this.rangeFor(v);
+        if (existing) {
+          this.selStart = existing.start;
+          this.selEnd = existing.end;
+          this.current = existing.start;
+        } else {
+          this.selStart = null;
+          this.selEnd = null;
+        }
+      },
+      onThumbClick(n) {
+        this.current = n;
+        if (!this.activePoste) return;
+        if (!this.selStart || (this.selStart && this.selEnd && this.selStart !== this.selEnd)) {
+          // start new selection
+          this.selStart = n;
+          this.selEnd = n;
+          return;
+        }
+        // second tap = end
+        this.selEnd = n;
+        if (this.selEnd < this.selStart) {
+          const t = this.selStart; this.selStart = this.selEnd; this.selEnd = t;
+        }
+      },
+      confirmRange() {
+        if (!this.canConfirm) return;
+        const start = Math.min(this.selStart, this.selEnd);
+        const end = Math.max(this.selStart, this.selEnd);
+        // overlap check excluding same poste
+        for (const r of this.ranges) {
+          if (r.poste === this.activePoste) continue;
+          if (!(end < r.start || start > r.end)) {
+            this.error = 'Chevauchement avec ' + this.posteLabel(r.poste) + '.';
+            return;
+          }
+        }
+        this.ranges = this.ranges.filter(r => r.poste !== this.activePoste);
+        this.ranges.push({ poste: this.activePoste, start, end });
+        this.error = '';
+        this.activePoste = '';
+        this.selStart = null;
+        this.selEnd = null;
+      },
+      cancelSelect() {
+        this.activePoste = '';
+        this.selStart = null;
+        this.selEnd = null;
+        this.error = '';
+      },
+      removeRange(poste) {
+        this.ranges = this.ranges.filter(r => r.poste !== poste);
+      },
+      suggestNext() {
+        const start = this.nextFreeStart;
+        if (!start) return;
+        if (!this.activePoste) {
+          const free = this.postes.find(p => !this.rangeFor(p.value));
+          if (free) this.activePoste = free.value;
+        }
+        this.selStart = start;
+        this.selEnd = start;
+        this.current = start;
+      },
+      prevPage() { if (this.current > 1) this.current -= 1; },
+      nextPage() { if (this.current < this.pageCount) this.current += 1; },
+
+      applyLoaded(d) {
+        this.pageCount = d.page_count;
+        this.sourceName = d.source_name || 'source.pdf';
+        this.ready = true;
+        this.current = 1;
+        this.ranges = [];
+        this.cancelSelect();
+      },
+
+      async loadServer(id) {
+        this.busy = true;
+        this.selectedServerId = id;
+        this.error = '';
+        try {
+          const r = await fetch('{% url "repertoire:staff_piece_decoupe_from_server" piece.slug %}', {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': '{{ csrf_token }}',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id }),
+          });
+          const d = await r.json();
+          if (!d.ok) {
+            this.error = d.error || 'Échec du chargement serveur.';
+            this.busy = false;
+            this.selectedServerId = '';
+            return;
+          }
+          this.applyLoaded(d);
+        } catch (e) {
+          this.error = 'Erreur réseau.';
+        }
+        this.busy = false;
+        this.selectedServerId = '';
+      },
+
+      async upload(ev) {
+        const input = this.$refs.fileInput;
+        if (!input || !input.files || !input.files[0]) {
+          this.error = 'Choisissez un PDF local.';
+          return;
+        }
+        this.busy = true;
+        this.error = '';
+        const fd = new FormData();
+        fd.append('source_pdf', input.files[0]);
+        try {
+          const r = await fetch('{% url "repertoire:staff_piece_decoupe_upload" piece.slug %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: fd,
+          });
+          const d = await r.json();
+          if (!d.ok) {
+            this.error = d.error || 'Échec du chargement.';
+            this.busy = false;
+            return;
+          }
+          this.applyLoaded(d);
+        } catch (e) {
+          this.error = 'Erreur réseau.';
+        }
+        this.busy = false;
+      },
+
+      async clearSource() {
+        if (!confirm('Changer de PDF efface les plages en cours. Continuer ?')) return;
+        this.busy = true;
+        try {
+          await fetch('{% url "repertoire:staff_piece_decoupe_clear" piece.slug %}', {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': '{{ csrf_token }}',
+              'Content-Type': 'application/json',
+            },
+            body: '{}',
+          });
+        } catch (e) { /* ignore */ }
+        this.ready = false;
+        this.pageCount = 0;
+        this.sourceName = '';
+        this.ranges = [];
+        this.cancelSelect();
+        this.busy = false;
+      },
+
+      async commit() {
+        if (!this.ranges.length) return;
+        this.busy = true;
+        this.error = '';
+        try {
+          const r = await fetch('{% url "repertoire:staff_piece_decoupe_commit" piece.slug %}', {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': '{{ csrf_token }}',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ranges: this.ranges }),
+          });
+          const d = await r.json();
+          if (!d.ok) {
+            this.error = d.error || 'Échec de l’enregistrement.';
+            this.busy = false;
+            return;
+          }
+          window.location.href = d.redirect || '{% url "repertoire:staff_piece_edit" piece.slug %}';
+        } catch (e) {
+          this.error = 'Erreur réseau.';
+          this.busy = false;
+        }
+      },
+    };
+  };
+})();
+</script>
+{% endblock %}

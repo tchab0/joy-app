@@ -192,17 +192,12 @@
 
   <section class="rep-block">
     <h3>Découper un PDF multi-parties</h3>
-    <p class="rep-muted" style="margin-bottom:.75rem">Indiquez la plage de pages (1 = première page) pour un poste.</p>
-    <form method="post" action="{% url 'repertoire:staff_part_split' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
-      {% csrf_token %}
-      {% for field in split_form %}
-      <div>
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-      </div>
-      {% endfor %}
-      <button type="submit" class="pl-btn pl-btn--primary">Extraire vers le poste</button>
-    </form>
+    <p class="rep-muted" style="margin-bottom:.75rem">
+      Éditeur graphique : miniatures, une plage contiguë par poste, enregistrement groupé.
+    </p>
+    <p class="rep-form-actions" style="margin-top:0">
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_piece_decoupe' piece.slug %}">Ouvrir la découpe</a>
+    </p>
   </section>
   {% endif %}
 </div>

@@ -426,3 +426,125 @@ class SoloBuilderStaffTests(TestCase):
         self.assertIn("Piano", self.piece.chorus_order)
         self.assertIsNotNone(self.piece.chorus_order_updated_at)
 
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PdfDecoupeEditorTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="cut-staff", password="x", is_staff=True
+        )
+        self.piece = Piece.objects.create(title="Foggy Split", is_published=True)
+        png = Path(tempfile.mkdtemp()) / "p.png"
+        png.write_bytes(_tiny_png_bytes())
+        self.pdf_bytes = images_to_pdf_bytes([png, png, png, png])
+
+    def _upload(self):
+        self.client.login(username="cut-staff", password="x")
+        return self.client.post(
+            reverse("repertoire:staff_piece_decoupe_upload", args=[self.piece.slug]),
+            {
+                "source_pdf": SimpleUploadedFile(
+                    "pack.pdf", self.pdf_bytes, content_type="application/pdf"
+                )
+            },
+        )
+
+    def test_upload_and_thumb(self):
+        r = self._upload()
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["page_count"], 4)
+        thumb = self.client.get(
+            reverse(
+                "repertoire:staff_piece_decoupe_thumb",
+                args=[self.piece.slug, 2],
+            )
+        )
+        self.assertEqual(thumb.status_code, 200)
+        self.assertEqual(thumb["Content-Type"], "image/jpeg")
+        self.assertTrue(thumb.getvalue()[:3] == b"\xff\xd8\xff")
+
+    def test_commit_contiguous_ranges(self):
+        self._upload()
+        r = self.client.post(
+            reverse("repertoire:staff_piece_decoupe_commit", args=[self.piece.slug]),
+            data='{"ranges":[{"poste":"baryton","start":1,"end":2},{"poste":"piano","start":3,"end":4}]}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertEqual(self.piece.parts.count(), 2)
+        bari = self.piece.parts.get(poste=PartPoste.BARYTON)
+        self.assertEqual(pdf_page_count(bari.file.path), 2)
+        piano = self.piece.parts.get(poste=PartPoste.PIANO)
+        self.assertEqual(pdf_page_count(piano.file.path), 2)
+
+    def test_reject_overlap_and_duplicate_poste(self):
+        self._upload()
+        r = self.client.post(
+            reverse("repertoire:staff_piece_decoupe_commit", args=[self.piece.slug]),
+            data='{"ranges":[{"poste":"basse","start":1,"end":3},{"poste":"piano","start":2,"end":4}]}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(r.json()["ok"])
+        r2 = self.client.post(
+            reverse("repertoire:staff_piece_decoupe_commit", args=[self.piece.slug]),
+            data='{"ranges":[{"poste":"basse","start":1,"end":1},{"poste":"basse","start":2,"end":2}]}',
+            content_type="application/json",
+        )
+        self.assertEqual(r2.status_code, 400)
+
+    def test_editor_page_and_atelier_link(self):
+        self.client.login(username="cut-staff", password="x")
+        r = self.client.get(
+            reverse("repertoire:staff_piece_decoupe", args=[self.piece.slug])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "pdfSplitEditor")
+        edit = self.client.get(
+            reverse("repertoire:staff_piece_edit", args=[self.piece.slug])
+        )
+        self.assertContains(edit, "Ouvrir la découpe")
+        self.assertContains(
+            edit, reverse("repertoire:staff_piece_decoupe", args=[self.piece.slug])
+        )
+
+
+
+    def test_load_from_server_inbox(self):
+        from django.conf import settings
+
+        from repertoire import split_store
+
+        inbox = Path(settings.MEDIA_ROOT) / "repertoire" / "_inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        # Extensionless PDF named like the piece (as in prod inbox)
+        server_pdf = inbox / "Foggy_Split_full"
+        server_pdf.write_bytes(self.pdf_bytes)
+        self.assertTrue(server_pdf.read_bytes()[:5] == b"%PDF-")
+
+        cands = split_store.list_server_candidates(
+            title=self.piece.title, slug=self.piece.slug
+        )
+        self.assertTrue(cands, "expected inbox candidate")
+        cid = cands[0].id
+
+        self.client.login(username="cut-staff", password="x")
+        page = self.client.get(
+            reverse("repertoire:staff_piece_decoupe", args=[self.piece.slug])
+        )
+        self.assertContains(page, "Sur le serveur")
+        self.assertContains(page, "Foggy_Split_full")
+
+        r = self.client.post(
+            reverse(
+                "repertoire:staff_piece_decoupe_from_server", args=[self.piece.slug]
+            ),
+            data=f'{{"id":"{cid}"}}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertEqual(r.json()["page_count"], 4)

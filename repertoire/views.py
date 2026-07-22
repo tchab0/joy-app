@@ -362,6 +362,8 @@ class StaffPartImagesView(PlanningStaffRequiredMixin, View):
 
 
 class StaffPartSplitView(PlanningStaffRequiredMixin, View):
+    """Fallback numérique — préférer StaffPieceDecoupeView."""
+
     def post(self, request, slug: str):
         piece = get_object_or_404(Piece, slug=slug)
         form = PdfSplitForm(request.POST, request.FILES)

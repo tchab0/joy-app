@@ -60,5 +60,42 @@ def pdf_page_count(source_path: str | Path) -> int:
         return len(pdf.pages)
 
 
+def render_pdf_page_jpeg(
+    source_path: str | Path,
+    page: int,
+    *,
+    max_width: int = 720,
+    quality: int = 72,
+) -> bytes:
+    """
+    Rasterise la page `page` (1-indexée) en JPEG.
+    `max_width` borne la largeur pour les miniatures / aperçu.
+    """
+    import fitz
+
+    if page < 1:
+        raise ValueError("Numéro de page invalide.")
+    if max_width < 64:
+        max_width = 64
+
+    doc = fitz.open(source_path)
+    try:
+        if page > doc.page_count:
+            raise ValueError(f"Le PDF n’a que {doc.page_count} page(s).")
+        pg = doc.load_page(page - 1)
+        rect = pg.rect
+        scale = max_width / float(rect.width) if rect.width else 1.0
+        if scale > 2.0:
+            scale = 2.0
+        pix = pg.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+        # PyMuPDF: quality via output params when available
+        try:
+            return pix.tobytes("jpeg", jpg_quality=quality)
+        except TypeError:
+            return pix.tobytes("jpeg")
+    finally:
+        doc.close()
+
+
 def content_file_from_bytes(data: bytes, filename: str) -> ContentFile:
     return ContentFile(data, name=filename)

@@ -9,6 +9,7 @@ msgpack==1.2.1
 packaging==26.2
 pikepdf==10.7.2
 pillow==12.2.0
+pymupdf==1.26.7
 psycopg==3.3.4
 psycopg-binary==3.3.4
 pywebpush==2.3.0
