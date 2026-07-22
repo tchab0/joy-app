@@ -86,6 +86,12 @@ class Event(models.Model):
         verbose_name="Proposé par",
         help_text="Musicien ou adhérent ayant proposé cet événement.",
     )
+    photos_request_sent_at = models.DateTimeField(
+        "Demande de photos envoyée",
+        null=True,
+        blank=True,
+        help_text="Horodatage de la notification J+7 demandant photos/vidéos aux membres.",
+    )
 
     class Meta:
         verbose_name = "Événement"

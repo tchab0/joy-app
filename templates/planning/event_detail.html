@@ -28,6 +28,15 @@
       <span class="pl-accept__time">{{ event.date_debut|date:"H:i" }}{% if event.date_fin %} – {{ event.date_fin|date:"H:i" }}{% endif %}</span>
     </p>
     <p class="pl-accept__meta">
+      {% if event.is_rehearsal %}
+      <span class="pl-badge pl-badge--danger">Répétition</span>
+      {% elif event.statut == 'tentative' %}
+      <span class="pl-badge pl-badge--warning">Proposition · à confirmer</span>
+      {% elif event.statut == 'confirme' %}
+      <span class="pl-badge pl-badge--success">Confirmé</span>
+      {% elif event.statut == 'annule' %}
+      <span class="pl-badge pl-badge--neutral">Annulé</span>
+      {% endif %}
       <span class="pl-accept__type">{{ event.type.nom }}</span>
       {% if event.venue %}
       <span class="pl-accept__sep" aria-hidden="true">·</span>

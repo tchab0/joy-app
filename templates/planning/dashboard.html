@@ -96,6 +96,13 @@
             {{ p.event.date_debut|date:"D d/m/Y H:i" }}
             {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
             · {{ p.event.type.nom }}
+            {% if p.event.is_rehearsal %}
+            · <span class="pl-badge pl-badge--danger">Répétition</span>
+            {% elif p.event.statut == 'tentative' %}
+            · <span class="pl-badge pl-badge--warning">Proposition</span>
+            {% elif p.event.statut == 'confirme' %}
+            · <span class="pl-badge pl-badge--success">Confirmé</span>
+            {% endif %}
           </p>
         </div>
         <div class="pl-row__actions"

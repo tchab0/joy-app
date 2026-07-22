@@ -174,15 +174,18 @@ def _build_rolling_calendar(
                     continue
                 day = date(year, month, day_num)
                 day_events = events_by_day.get(day, [])
-                has_concert = False
+                has_confirmed = False
+                has_proposal = False
                 has_rehearsal = False
                 has_other = False
                 for e in day_events:
                     s = getattr(e, "cal_summary", None) or {}
                     if s.get("is_rehearsal"):
                         has_rehearsal = True
-                    elif s.get("is_concert"):
-                        has_concert = True
+                    elif s.get("is_proposal"):
+                        has_proposal = True
+                    elif s.get("is_confirmed"):
+                        has_confirmed = True
                     else:
                         has_other = True
                 days.append(
@@ -193,9 +196,12 @@ def _build_rolling_calendar(
                         "events": day_events,
                         "is_today": day == today,
                         "is_past": day < today,
-                        "has_concert": has_concert,
+                        "has_confirmed": has_confirmed,
+                        "has_proposal": has_proposal,
                         "has_rehearsal": has_rehearsal,
                         "has_other": has_other,
+                        # Alias conservé (tests / CSS historiques « concert »).
+                        "has_concert": has_confirmed,
                     }
                 )
             weeks.append(days)

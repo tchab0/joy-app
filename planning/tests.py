@@ -687,10 +687,43 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         r = self.client.get(reverse("planning:dashboard"), {"year": year})
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Concert d’été")
-        self.assertContains(r, "has-concert")
+        self.assertContains(r, "has-confirmed")
         self.assertContains(r, "Présents")
         self.assertContains(r, "Instruments manquants")
         self.assertContains(r, "(1 tit. · 0 remp.)")
+
+    def test_calendar_distinguishes_proposal_from_confirmed(self):
+        concert_type = EventType.objects.create(nom="Concert distingué")
+        proposal = Event.objects.create(
+            titre="Proposition bal",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=30),
+            statut=Event.Statut.TENTATIVE,
+        )
+        confirmed = Event.objects.create(
+            titre="Concert validé",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=31),
+            statut=Event.Statut.CONFIRME,
+        )
+        summaries = calendar_summaries_for_events([proposal, confirmed, self.event])
+        self.assertTrue(summaries[proposal.pk]["is_proposal"])
+        self.assertEqual(summaries[proposal.pk]["layer"], "proposal")
+        self.assertTrue(summaries[confirmed.pk]["is_confirmed"])
+        self.assertEqual(summaries[confirmed.pk]["layer"], "confirmed")
+        self.assertTrue(summaries[self.event.pk]["is_rehearsal"])
+        self.assertEqual(summaries[self.event.pk]["layer"], "rehearsal")
+
+        self.client.login(username="musi", password="pass12345")
+        year = timezone.localtime(proposal.date_debut).year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "has-proposal")
+        self.assertContains(r, "has-confirmed")
+        self.assertContains(r, "Proposition")
+        self.assertContains(r, "Confirmé")
 
     def test_calendar_shows_setlist_link(self):
         from repertoire.models import Setlist
@@ -894,3 +927,91 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
         self.assertContains(r, '"poste": "tenor_1"')
         self.assertContains(r, '"poste": "alto_2"')
         self.assertContains(r, "Titulaire par défaut")
+
+
+class EventPhotosRequestTests(TestCase):
+    def setUp(self):
+        self.venue = Venue.objects.create(nom="Salle", ville="Yonne")
+        self.concert_type = EventType.objects.create(nom="Concert")
+        self.member = User.objects.create_user(
+            username="mem1",
+            password="pass12345",
+            email="mem1@example.com",
+            is_musician=True,
+        )
+        self.adherent = User.objects.create_user(
+            username="adh1",
+            password="pass12345",
+            email="adh1@example.com",
+            is_association_member=True,
+        )
+
+    def test_send_event_photos_requests_marks_and_notifies(self):
+        from unittest.mock import patch
+
+        from planning.services import send_event_photos_requests
+
+        event = Event.objects.create(
+            titre="Bal photos",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=7),
+            statut=Event.Statut.CONFIRME,
+        )
+        with patch("planning.services.notify_users", return_value=2) as mocked:
+            sent = send_event_photos_requests(
+                [event], [self.member, self.adherent]
+            )
+        self.assertEqual(sent, 2)
+        event.refresh_from_db()
+        self.assertIsNotNone(event.photos_request_sent_at)
+        mocked.assert_called_once()
+        kwargs = mocked.call_args.kwargs
+        self.assertIn(f"event={event.pk}", kwargs["url"])
+        self.assertIn("Photos", kwargs["title"])
+
+    def test_command_picks_events_from_seven_days_ago(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        target = timezone.now() - timedelta(days=7)
+        due = Event.objects.create(
+            titre="Concert J+7",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=target,
+            statut=Event.Statut.CONFIRME,
+        )
+        Event.objects.create(
+            titre="Trop récent",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=2),
+            statut=Event.Statut.CONFIRME,
+        )
+        out = StringIO()
+        call_command("request_event_photos", "--dry-run", stdout=out)
+        text = out.getvalue()
+        self.assertIn("Concert J+7", text)
+        self.assertNotIn("Trop récent", text)
+        due.refresh_from_db()
+        self.assertIsNone(due.photos_request_sent_at)
+
+    def test_media_submit_prefills_event(self):
+        from core.media_events import ensure_evenement_media_for_event
+
+        event = Event.objects.create(
+            titre="Soirée jazz",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=7),
+            statut=Event.Statut.CONFIRME,
+        )
+        media_ev = ensure_evenement_media_for_event(event)
+        r = self.client.get(reverse("proposer_media"), {"event": event.pk})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Soirée jazz")
+        self.assertContains(r, f'value="{media_ev.pk}"')
+        self.assertContains(r, 'name="event"')
+        self.assertContains(r, "sélectionné")

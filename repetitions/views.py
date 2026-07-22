@@ -232,58 +232,19 @@ class StaffRehearsalCreateView(PlanningStaffRequiredMixin, View):
     def get(self, request):
         preset = timezone.localdate()
         raw = (request.GET.get("date") or "").strip()
-        parse_ok = False
-        parse_error = ""
         if raw:
             try:
                 from datetime import date as date_cls
 
                 preset = date_cls.fromisoformat(raw)
-                parse_ok = True
-            except ValueError as exc:
-                parse_error = str(exc)
+            except ValueError:
+                pass
         form = RehearsalCreateForm(
             initial={
                 "date": preset,
                 "time_start": time(20, 0),
             }
         )
-        # #region agent log
-        try:
-            import json
-            from pathlib import Path
-
-            date_html = str(form["date"])
-            Path("/srv/jazz-orchestra-yonnais/.cursor/debug-4118b6.log").open(
-                "a", encoding="utf-8"
-            ).write(
-                json.dumps(
-                    {
-                        "sessionId": "4118b6",
-                        "hypothesisId": "A,B,C,D,E",
-                        "location": "repetitions/views.py:StaffRehearsalCreateView.get",
-                        "message": "rehearsal create GET date prefill",
-                        "data": {
-                            "raw_query_date": raw,
-                            "full_query": dict(request.GET),
-                            "path": request.get_full_path(),
-                            "parse_ok": parse_ok,
-                            "parse_error": parse_error,
-                            "preset": preset.isoformat(),
-                            "form_initial_date": str(form.initial.get("date")),
-                            "date_field_html": date_html,
-                            "date_field_value": form["date"].value(),
-                        },
-                        "timestamp": int(timezone.now().timestamp() * 1000),
-                        "runId": "post-fix",
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-        except Exception:
-            pass
-        # #endregion
         return self._render(request, form, None)
 
     def post(self, request):

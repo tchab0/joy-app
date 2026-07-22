@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer export partitions → Nextcloud (toutes les 30 min)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=2min
+Persistent=true
+Unit=joy-nextcloud-export.service
+
+[Install]
+WantedBy=timers.target

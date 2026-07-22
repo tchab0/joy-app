@@ -183,7 +183,7 @@
   }
   .pl-layers {
     display: flex; flex-wrap: wrap; gap: .4rem;
-    margin: -0.35rem 0 1.25rem;
+    margin: -0.35rem 0 .75rem;
   }
   .pl-layers__btn {
     appearance: none; border: 1px solid var(--border);
@@ -199,6 +199,33 @@
     background: rgba(var(--accent-rgb), .12);
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .pl-legend {
+    display: flex; flex-wrap: wrap; gap: .45rem .85rem;
+    margin: 0 0 1.25rem; padding: 0;
+    list-style: none; font-size: .78rem; color: var(--muted);
+  }
+  .pl-legend__item {
+    display: inline-flex; align-items: center; gap: .4rem;
+    min-height: 28px;
+  }
+  .pl-legend__swatch {
+    width: .85rem; height: .85rem; border-radius: 3px; flex-shrink: 0;
+    border: 1.5px solid transparent;
+  }
+  .pl-legend__swatch--confirmed {
+    background: rgba(42, 107, 60, .35);
+    border-color: var(--ok);
+  }
+  .pl-legend__swatch--proposal {
+    background: rgba(184, 137, 42, .28);
+    border-color: var(--gold);
+    border-style: dashed;
+  }
+  .pl-legend__swatch--rehearsal {
+    background: rgba(var(--accent-rgb), .28);
+    border-color: var(--accent);
+    box-shadow: inset 0 -2px 0 0 var(--accent);
   }
   .pl-year {
     display: flex; flex-direction: column; gap: 1.75rem;
@@ -247,28 +274,45 @@
   .pl-cal__day.is-past { color: var(--muted); }
   .pl-cal__day.has-events {
     font-weight: 700;
-    background: rgba(201, 79, 58, .22);
+    background: rgba(0, 0, 0, .06);
     color: var(--text);
   }
   .pl-cal__day.has-events:hover {
-    background: rgba(201, 79, 58, .32);
+    background: rgba(0, 0, 0, .09);
   }
-  .pl-cal__day.has-concert {
-    background: rgba(138, 106, 26, .28);
+  /* Confirmés — vert (--ok) */
+  .pl-cal__day.has-confirmed {
+    background: rgba(42, 107, 60, .22);
     color: var(--text);
   }
-  .pl-cal__day.has-concert:hover {
-    background: rgba(138, 106, 26, .38);
+  .pl-cal__day.has-confirmed:hover {
+    background: rgba(42, 107, 60, .32);
   }
-  .pl-cal__day.has-rehearsal:not(.has-concert) {
+  /* Propositions — or, contour pointillé */
+  .pl-cal__day.has-proposal:not(.has-confirmed) {
+    background: rgba(184, 137, 42, .22);
+    color: var(--text);
+    outline: 1.5px dashed var(--gold);
+    outline-offset: -2px;
+  }
+  .pl-cal__day.has-proposal:not(.has-confirmed):hover {
+    background: rgba(184, 137, 42, .32);
+  }
+  .pl-cal__day.has-confirmed.has-proposal {
+    outline: 1.5px dashed var(--gold);
+    outline-offset: -2px;
+  }
+  /* Répétitions — terracotta + barre basse */
+  .pl-cal__day.has-rehearsal:not(.has-confirmed):not(.has-proposal) {
     background: rgba(201, 79, 58, .18);
     color: var(--text);
     box-shadow: inset 0 -3px 0 0 var(--accent);
   }
-  .pl-cal__day.has-rehearsal:not(.has-concert):hover {
+  .pl-cal__day.has-rehearsal:not(.has-confirmed):not(.has-proposal):hover {
     background: rgba(201, 79, 58, .28);
   }
-  .pl-cal__day.has-concert.has-rehearsal {
+  .pl-cal__day.has-rehearsal.has-confirmed,
+  .pl-cal__day.has-rehearsal.has-proposal {
     box-shadow: inset 0 -3px 0 0 var(--accent);
   }
   .pl-cal__day.layer-empty.has-events,
@@ -276,20 +320,25 @@
     background: rgba(0,0,0,.03);
     font-weight: 500;
     box-shadow: none;
+    outline: none;
     color: var(--muted);
   }
   .pl-cal__day.is-past.has-events {
-    background: rgba(201, 79, 58, .12);
+    background: rgba(0, 0, 0, .05);
     color: var(--muted);
   }
-  .pl-cal__day.is-past.has-concert {
-    background: rgba(138, 106, 26, .16);
+  .pl-cal__day.is-past.has-confirmed {
+    background: rgba(42, 107, 60, .12);
   }
-  .pl-cal__day.is-past.has-rehearsal:not(.has-concert) {
+  .pl-cal__day.is-past.has-proposal:not(.has-confirmed) {
+    background: rgba(184, 137, 42, .12);
+  }
+  .pl-cal__day.is-past.has-rehearsal:not(.has-confirmed):not(.has-proposal) {
     background: rgba(201, 79, 58, .1);
   }
   .pl-cal__day.is-today.has-events,
-  .pl-cal__day.is-today.has-concert,
+  .pl-cal__day.is-today.has-confirmed,
+  .pl-cal__day.is-today.has-proposal,
   .pl-cal__day.is-today.has-rehearsal {
     outline-width: 2px;
   }
@@ -324,8 +373,17 @@
     margin-top: .55rem; padding-top: .55rem;
     border-top: 1px solid var(--border);
   }
-  .pl-cal-tip__event.is-concert .pl-cal-tip__title { color: var(--accent); }
+  .pl-cal-tip__event.is-confirmed .pl-cal-tip__title { color: var(--ok); }
+  .pl-cal-tip__event.is-proposal .pl-cal-tip__title { color: var(--gold-text); }
   .pl-cal-tip__event.is-rehearsal .pl-cal-tip__title { color: var(--accent); }
+  .pl-cal-tip__kind {
+    display: inline-block; margin: 0 0 .25rem;
+    font-size: .65rem; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .pl-cal-tip__event.is-confirmed .pl-cal-tip__kind { color: var(--ok); }
+  .pl-cal-tip__event.is-proposal .pl-cal-tip__kind { color: var(--gold-text); }
+  .pl-cal-tip__event.is-rehearsal .pl-cal-tip__kind { color: var(--accent); }
   .pl-cal-tip__title {
     font-weight: 600; font-size: .82rem; margin: 0 0 .2rem; line-height: 1.25;
   }
@@ -350,8 +408,18 @@
     border-radius: var(--r);
     border-left: 3px solid var(--muted);
   }
-  .pl-day-events__card.is-concert { border-left-color: var(--accent); }
-  .pl-day-events__card.is-rehearsal { border-left-color: var(--accent); }
+  .pl-day-events__card.is-confirmed {
+    border-left-color: var(--ok);
+    background: rgba(42, 107, 60, .06);
+  }
+  .pl-day-events__card.is-proposal {
+    border-left: 3px dashed var(--gold);
+    background: rgba(184, 137, 42, .08);
+  }
+  .pl-day-events__card.is-rehearsal {
+    border-left-color: var(--accent);
+    background: rgba(var(--accent-rgb), .06);
+  }
   .pl-day-events__item {
     display: flex; flex-direction: column; gap: .15rem;
     text-decoration: none; color: var(--text); font-size: .95rem;
@@ -361,7 +429,9 @@
     font-size: .72rem; font-weight: 600; letter-spacing: .04em;
     text-transform: uppercase; color: var(--muted);
   }
-  .pl-day-events__card.is-concert .pl-day-events__type { color: var(--accent); }
+  .pl-day-events__card.is-confirmed .pl-day-events__type { color: var(--ok); }
+  .pl-day-events__card.is-proposal .pl-day-events__type { color: var(--gold-text); }
+  .pl-day-events__card.is-rehearsal .pl-day-events__type { color: var(--accent); }
   .pl-day-events__item:hover strong { color: var(--accent); }
   .pl-event-stats {
     display: grid; gap: .35rem; margin: .55rem 0 0; padding: 0;

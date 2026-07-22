@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
+from events.models import Event
 from planning.models import (
     DateOption,
     DateProposal,
@@ -339,6 +340,38 @@ def notify_event_invite(event, users) -> int:
         body=body,
         url="/chat/",
     )
+
+
+def send_event_photos_requests(events, members) -> int:
+    """
+    Demande photos/vidéos aux membres pour chaque événement (J+7).
+
+    Marque ``photos_request_sent_at`` même si 0 notif (évite de spammer au prochain run).
+    Retourne le total de notifications envoyées.
+    """
+    from core.media_events import media_submit_url_for_event
+
+    events = list(events)
+    members = list(members)
+    if not events:
+        return 0
+
+    total = 0
+    now = timezone.now()
+    for event in events:
+        day = timezone.localtime(event.date_debut)
+        title = f"Photos — {event.titre}"
+        body = (
+            f"Une semaine après « {event.titre} » "
+            f"({day.strftime('%d/%m/%Y')}), "
+            f"partagez vos photos et vidéos du jour !"
+        )
+        url = media_submit_url_for_event(event)
+        if members:
+            total += notify_users(members, title=title, body=body, url=url)
+        Event.objects.filter(pk=event.pk).update(photos_request_sent_at=now)
+        event.photos_request_sent_at = now
+    return total
 
 
 @transaction.atomic
@@ -891,14 +924,32 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
 
         is_concert = _is_concert_type(event)
         is_rehearsal = _is_rehearsal_type(event)
+        statut = getattr(event, "statut", "") or ""
+        is_proposal = (not is_rehearsal) and statut == Event.Statut.TENTATIVE
+        is_confirmed = (not is_rehearsal) and statut == Event.Statut.CONFIRME
+        if is_rehearsal:
+            layer = "rehearsal"
+            kind_label = "Répétition"
+        elif is_proposal:
+            layer = "proposal"
+            kind_label = "Proposition"
+        elif is_confirmed:
+            layer = "confirmed"
+            kind_label = "Confirmé"
+        else:
+            layer = "other"
+            kind_label = getattr(getattr(event, "type", None), "nom", "") or "Événement"
+        type_nom = getattr(getattr(event, "type", None), "nom", "") or ""
         summaries[event.pk] = {
             "titre": event.titre,
             "is_concert": is_concert,
             "is_rehearsal": is_rehearsal,
-            "layer": (
-                "rehearsal" if is_rehearsal else ("concert" if is_concert else "other")
-            ),
-            "type_nom": getattr(getattr(event, "type", None), "nom", "") or "",
+            "is_proposal": is_proposal,
+            "is_confirmed": is_confirmed,
+            "statut": statut,
+            "layer": layer,
+            "kind_label": kind_label,
+            "type_nom": type_nom,
             "date_label": local_start.strftime("%d/%m/%Y"),
             "time_label": local_start.strftime("%H:%M"),
             "lieu": lieu,

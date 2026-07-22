@@ -35,9 +35,15 @@
 
   <div class="pl-layers" role="group" aria-label="Calques du calendrier">
     <button type="button" class="pl-layers__btn" :class="layer === 'all' && 'is-active'" @click="setLayer('all')">Tout</button>
-    <button type="button" class="pl-layers__btn" :class="layer === 'concerts' && 'is-active'" @click="setLayer('concerts')">Concerts</button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'confirmed' && 'is-active'" @click="setLayer('confirmed')">Confirmés</button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'proposals' && 'is-active'" @click="setLayer('proposals')">Propositions</button>
     <button type="button" class="pl-layers__btn" :class="layer === 'rehearsals' && 'is-active'" @click="setLayer('rehearsals')">Répétitions</button>
   </div>
+  <ul class="pl-legend" aria-label="Légende">
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--confirmed" aria-hidden="true"></span> Événement confirmé</li>
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--proposal" aria-hidden="true"></span> Proposition</li>
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--rehearsal" aria-hidden="true"></span> Répétition</li>
+  </ul>
 
   <div class="pl-year">
     {% for month in months %}
@@ -54,18 +60,18 @@
           {% for day in week %}
             {% if day %}
             <div class="pl-cal__cell"
-                 @mouseenter="onDayHover('{{ day.iso }}', dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
+                 @mouseenter="onDayHover('{{ day.iso }}', dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
                  @mouseleave="onDayLeave('{{ day.iso }}')">
               <button type="button"
-                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if day.has_concert %} has-concert{% endif %}{% if day.has_rehearsal %} has-rehearsal{% endif %}{% if can_propose_event or is_planning_staff %} can-add{% endif %}"
+                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if day.has_confirmed %} has-confirmed{% endif %}{% if day.has_proposal %} has-proposal{% endif %}{% if day.has_rehearsal %} has-rehearsal{% endif %}{% if can_propose_event or is_planning_staff %} can-add{% endif %}"
                       :class="{
-                        'layer-dim': !dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}) && {{ day.events|length }} > 0,
-                        'layer-empty': !dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})
+                        'layer-dim': !dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}) && {{ day.events|length }} > 0,
+                        'layer-empty': !dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})
                       }"
                       role="gridcell"
                       aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if can_propose_event or is_planning_staff %} — ajouter{% endif %}"
-                      @click="onDayClick('{{ day.iso }}', {{ day.events|length }}, dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
-                      @focus="onDayHover('{{ day.iso }}', dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
+                      @click="onDayClick('{{ day.iso }}', {{ day.events|length }}, dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
+                      @focus="onDayHover('{{ day.iso }}', dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
                       @blur="onDayLeave('{{ day.iso }}')">
                 <span class="pl-cal__num">{{ day.day }}</span>
                 {% if can_propose_event or is_planning_staff %}
@@ -74,13 +80,14 @@
               </button>
               {% if day.events %}
               <div class="pl-cal-tip"
-                   x-show="finePointer && hoverDay === '{{ day.iso }}' && selectedDay !== '{{ day.iso }}' && dayVisible({{ day.has_concert|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})"
+                   x-show="finePointer && hoverDay === '{{ day.iso }}' && selectedDay !== '{{ day.iso }}' && dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})"
                    x-cloak
                    role="tooltip">
                 {% for event in day.events %}
                 {% with s=event.cal_summary %}
-                <div class="pl-cal-tip__event{% if s.is_concert %} is-concert{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
+                <div class="pl-cal-tip__event{% if s.is_confirmed %} is-confirmed{% endif %}{% if s.is_proposal %} is-proposal{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
                      x-show="eventVisible('{{ s.layer|default:'other' }}')">
+                  {% if s.kind_label %}<p class="pl-cal-tip__kind">{{ s.kind_label }}</p>{% endif %}
                   <p class="pl-cal-tip__title">{{ event.titre }}</p>
                   <p class="pl-cal-tip__line">{{ s.date_label }} · {{ s.time_label }}</p>
                   {% if s.lieu %}<p class="pl-cal-tip__line">{{ s.lieu }}</p>{% endif %}
@@ -112,11 +119,13 @@
             <p class="pl-day-events__label">{{ day.date|date:"l d F" }}</p>
             {% for event in day.events %}
             {% with s=event.cal_summary %}
-            <article class="pl-day-events__card{% if s.is_concert %} is-concert{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
+            <article class="pl-day-events__card{% if s.is_confirmed %} is-confirmed{% endif %}{% if s.is_proposal %} is-proposal{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
                      x-show="eventVisible('{{ s.layer|default:'other' }}')">
               <a class="pl-day-events__item" href="{% if s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
                 <strong>{{ event.titre }}</strong>
-                {% if s.type_nom %}<span class="pl-day-events__type">{{ s.type_nom }}</span>{% endif %}
+                <span class="pl-day-events__type">
+                  {{ s.kind_label }}{% if s.type_nom and s.type_nom != s.kind_label %} · {{ s.type_nom }}{% endif %}
+                </span>
               </a>
               <dl class="pl-event-stats">
                 <div>
@@ -381,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => initMissingInviteLocks());
 function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl }) {
   let savedLayer = 'all';
   try { savedLayer = localStorage.getItem('pl-cal-layer') || 'all'; } catch (e) {}
+  // Migration ancien calque « concerts » → « confirmed »
+  if (savedLayer === 'concerts') savedLayer = 'confirmed';
   return {
     canCreate,
     canCreateRehearsal,
@@ -412,13 +423,17 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     },
     eventVisible(layerKind) {
       if (this.layer === 'all') return true;
-      if (this.layer === 'concerts') return layerKind === 'concert';
+      if (this.layer === 'confirmed') return layerKind === 'confirmed';
+      if (this.layer === 'proposals') return layerKind === 'proposal';
       if (this.layer === 'rehearsals') return layerKind === 'rehearsal';
       return true;
     },
-    dayVisible(hasConcert, hasRehearsal, hasOther) {
-      if (this.layer === 'all') return !!(hasConcert || hasRehearsal || hasOther);
-      if (this.layer === 'concerts') return !!hasConcert;
+    dayVisible(hasConfirmed, hasProposal, hasRehearsal, hasOther) {
+      if (this.layer === 'all') {
+        return !!(hasConfirmed || hasProposal || hasRehearsal || hasOther);
+      }
+      if (this.layer === 'confirmed') return !!hasConfirmed;
+      if (this.layer === 'proposals') return !!hasProposal;
       if (this.layer === 'rehearsals') return !!hasRehearsal;
       return true;
     },
@@ -435,11 +450,7 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     },
     rehearsalUrl(iso) {
       const base = this.rehearsalCreateUrl || '/repetitions/staff/nouvelle/';
-      const url = base + (base.includes('?') ? '&' : '?') + 'date=' + encodeURIComponent(iso || '');
-      // #region agent log
-      fetch('http://127.0.0.1:7381/ingest/2f0344e3-5b5a-463f-b26c-636422cc4f69',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4118b6'},body:JSON.stringify({sessionId:'4118b6',runId:'pre-fix',hypothesisId:'A',location:'upcoming_12_months.html:rehearsalUrl',message:'calendar rehearsal link',data:{iso:iso,base:base,url:url},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      return url;
+      return base + (base.includes('?') ? '&' : '?') + 'date=' + encodeURIComponent(iso || '');
     },
     onDayHover(iso, hasVisible) {
       if (!this.finePointer || !hasVisible) return;

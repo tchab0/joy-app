@@ -202,6 +202,23 @@ def medias(request):
 
 
 def proposer_media(request):
+    from events.models import Event
+
+    from core.media_events import ensure_evenement_media_for_event
+
+    planning_event = None
+    prefilled_media_event = None
+    event_pk_raw = (request.GET.get("event") or request.POST.get("event") or "").strip()
+    if event_pk_raw.isdigit():
+        planning_event = (
+            Event.objects.filter(pk=int(event_pk_raw))
+            .exclude(statut=Event.Statut.ANNULE)
+            .select_related("venue")
+            .first()
+        )
+        if planning_event is not None:
+            prefilled_media_event = ensure_evenement_media_for_event(planning_event)
+
     if request.method == "POST":
         form = MediaSoumissionForm(request.POST, request.FILES)
         if form.is_valid():
@@ -217,7 +234,13 @@ def proposer_media(request):
                     fichiers = [f] if f else []
                 if not fichiers:
                     form.add_error("fichiers_multiples", "Sélectionnez au moins une photo.")
-                    return render(request, "core/proposer_media.html", {"form": form})
+                    return render(
+                        request,
+                        "core/proposer_media.html",
+                        _proposer_media_context(
+                            form, planning_event, prefilled_media_event
+                        ),
+                    )
 
                 medias_crees = []
                 for i, f in enumerate(fichiers):
@@ -230,7 +253,13 @@ def proposer_media(request):
                             f"Extension non autorisée pour « {f.name} ». "
                             f"Acceptées : {', '.join(EXTENSIONS_AUTORISEES['photo'])}",
                         )
-                        return render(request, "core/proposer_media.html", {"form": form})
+                        return render(
+                            request,
+                            "core/proposer_media.html",
+                            _proposer_media_context(
+                                form, planning_event, prefilled_media_event
+                            ),
+                        )
                     media = MediaItem(
                         type="photo",
                         titre=evenement.nom,
@@ -271,8 +300,30 @@ def proposer_media(request):
                     "evenement": evenement, "nb": 1
                 })
     else:
-        form = MediaSoumissionForm()
-    return render(request, "core/proposer_media.html", {"form": form})
+        initial = {"type": "photo"}
+        if request.user.is_authenticated:
+            full = (request.user.get_full_name() or "").strip()
+            if full:
+                initial["soumis_par_nom"] = full
+            if request.user.email:
+                initial["soumis_par_email"] = request.user.email
+        if prefilled_media_event is not None:
+            initial["evenement_existant"] = prefilled_media_event.pk
+        form = MediaSoumissionForm(initial=initial)
+
+    return render(
+        request,
+        "core/proposer_media.html",
+        _proposer_media_context(form, planning_event, prefilled_media_event),
+    )
+
+
+def _proposer_media_context(form, planning_event, prefilled_media_event):
+    return {
+        "form": form,
+        "planning_event": planning_event,
+        "prefilled_media_event": prefilled_media_event,
+    }
 
 
 def _notifier_admin(media, nb=1):

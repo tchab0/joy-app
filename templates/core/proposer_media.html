@@ -29,13 +29,23 @@
 <section class="section">
   <div class="container">
     <h1 class="section-title">Proposer un média</h1>
+    {% if planning_event %}
+    <p style="background:rgba(42,107,60,.08);border:1px solid rgba(42,107,60,.28);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:1.25rem;color:var(--text);max-width:55ch">
+      Merci de partager vos photos et vidéos de
+      <strong>{{ planning_event.titre }}</strong>
+      ({{ planning_event.date_debut|date:"j F Y" }}).
+      L’événement est déjà sélectionné ci-dessous — il ne reste qu’à envoyer vos fichiers.
+    </p>
+    {% else %}
     <p style="color:var(--muted);margin-bottom:2rem;max-width:55ch">Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.</p>
+    {% endif %}
 
     <form class="upload-form" method="post" enctype="multipart/form-data" id="media-submit-form"
       x-data="proposerPhotos()"
       @submit="onSubmit($event)">
 
       {% csrf_token %}
+      {% if planning_event %}<input type="hidden" name="event" value="{{ planning_event.pk }}">{% endif %}
 
       {% if form.non_field_errors %}
       <div style="background:rgba(201,79,58,.08);border:1px solid rgba(201,79,58,.3);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:1.5rem;color:var(--accent);font-size:.9rem;">
