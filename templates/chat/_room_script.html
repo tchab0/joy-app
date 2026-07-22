@@ -40,6 +40,22 @@ function chatRoom(cfg) {
     get statusClass() {
       return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.status] || '';
     },
+    isLeadingHidden(index) {
+      for (let i = 0; i < index; i++) {
+        const m = this.messages[i];
+        if (!m.hidden || m.deleted) return false;
+      }
+      return true;
+    },
+    followingHidden(index) {
+      const out = [];
+      for (let i = index + 1; i < this.messages.length; i++) {
+        const m = this.messages[i];
+        if (m.hidden && !m.deleted) out.push(m);
+        else break;
+      }
+      return out;
+    },
     init() {
       this.scrollBottom(true);
       this.connect();

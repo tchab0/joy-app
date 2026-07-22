@@ -1,25 +1,24 @@
 <p class="chat-status" :class="statusClass" x-text="statusLabel"></p>
 
 <div class="chat-thread" x-ref="thread">
-  <template x-for="msg in messages" :key="msg.id">
-    <div class="chat-msg"
-         :class="{
-           'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
-           'chat-msg--highlight': msg.highlight,
-           'chat-msg--hidden': msg.hidden && !msg.deleted
-         }">
-      <template x-if="msg.hidden && !msg.deleted">
-        <div class="chat-msg__hidden">
-          <p class="chat-msg__body chat-msg__body--deleted">Message masqué</p>
-          <button type="button" class="chat-react__unhide"
-                  @click="toggleReaction(msg, 'down')"
-                  :disabled="busyReact === msg.id">
-            Afficher
-          </button>
-        </div>
+<template x-for="(msg, index) in messages" :key="msg.id">
+    <div class="chat-msg-slot" style="display:contents">
+      <template x-if="msg.hidden && !msg.deleted && isLeadingHidden(index)">
+        <button type="button" class="chat-react__unhide chat-react__unhide--leading"
+                @click="toggleReaction(msg, 'down')"
+                :disabled="busyReact === msg.id"
+                aria-label="Réafficher le message"
+                title="Réafficher">
+          <span aria-hidden="true">👁</span>
+        </button>
       </template>
       <template x-if="!msg.hidden || msg.deleted">
-        <div>
+        <div class="chat-msg"
+             :class="{
+               'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
+               'chat-msg--highlight': msg.highlight,
+               'chat-msg--with-unhide': followingHidden(index).length > 0
+             }">
           <div class="chat-msg__meta">
             <span class="chat-msg__meta-info">
               <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
@@ -68,6 +67,17 @@
               </li>
             </template>
           </ul>
+          <div class="chat-msg__unhides" x-show="followingHidden(index).length > 0">
+            <template x-for="h in followingHidden(index)" :key="h.id">
+              <button type="button" class="chat-react__unhide"
+                      @click="toggleReaction(h, 'down')"
+                      :disabled="busyReact === h.id"
+                      aria-label="Réafficher le message"
+                      title="Réafficher">
+                <span aria-hidden="true">👁</span>
+              </button>
+            </template>
+          </div>
         </div>
       </template>
     </div>
