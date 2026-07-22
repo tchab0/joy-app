@@ -154,6 +154,25 @@
   .pl-year-nav__current {
     font-family: var(--font-d); font-weight: 700; font-size: 1.15rem;
   }
+  .pl-layers {
+    display: flex; flex-wrap: wrap; gap: .4rem;
+    margin: -0.35rem 0 1.25rem;
+  }
+  .pl-layers__btn {
+    appearance: none; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text);
+    font: inherit; font-size: .8rem; font-weight: 600;
+    letter-spacing: .03em; text-transform: uppercase;
+    padding: .55rem .85rem; min-height: 44px;
+    border-radius: var(--r); cursor: pointer;
+    transition: background var(--trans), color var(--trans), border-color var(--trans);
+  }
+  .pl-layers__btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pl-layers__btn.is-active {
+    background: rgba(var(--accent-rgb), .12);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
   .pl-year {
     display: flex; flex-direction: column; gap: 1.75rem;
   }
@@ -211,6 +230,24 @@
   .pl-cal__day.has-concert:hover {
     background: rgba(138, 106, 26, .38);
   }
+  .pl-cal__day.has-rehearsal:not(.has-concert) {
+    background: rgba(201, 79, 58, .18);
+    color: var(--text);
+    box-shadow: inset 0 -3px 0 0 var(--accent);
+  }
+  .pl-cal__day.has-rehearsal:not(.has-concert):hover {
+    background: rgba(201, 79, 58, .28);
+  }
+  .pl-cal__day.has-concert.has-rehearsal {
+    box-shadow: inset 0 -3px 0 0 var(--accent);
+  }
+  .pl-cal__day.layer-empty.has-events,
+  .pl-cal__day.layer-dim {
+    background: rgba(0,0,0,.03);
+    font-weight: 500;
+    box-shadow: none;
+    color: var(--muted);
+  }
   .pl-cal__day.is-past.has-events {
     background: rgba(201, 79, 58, .12);
     color: var(--muted);
@@ -218,8 +255,12 @@
   .pl-cal__day.is-past.has-concert {
     background: rgba(138, 106, 26, .16);
   }
+  .pl-cal__day.is-past.has-rehearsal:not(.has-concert) {
+    background: rgba(201, 79, 58, .1);
+  }
   .pl-cal__day.is-today.has-events,
-  .pl-cal__day.is-today.has-concert {
+  .pl-cal__day.is-today.has-concert,
+  .pl-cal__day.is-today.has-rehearsal {
     outline-width: 2px;
   }
   .pl-cal__num { font-size: .85rem; line-height: 1.2; }
@@ -254,6 +295,7 @@
     border-top: 1px solid var(--border);
   }
   .pl-cal-tip__event.is-concert .pl-cal-tip__title { color: var(--accent); }
+  .pl-cal-tip__event.is-rehearsal .pl-cal-tip__title { color: var(--accent); }
   .pl-cal-tip__title {
     font-weight: 600; font-size: .82rem; margin: 0 0 .2rem; line-height: 1.25;
   }
@@ -279,6 +321,7 @@
     border-left: 3px solid var(--muted);
   }
   .pl-day-events__card.is-concert { border-left-color: var(--accent); }
+  .pl-day-events__card.is-rehearsal { border-left-color: var(--accent); }
   .pl-day-events__item {
     display: flex; flex-direction: column; gap: .15rem;
     text-decoration: none; color: var(--text); font-size: .95rem;
@@ -432,5 +475,27 @@
     font-family: var(--font-d); font-size: 1.25rem; margin: 0;
   }
   .pl-modal .pl-form { border-top: none; margin-top: 0; padding-top: .5rem; }
+  .pl-modal--choice { max-width: 22rem; }
+  .pl-day-add {
+    margin-top: .35rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: .55rem;
+  }
+  .pl-day-add__actions {
+    display: flex; flex-wrap: wrap; gap: .5rem;
+  }
+  .pl-day-add__actions .pl-btn,
+  .pl-day-add__actions--stack .pl-btn {
+    min-height: 44px;
+    flex: 1 1 8rem;
+    text-align: center;
+    text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .pl-day-add__actions--stack {
+    flex-direction: column;
+  }
+  .pl-day-add__actions--stack .pl-btn { flex: 0 0 auto; width: 100%; }
 </style>
 {% include "includes/_weather_styles.html" %}

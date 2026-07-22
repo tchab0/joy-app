@@ -31,6 +31,7 @@ urlpatterns = [
     path("planning/", include("planning.urls")),
     path("chat/", include("chat.urls")),
     path("repertoire/", include("repertoire.urls")),
+    path("repetitions/", include("repetitions.urls")),
     path("stats/", include("stats.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

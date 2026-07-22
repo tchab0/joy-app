@@ -163,14 +163,29 @@ def _build_year_calendar(year: int, events_by_day: dict[date, list]) -> list[dic
                     days.append(None)
                     continue
                 day = date(year, month, day_num)
+                day_events = events_by_day.get(day, [])
+                has_concert = False
+                has_rehearsal = False
+                has_other = False
+                for e in day_events:
+                    s = getattr(e, "cal_summary", None) or {}
+                    if s.get("is_rehearsal"):
+                        has_rehearsal = True
+                    elif s.get("is_concert"):
+                        has_concert = True
+                    else:
+                        has_other = True
                 days.append(
                     {
                         "date": day,
                         "iso": day.isoformat(),
                         "day": day_num,
-                        "events": events_by_day.get(day, []),
+                        "events": day_events,
                         "is_today": day == today,
                         "is_past": day < today,
+                        "has_concert": has_concert,
+                        "has_rehearsal": has_rehearsal,
+                        "has_other": has_other,
                     }
                 )
             weeks.append(days)
@@ -455,6 +470,12 @@ class CreateEventView(PlanningStaffRequiredMixin, View):
 
 class EventDetailView(MusicianRequiredMixin, TemplateView):
     template_name = "planning/event_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        event = get_object_or_404(Event.objects.select_related("type"), pk=kwargs["pk"])
+        if event.is_rehearsal:
+            return redirect("repetitions:detail", pk=event.pk)
+        return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

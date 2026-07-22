@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Répétitions — Staff{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <header class="pl-head">
+    <h1>Répétitions</h1>
+    <p class="pl-sub">Planifier les répé, feuille de route et présences.</p>
+  </header>
+
+  {% include "planning/_module_nav.html" with active="repes" %}
+
+  <div style="margin-bottom:1.25rem">
+    <a class="pl-btn pl-btn--primary" href="{% url 'repetitions:staff_create' %}">+ Nouvelle répétition</a>
+  </div>
+
+  <section class="pl-section">
+    <h2>À venir</h2>
+    {% for e in events %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'repetitions:staff_edit' e.pk %}">{{ e.titre }}</a>
+        <p class="pl-row__meta">
+          {{ e.date_debut|date:"d/m/Y H:i" }}
+          {% if e.venue %} · {{ e.venue.nom }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <a class="pl-btn" href="{% url 'repetitions:detail' e.pk %}">Voir</a>
+        <a class="pl-btn" href="{% url 'repetitions:staff_edit' e.pk %}">Éditer</a>
+      </div>
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucune répétition à venir.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

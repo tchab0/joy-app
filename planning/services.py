@@ -758,6 +758,10 @@ def _is_concert_type(event) -> bool:
     return "concert" in nom
 
 
+def _is_rehearsal_type(event) -> bool:
+    return bool(getattr(event, "is_rehearsal", False))
+
+
 def _expected_sections() -> list[OrchestraSection]:
     """Pupitres actifs pour lesquels au moins un titulaire est en roster."""
     return list(
@@ -832,9 +836,15 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
         if venue is not None:
             lieu = f"{venue.nom} — {venue.ville}" if venue.ville else venue.nom
 
+        is_concert = _is_concert_type(event)
+        is_rehearsal = _is_rehearsal_type(event)
         summaries[event.pk] = {
             "titre": event.titre,
-            "is_concert": _is_concert_type(event),
+            "is_concert": is_concert,
+            "is_rehearsal": is_rehearsal,
+            "layer": (
+                "rehearsal" if is_rehearsal else ("concert" if is_concert else "other")
+            ),
             "type_nom": getattr(getattr(event, "type", None), "nom", "") or "",
             "date_label": local_start.strftime("%d/%m/%Y"),
             "time_label": local_start.strftime("%H:%M"),

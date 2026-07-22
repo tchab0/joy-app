@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "feedback.apps.FeedbackConfig",
     "chat.apps.ChatConfig",
     "repertoire.apps.RepertoireConfig",
+    "repetitions.apps.RepetitionsConfig",
     "stats.apps.StatsConfig",
 ]
 
