@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "feedback.apps.FeedbackConfig",
     "chat.apps.ChatConfig",
     "repertoire.apps.RepertoireConfig",
+    "stats.apps.StatsConfig",
 ]
 
 MIDDLEWARE = [
@@ -36,6 +37,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.NoIndexPrivateMiddleware",
+    "stats.middleware.UsageTrackingMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -155,6 +157,7 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr")
 SITE_URL = os.environ.get("SITE_URL", "https://jazz-orchestra-yonnais.fr")
 GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
 GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
+USAGE_EVENT_RETENTION_DAYS = int(os.environ.get("USAGE_EVENT_RETENTION_DAYS", "90"))
 
 CACHES = {
     "default": {

@@ -14,6 +14,7 @@ NOINDEX_PREFIXES = (
     "/planning/",
     "/repertoire/",
     "/chat/",
+    "/stats/",
     "/admin/",
     "/admin-",
     "/feedback/",

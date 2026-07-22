@@ -160,6 +160,13 @@ class PartDownloadView(MusicianRequiredMixin, View):
             raise Http404
         if not part.file:
             raise Http404
+        from stats.tracking import record_usage
+
+        record_usage(
+            name="repertoire.pdf",
+            user=request.user,
+            path=request.path,
+        )
         response = FileResponse(
             part.file.open("rb"),
             as_attachment=True,
@@ -179,6 +186,13 @@ class PieceAudioDownloadView(MusicianRequiredMixin, View):
             raise Http404
         if not piece.audio_recording:
             raise Http404
+        from stats.tracking import record_usage
+
+        record_usage(
+            name="repertoire.audio",
+            user=request.user,
+            path=request.path,
+        )
         name = Path(piece.audio_recording.name).name
         response = FileResponse(
             piece.audio_recording.open("rb"),

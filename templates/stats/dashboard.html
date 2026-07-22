@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% block title %}Statistiques — JOY{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block extra_css %}
+<style>
+  .stats-toolbar {
+    display: flex; flex-wrap: wrap; gap: 1rem;
+    align-items: flex-start; justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  .stats-filters { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .stats-filters a {
+    display: inline-flex; align-items: center; min-height: 44px;
+    padding: .55rem .9rem; border: 1px solid var(--border); border-radius: var(--r);
+    text-decoration: none; color: var(--text); background: var(--surface);
+  }
+  .stats-filters a.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .stats-lead { color: var(--muted); margin-top: .5rem; max-width: 40rem; }
+  .stats-insights {
+    display: flex; flex-direction: column; gap: .65rem;
+    margin-bottom: 1.75rem;
+  }
+  .stats-insight {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--gold); border-radius: var(--r);
+    padding: .85rem 1rem; color: var(--text); font-size: .95rem;
+  }
+  .stats-insight.prune { border-left-color: var(--accent); }
+  .stats-insight.develop { border-left-color: var(--ok); }
+  .stats-insight.info { border-left-color: var(--muted); }
+  .stats-section { margin-bottom: 2.25rem; }
+  .stats-section h2 {
+    font-family: var(--font-d); font-size: 1.35rem;
+    margin: 0 0 .35rem; color: var(--text);
+  }
+  .stats-section .sub { color: var(--muted); margin-bottom: 1rem; font-size: .95rem; }
+  .stats-kpis {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .stats-kpi {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: .9rem 1rem; color: var(--text);
+  }
+  .stats-kpi .n {
+    font-family: var(--font-d); font-size: 1.6rem; line-height: 1.15;
+    color: var(--text);
+  }
+  .stats-kpi .l { color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr; gap: 1rem;
+  }
+  .stats-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 1rem 1.1rem; color: var(--text);
+  }
+  .stats-panel h3 {
+    font-size: .95rem; font-weight: 600; margin: 0 0 .75rem; color: var(--text);
+  }
+  .stats-panel canvas { width: 100% !important; max-height: 220px; }
+  .stats-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .stats-table th, .stats-table td {
+    text-align: left; padding: .45rem 0; border-bottom: 1px solid var(--border);
+    color: var(--text); vertical-align: top;
+  }
+  .stats-table th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  .stats-table td.num, .stats-table th.num { text-align: right; }
+  .stats-muted { color: var(--muted); font-size: .9rem; }
+  .stats-note {
+    margin-top: .75rem; padding: .75rem .9rem;
+    background: var(--bg); border-radius: var(--r);
+    color: var(--muted); font-size: .88rem;
+  }
+  .stats-note a { color: var(--accent); }
+  .bar-list { display: flex; flex-direction: column; gap: .45rem; }
+  .bar-row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; }
+  .bar-label { font-size: .88rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track {
+    grid-column: 1 / -1; height: 6px; background: var(--bg);
+    border-radius: var(--r); overflow: hidden;
+  }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: var(--r); }
+  .bar-n { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  @media (min-width: 720px) {
+    .stats-kpis { grid-template-columns: repeat(4, 1fr); }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div class="stats-toolbar">
+      <div>
+        <h1 class="section-title">Statistiques</h1>
+        <p class="stats-lead">
+          Usage du site et engagement des musiciens — pour décider quoi simplifier ou développer.
+          Période&nbsp;: {{ period.label }}.
+        </p>
+      </div>
+      <div class="stats-filters">
+        {% for days, label in period_choices %}
+          <a href="{% url 'stats:dashboard' %}?period={{ days }}"
+             class="{% if period.days == days %}active{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if insights %}
+    <div class="stats-insights">
+      {% for tip in insights %}
+        <div class="stats-insight {{ tip.kind }}">{{ tip.text }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# —— Visiteurs —— #}
+    <div class="stats-section">
+      <h2>Visiteurs &amp; public</h2>
+      <p class="sub">Signaux issus du site public (formulaires, votes, retours). Le trafic global reste dans Google Analytics si configuré.</p>
+      <div class="stats-kpis">
+        <div class="stats-kpi"><div class="n">{{ visitors.contacts_total }}</div><div class="l">Messages contact / prestation</div></div>
+        <div class="stats-kpi"><div class="n">{{ visitors.media_votes }}</div><div class="l">Votes médias</div></div>
+        <div class="stats-kpi"><div class="n">{{ visitors.feedback_count }}</div><div class="l">Retours pages</div></div>
+        <div class="stats-kpi"><div class="n">{% if ga_configured %}Oui{% else %}Non{% endif %}</div><div class="l">Google Analytics</div></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stats-panel">
+          <h3>Messages par jour</h3>
+          <canvas id="chart-contacts" aria-label="Messages de contact par jour"></canvas>
+        </div>
+        <div class="stats-panel">
+          <h3>Types de messages</h3>
+          {% if visitors.contact_by_kind %}
+          <div class="bar-list">
+            {% for row in visitors.contact_by_kind %}
+            <div class="bar-row">
+              <span class="bar-label">{{ row.label }}</span>
+              <span class="bar-n">{{ row.count }}</span>
+              <div class="bar-track"><div class="bar-fill" style="width:{% widthratio row.count visitors.contacts_total 100 %}%"></div></div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="stats-muted">Aucun message sur la période.</p>
+          {% endif %}
+          {% if visitors.contact_by_status %}
+          <p class="stats-muted" style="margin-top:1rem">Statuts&nbsp;:
+            {% for row in visitors.contact_by_status %}{{ row.label }}&nbsp;{{ row.count }}{% if not forloop.last %} · {% endif %}{% endfor %}
+          </p>
+          {% endif %}
+        </div>
+        <div class="stats-panel">
+          <h3>Médias les plus votés</h3>
+          {% if visitors.top_media %}
+          <table class="stats-table">
+            <thead><tr><th>Média</th><th class="num">Votes</th></tr></thead>
+            <tbody>
+              {% for row in visitors.top_media %}
+              <tr><td>{{ row.title }}</td><td class="num">{{ row.count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="stats-muted">Aucun vote sur la période.</p>
+          {% endif %}
+        </div>
+        <div class="stats-panel">
+          <h3>Retours par page</h3>
+          {% if visitors.feedback_by_page %}
+          <table class="stats-table">
+            <thead><tr><th>Page</th><th class="num">n</th></tr></thead>
+            <tbody>
+              {% for row in visitors.feedback_by_page %}
+              <tr>
+                <td>{{ row.page_title|default:row.page_url }}</td>
+                <td class="num">{{ row.n }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="stats-muted">Aucun retour sur la période.</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="stats-note">
+        {% if ga_configured %}
+          Trafic web (sessions, pages vues)&nbsp;: console
+          <a href="https://analytics.google.com/" target="_blank" rel="noopener">Google Analytics</a>
+          (propriété {{ ga_id }}).
+        {% else %}
+          Aucun <code>GA_MEASUREMENT_ID</code> configuré — le trafic public n’est pas mesuré côté Analytics.
+        {% endif %}
+      </div>
+    </div>
+
+    {# —— Musiciens —— #}
+    <div class="stats-section">
+      <h2>Musiciens</h2>
+      <p class="sub">Engagement sur le planning, le chat, les sondages et les comptes.</p>
+      <div class="stats-kpis">
+        <div class="stats-kpi"><div class="n">{{ musicians.count }}</div><div class="l">Comptes musiciens actifs</div></div>
+        <div class="stats-kpi"><div class="n">{{ musicians.login_buckets.30j }}</div><div class="l">Connectés (30 j)</div></div>
+        <div class="stats-kpi"><div class="n">{{ musicians.chat_authors }}</div><div class="l">Auteurs chat (période)</div></div>
+        <div class="stats-kpi"><div class="n">{{ musicians.poll_voters }}</div><div class="l">Votants sondages</div></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stats-panel">
+          <h3>Connexions</h3>
+          <canvas id="chart-logins" aria-label="Répartition des connexions"></canvas>
+          <p class="stats-muted" style="margin-top:.75rem">
+            7&nbsp;j&nbsp;{{ musicians.login_buckets.7j }} ·
+            30&nbsp;j&nbsp;{{ musicians.login_buckets.30j }} ·
+            90&nbsp;j&nbsp;{{ musicians.login_buckets.90j }} ·
+            jamais&nbsp;{{ musicians.login_buckets.never }} ·
+            inactifs&nbsp;90&nbsp;j&nbsp;{{ musicians.login_buckets.stale_90 }}
+          </p>
+        </div>
+        <div class="stats-panel">
+          <h3>Réponses planning (période)</h3>
+          <canvas id="chart-participation" aria-label="Statuts de participation"></canvas>
+          <p class="stats-muted" style="margin-top:.75rem">
+            {{ musicians.responders }} musicien(s) ont répondu ·
+            {{ musicians.invited_only_users }} encore «&nbsp;invité&nbsp;» seulement
+          </p>
+        </div>
+        <div class="stats-panel">
+          <h3>Messages chat / jour</h3>
+          <canvas id="chart-chat" aria-label="Messages chat par jour"></canvas>
+          <p class="stats-muted" style="margin-top:.75rem">
+            {{ musicians.chat_messages }} message(s) ·
+            {{ musicians.silent_chat_members }} membre(s) sans lecture récente
+          </p>
+        </div>
+        <div class="stats-panel">
+          <h3>Adoption</h3>
+          <table class="stats-table">
+            <tbody>
+              <tr><td>Push (appareils distincts)</td><td class="num">{{ musicians.push_users }}</td></tr>
+              <tr><td>Guide musicien terminé</td><td class="num">{{ musicians.tours_done }}</td></tr>
+              <tr><td>Votes sondages</td><td class="num">{{ musicians.poll_votes }}</td></tr>
+              <tr><td>Profils musicien</td><td class="num">{{ musicians.profiles }}</td></tr>
+            </tbody>
+          </table>
+          {% if musicians.top_rooms %}
+          <h3 style="margin-top:1rem">Salons actifs</h3>
+          <table class="stats-table">
+            <thead><tr><th>Salon</th><th class="num">Msg</th></tr></thead>
+            <tbody>
+              {% for row in musicians.top_rooms %}
+              <tr><td>{{ row.title }}</td><td class="num">{{ row.count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="stats-panel" style="margin-top:1rem">
+        <h3>Musiciens inactifs (≥ 90 j ou jamais connectés)</h3>
+        {% if musicians.inactive %}
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Pupitre</th>
+              <th>Dernière connexion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in musicians.inactive %}
+            <tr>
+              <td>{{ u.get_full_name|default:u.username }}</td>
+              <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
+              <td>{% if u.last_login %}{{ u.last_login|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="stats-muted">Aucun compte inactif sur ce critère.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# —— Features (Phase B) —— #}
+    <div class="stats-section">
+      <h2>Usage des outils</h2>
+      <p class="sub">
+        Hits sur les espaces authentifiés et téléchargements (rétention {{ usage.retention_days }}&nbsp;j).
+      </p>
+      <div class="stats-kpis">
+        <div class="stats-kpi"><div class="n">{{ usage.total }}</div><div class="l">Événements enregistrés</div></div>
+        <div class="stats-kpi"><div class="n">{{ usage.unique_users }}</div><div class="l">Utilisateurs distincts</div></div>
+        <div class="stats-kpi"><div class="n">{{ usage.ranking|length }}</div><div class="l">Features touchées</div></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stats-panel">
+          <h3>Hits / jour</h3>
+          <canvas id="chart-usage" aria-label="Hits d’usage par jour"></canvas>
+        </div>
+        <div class="stats-panel">
+          <h3>Classement des features</h3>
+          {% if usage.ranking %}
+          <div class="bar-list">
+            {% for row in usage.ranking %}
+            <div class="bar-row">
+              <span class="bar-label">{{ row.label }}</span>
+              <span class="bar-n">{{ row.count }}</span>
+              {% if usage.ranking.0.count %}
+              <div class="bar-track"><div class="bar-fill" style="width:{% widthratio row.count usage.ranking.0.count 100 %}%"></div></div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="stats-muted">Pas encore de données — naviguez sur planning / chat / répertoire pour alimenter le suivi.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{{ charts_json|json_script:"stats-charts-data" }}
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const el = document.getElementById('stats-charts-data');
+  if (!el || typeof Chart === 'undefined') return;
+  const data = JSON.parse(el.textContent);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c94f3a';
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b6560';
+  const text = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#1a1714';
+  const ok = getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() || '#2a6b3c';
+  const gold = '#8a6a1a';
+
+  Chart.defaults.color = muted;
+  Chart.defaults.borderColor = 'rgba(0,0,0,.08)';
+  Chart.defaults.font.family = getComputedStyle(document.documentElement).getPropertyValue('--font-b').trim() || 'sans-serif';
+
+  function lineChart(id, series, color) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const labels = (series || []).map(r => r.date);
+    const values = (series || []).map(r => r.count);
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderColor: color,
+          backgroundColor: color + '33',
+          fill: true,
+          tension: 0.3,
+          pointRadius: labels.length > 40 ? 0 : 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 6 } },
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+        },
+      },
+    });
+  }
+
+  function doughnut(id, labels, values, colors) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    if (!labels.length || values.every(v => !v)) {
+      canvas.insertAdjacentHTML('afterend', '<p class="stats-muted">Pas de données.</p>');
+      canvas.remove();
+      return;
+    }
+    new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+      },
+    });
+  }
+
+  lineChart('chart-contacts', data.contacts, accent);
+  lineChart('chart-chat', data.chat, ok);
+  lineChart('chart-usage', data.usage, gold);
+
+  const lb = data.login_buckets || {};
+  doughnut(
+    'chart-logins',
+    ['≤ 7 j', '8–30 j', '31–90 j', 'Inactifs / jamais'],
+    [
+      lb['7j'] || 0,
+      Math.max(0, (lb['30j'] || 0) - (lb['7j'] || 0)),
+      Math.max(0, (lb['90j'] || 0) - (lb['30j'] || 0)),
+      lb.stale_90 || 0,
+    ],
+    [ok, gold, accent, muted]
+  );
+
+  const part = data.participation || [];
+  doughnut(
+    'chart-participation',
+    part.map(p => p.label),
+    part.map(p => p.count),
+    [ok, accent, gold, muted, text, '#a83c2a', '#8a6a1a', '#6b6560'].slice(0, part.length)
+  );
+})();
+</script>
+{% endblock %}
