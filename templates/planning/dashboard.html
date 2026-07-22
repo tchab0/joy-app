@@ -28,6 +28,7 @@
         <p class="pl-row__meta">
           {{ p.event.date_debut|date:"D d/m H:i" }}
           {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
+          {% if p.poste %} · {{ p.poste_label }}{% endif %}
         </p>
       </div>
       <div class="pl-row__actions">
@@ -51,6 +52,7 @@
         <p class="pl-row__meta">
           Remplacer {{ s.participation.user.get_full_name|default:s.participation.user.username }}
           · {{ s.participation.event.date_debut|date:"d/m H:i" }}
+          {% if s.participation.poste %} · {{ s.participation.poste_label }}{% endif %}
         </p>
       </div>
       <div class="pl-row__actions">
@@ -96,6 +98,7 @@
             {{ p.event.date_debut|date:"D d/m/Y H:i" }}
             {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
             · {{ p.event.type.nom }}
+            {% if p.poste %} · {{ p.poste_label }}{% endif %}
             {% if p.event.is_rehearsal %}
             · <span class="pl-badge pl-badge--danger">Répétition</span>
             {% elif p.event.statut == 'tentative' %}
@@ -159,83 +162,6 @@
     {% endfor %}
   </section>
   {% endif %}
-
-  <section class="pl-section">
-    <h2>Mon pupitre</h2>
-    <p class="pl-row__meta">
-      Pupitre : {{ profile.section|default:"—" }}
-      · {{ profile.roles_label }}
-    </p>
-    {% if is_planning_staff %}
-    <form class="pl-form" method="post" action="{% url 'planning:update_profile' %}">
-      {% csrf_token %}
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="poste_titulaire">Poste titulaire</label>
-          <select name="poste_titulaire" id="poste_titulaire">
-            <option value="">— Non titulaire —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_titulaire == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="poste_remplacant">Poste remplaçant 1</label>
-          <select name="poste_remplacant" id="poste_remplacant">
-            <option value="">— Non remplaçant —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_remplacant == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label for="poste_remplacant_2">Poste remplaçant 2</label>
-          <select name="poste_remplacant_2" id="poste_remplacant_2">
-            <option value="">— —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_remplacant_2 == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="poste_remplacant_3">Poste remplaçant 3</label>
-          <select name="poste_remplacant_3" id="poste_remplacant_3">
-            <option value="">— —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_remplacant_3 == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label for="poste_remplacant_4">Poste remplaçant 4</label>
-          <select name="poste_remplacant_4" id="poste_remplacant_4">
-            <option value="">— —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_remplacant_4 == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="pl-form__row pl-form__row--2">
-        <div>
-          <label for="poste_remplacant_5">Poste remplaçant 5</label>
-          <select name="poste_remplacant_5" id="poste_remplacant_5">
-            <option value="">— —</option>
-            {% for value, label in postes %}
-            <option value="{{ value }}" {% if profile.poste_remplacant_5 == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <p class="pl-row__meta">Jusqu’à 5 postes de remplacement, distincts du titulaire. Le pupitre est déduit du poste titulaire.</p>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Enregistrer</button>
-    </form>
-    {% endif %}
-  </section>
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>

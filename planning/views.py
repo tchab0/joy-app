@@ -308,10 +308,6 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
                 "open_polls": open_polls,
                 "sub_offers": sub_offers,
                 "my_gear": my_gear,
-                "profile": get_or_create_profile(user),
-                "sections": OrchestraSection.objects.filter(is_active=True),
-                "postes": MusicianProfile.Poste.choices,
-                "is_planning_staff": user.is_staff or user.is_superuser,
             }
         )
         return context
