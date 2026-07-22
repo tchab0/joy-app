@@ -78,6 +78,17 @@ class User(AbstractUser):
         ),
     )
 
+    tour_musician_version = models.PositiveSmallIntegerField(
+        "Version guide musicien terminée",
+        default=0,
+        help_text="0 = jamais terminé. Comparé à la version du guide actif.",
+    )
+    tour_staff_version = models.PositiveSmallIntegerField(
+        "Version guide staff terminée",
+        default=0,
+        help_text="0 = jamais terminé. Comparé à la version du guide actif.",
+    )
+
     class Meta:
         verbose_name = "utilisateur"
         verbose_name_plural = "utilisateurs"
@@ -198,3 +209,7 @@ class PushSubscription(models.Model):
 
     def __str__(self) -> str:
         return f"PushSubscription({self.user_id}, {self.endpoint[:48]}…)"
+
+
+# Guides coach marks (éditables en admin) — importés pour découverte Django.
+from .tour_models import ProductTour, ProductTourStep  # noqa: E402, F401

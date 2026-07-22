@@ -16,7 +16,7 @@
   {% include "planning/_module_nav.html" with active="mes_dates" %}
 
   {% if pending %}
-  <section class="pl-section">
+  <section class="pl-section" data-tour="rsvp-actions">
     <h2>À répondre</h2>
     {% for p in pending %}
     <div class="pl-row"
@@ -85,13 +85,13 @@
   </section>
   {% endif %}
 
-  <section class="pl-section">
+  <section class="pl-section"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
     <h2>Prochaines dates</h2>
     {% if upcoming %}
       {% for p in upcoming %}
       <div class="pl-row">
         <div class="pl-row__main">
-          <a class="pl-row__title" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+          <a class="pl-row__title" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
           <p class="pl-row__meta">
             {{ p.event.date_debut|date:"D d/m/Y H:i" }}
             {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
@@ -99,7 +99,14 @@
           </p>
         </div>
         <div class="pl-row__actions">
+          {% if p.event.is_rehearsal %}
+          <a class="pl-btn {% if p.status.code == 'confirmed' %}pl-btn--no{% else %}pl-btn--yes{% endif %}"
+             href="{% url 'repetitions:detail' p.event.pk %}">
+            {% if p.status.code == 'confirmed' %}Signaler absence{% else %}Présence{% endif %}
+          </a>
+          {% else %}
           <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
+          {% endif %}
         </div>
       </div>
       {% endfor %}

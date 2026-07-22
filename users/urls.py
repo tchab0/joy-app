@@ -9,6 +9,7 @@ urlpatterns = [
     path("connexion/2fa/", views.login_2fa_view, name="account_login_2fa"),
     path("deconnexion/", views.logout_view, name="account_logout"),
     path("", views.account_home, name="account_home"),
+    path("guide/terminer/", views.tour_complete, name="account_tour_complete"),
     path("securite/", views.security_view, name="account_security"),
     path("securite/totp/demarrer/", views.totp_setup_start, name="account_totp_start"),
     path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),

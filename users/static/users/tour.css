@@ -1,0 +1,94 @@
+/* Coach marks JOY — thème Driver.js */
+.driver-popover.joy-tour-popover {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 12px 40px rgba(26, 23, 20, .18);
+  max-width: min(360px, calc(100vw - 2rem));
+  font-family: var(--font-b);
+}
+.driver-popover.joy-tour-popover .driver-popover-title {
+  font-family: var(--font-d);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text) !important;
+}
+.driver-popover.joy-tour-popover .driver-popover-description {
+  color: var(--muted) !important;
+  font-size: .95rem;
+  line-height: 1.45;
+}
+.driver-popover.joy-tour-popover .driver-popover-progress-text {
+  color: var(--muted) !important;
+  font-size: .8rem;
+}
+.driver-popover.joy-tour-popover .driver-popover-footer,
+.driver-popover.joy-tour-popover .driver-popover-navigation-btns {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  gap: .5rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: .65rem;
+  margin-top: .35rem;
+}
+.driver-popover.joy-tour-popover .driver-popover-prev-btn,
+.driver-popover.joy-tour-popover .driver-popover-next-btn,
+.driver-popover.joy-tour-popover .driver-popover-close-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: .55rem 1rem;
+  border-radius: var(--r);
+  font-family: var(--font-b);
+  font-weight: 600;
+  font-size: .9rem;
+  text-shadow: none !important;
+}
+.driver-popover.joy-tour-popover .driver-popover-next-btn {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border: 1px solid var(--accent) !important;
+  text-shadow: none !important;
+}
+.driver-popover.joy-tour-popover .driver-popover-next-btn:hover {
+  background: var(--accent-h) !important;
+  border-color: var(--accent-h) !important;
+}
+.driver-popover.joy-tour-popover .driver-popover-prev-btn,
+.driver-popover.joy-tour-popover .driver-popover-close-btn {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  text-shadow: none !important;
+}
+
+/* Étapes sans cible : masquer la flèche, pas l’élément factice
+   (display:none sur #driver-dummy-element cassait le cutout → clics = overlay). */
+.driver-popover.joy-tour-popover--center .driver-popover-arrow,
+.driver-popover.joy-tour-popover .driver-popover-arrow-side-over,
+.driver-popover.joy-tour-popover .driver-popover-arrow-none,
+.driver-popover.joy-tour-popover--center .driver-popover-arrow-side-bottom,
+.driver-popover.joy-tour-popover--center .driver-popover-arrow-side-top,
+.driver-popover.joy-tour-popover--center .driver-popover-arrow-side-left,
+.driver-popover.joy-tour-popover--center .driver-popover-arrow-side-right {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Au-dessus de l’overlay SVG Driver (inline z-index 10000) —
+   garder la valeur Driver (~1e9), ne pas la baisser. */
+.driver-popover.joy-tour-popover {
+  z-index: 1000000000 !important;
+  pointer-events: auto !important;
+}
+.driver-popover.joy-tour-popover * {
+  pointer-events: auto !important;
+}
+
+@media (max-width: 768px) {
+  .driver-popover.joy-tour-popover {
+    max-width: calc(100vw - 1rem);
+  }
+}

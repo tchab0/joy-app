@@ -16,7 +16,7 @@
 
   {% include "planning/_module_nav.html" with active="repertoire" %}
 
-  <form class="rep-filter" method="get" action="">
+  <form class="rep-filter" method="get" action="" data-tour="repertoire-filter">
     <label for="poste">Poste</label>
     <select id="poste" name="poste" onchange="this.form.submit()">
       <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>

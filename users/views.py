@@ -257,16 +257,50 @@ def account_home(request: HttpRequest) -> HttpResponse:
                 instance=request.user
             )
 
+    from users.tour_service import build_tour_config
+
     roles = get_user_roles(request.user)
+    tour_cfg = build_tour_config(request)
     context = {
         "roles": [ROLE_LABELS[r] for r in roles if r in ROLE_LABELS],
         "can_planning": user_can_access_planning(request.user),
         "can_members": user_can_access_member_area(request.user),
         "staff_notify_form": staff_notify_form,
+        "can_replay_musician_tour": bool(
+            tour_cfg and tour_cfg.get("can_replay", {}).get("musician")
+        ),
+        "can_replay_staff_tour": bool(
+            tour_cfg and tour_cfg.get("can_replay", {}).get("staff")
+        ),
     }
     context.update(build_page_feedback_author_responses_context(request.user))
     context.update(build_page_feedback_vote_requests_context(request.user))
     return render(request, "users/account.html", context)
+
+
+@login_required
+@require_POST
+def tour_complete(request: HttpRequest) -> HttpResponse:
+    """Marque un guide comme terminé (version courante)."""
+    import json
+
+    from django.http import JsonResponse
+
+    from users.tour_service import mark_tour_complete
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    audience = (payload.get("audience") or request.POST.get("audience") or "").strip()
+    try:
+        version = int(payload.get("version") or request.POST.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    ok = mark_tour_complete(request.user, audience, version)
+    if not ok:
+        return JsonResponse({"ok": False, "error": "audience_invalide"}, status=400)
+    return JsonResponse({"ok": True})
 
 
 @login_required

@@ -1,8 +1,52 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import AuthChallenge, PushSubscription, User
+from .models import AuthChallenge, ProductTour, ProductTourStep, PushSubscription, User
 from .roles import sync_user_groups
+
+
+class ProductTourStepInline(admin.TabularInline):
+    model = ProductTourStep
+    extra = 0
+    ordering = ("order", "pk")
+    fields = (
+        "order",
+        "anchor",
+        "title",
+        "body",
+        "page_path",
+        "open_mobile_nav",
+        "scroll_footer",
+        "is_active",
+    )
+
+
+@admin.register(ProductTour)
+class ProductTourAdmin(admin.ModelAdmin):
+    list_display = ("title", "audience", "version", "is_active", "steps_count")
+    list_filter = ("audience", "is_active")
+    search_fields = ("title",)
+    inlines = [ProductTourStepInline]
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("audience", "title", "version", "is_active"),
+                "description": (
+                    "Modifiez le texte et l’ordre des étapes ci-dessous. "
+                    "Ancres disponibles : nav-planning, nav-repertoire, nav-chat, "
+                    "nav-account, module-calendrier, module-mes-dates, module-staff, "
+                    "rsvp-actions, repertoire-filter, chat-list, staff-admin, "
+                    "staff-musiciens, staff-atelier, footer-admin, account-replay. "
+                    "Incrémentez la version pour re-proposer le guide."
+                ),
+            },
+        ),
+    )
+
+    @admin.display(description="Étapes")
+    def steps_count(self, obj):
+        return obj.steps.count()
 
 
 @admin.register(PushSubscription)
@@ -57,6 +101,19 @@ class UserAdmin(DjangoUserAdmin):
                     "is_association_member",
                     "membership_expires_at",
                 )
+            },
+        ),
+        (
+            "Guides (coach marks)",
+            {
+                "fields": (
+                    "tour_musician_version",
+                    "tour_staff_version",
+                ),
+                "description": (
+                    "Remettre à 0 pour re-proposer automatiquement le guide "
+                    "à la prochaine connexion."
+                ),
             },
         ),
         (

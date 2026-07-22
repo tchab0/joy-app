@@ -25,10 +25,18 @@
 
     <div class="account-block">
       <h2 class="account-heading">Réglages</h2>
-      <div class="account-actions">
+      <div class="account-actions" data-tour="account-replay">
         <a class="btn btn-outline" href="{% url 'account_security' %}">Sécurité &amp; 2FA</a>
         {% if can_planning %}
         <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Notifications chat</a>
+        {% endif %}
+        {% if can_replay_musician_tour %}
+        <a class="btn btn-outline" href="{% url 'account_home' %}?tour=musician"
+           onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide musicien</a>
+        {% endif %}
+        {% if can_replay_staff_tour %}
+        <a class="btn btn-outline" href="{% url 'account_home' %}?tour=staff"
+           onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide staff</a>
         {% endif %}
       </div>
       {% if staff_notify_form %}
