@@ -53,19 +53,6 @@
         <button type="submit" class="btn btn-outline" style="margin-top:.85rem;min-height:44px">Enregistrer</button>
       </form>
       {% endif %}
-      {% if dismissed_leads %}
-      <div class="account-leads" style="margin-top:1.25rem">
-        <p class="account-desc" style="margin-bottom:.65rem">
-          Textes d’aide masqués ({{ dismissed_leads|length }}) :
-          {% for key, label in dismissed_leads %}{{ label }}{% if not forloop.last %} · {% endif %}{% endfor %}.
-        </p>
-        <form method="post" action="{% url 'account_home' %}">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="restore_page_leads">
-          <button type="submit" class="btn btn-outline" style="min-height:44px">Réafficher les textes d’aide</button>
-        </form>
-      </div>
-      {% endif %}
     </div>
 
     {% include "feedback/_account_feedback.html" %}

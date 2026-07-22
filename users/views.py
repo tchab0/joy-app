@@ -237,11 +237,6 @@ def account_home(request: HttpRequest) -> HttpResponse:
         build_page_feedback_vote_requests_context,
     )
 
-    from users.page_leads import (
-        dismissed_page_leads_for_account,
-        restore_all_page_leads,
-    )
-
     staff_notify_form = None
     if request.user.is_staff or request.user.is_superuser:
         if (
@@ -262,20 +257,6 @@ def account_home(request: HttpRequest) -> HttpResponse:
                 instance=request.user
             )
 
-    if (
-        request.method == "POST"
-        and request.POST.get("action") == "restore_page_leads"
-    ):
-        n = restore_all_page_leads(request.user)
-        if n:
-            messages.success(
-                request,
-                "Les textes d’aide sont de nouveau visibles sur les pages.",
-            )
-        else:
-            messages.info(request, "Aucun texte d’aide n’était masqué.")
-        return redirect("account_home")
-
     from users.tour_service import build_tour_config
 
     roles = get_user_roles(request.user)
@@ -285,7 +266,6 @@ def account_home(request: HttpRequest) -> HttpResponse:
         "can_planning": user_can_access_planning(request.user),
         "can_members": user_can_access_member_area(request.user),
         "staff_notify_form": staff_notify_form,
-        "dismissed_leads": dismissed_page_leads_for_account(request.user),
         "can_replay_musician_tour": bool(
             tour_cfg and tour_cfg.get("can_replay", {}).get("musician")
         ),
@@ -296,27 +276,6 @@ def account_home(request: HttpRequest) -> HttpResponse:
     context.update(build_page_feedback_author_responses_context(request.user))
     context.update(build_page_feedback_vote_requests_context(request.user))
     return render(request, "users/account.html", context)
-
-
-@login_required
-@require_POST
-def page_lead_dismiss(request: HttpRequest) -> HttpResponse:
-    """Masque un texte d’aide (carte en haut de page)."""
-    import json
-
-    from django.http import JsonResponse
-
-    from users.page_leads import dismiss_page_lead
-
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        payload = {}
-    key = (payload.get("key") or request.POST.get("key") or "").strip()
-    ok = dismiss_page_lead(request.user, key)
-    if not ok:
-        return JsonResponse({"ok": False, "error": "cle_invalide"}, status=400)
-    return JsonResponse({"ok": True})
 
 
 @login_required

@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load page_lead %}
 
 {% block title %}{% if creating %}Nouvelle répétition{% else %}{{ event.titre }}{% endif %} — Staff{% endblock %}
 
@@ -40,9 +39,7 @@
 
   <header class="pl-head">
     <h1>{% if creating %}Nouvelle répétition{% else %}{{ event.titre }}{% endif %}</h1>
-    {% page_lead "repetitions.staff_form" class="page-lead--in-head" %}
-      Date, lieu, feuille de route{% if not creating %} et présences{% endif %}. Glissez les morceaux ou touchez « + ».
-    {% endpage_lead %}
+    <p class="pl-sub">Date, lieu, feuille de route{% if not creating %} et présences{% endif %}. Glissez les morceaux ou touchez « + ».</p>
   </header>
 
   {% if not creating and event %}

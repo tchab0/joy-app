@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load page_lead %}
 {% block title %}Statistiques — JOY{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 {% block extra_css %}
@@ -96,10 +95,10 @@
     <div class="stats-toolbar">
       <div>
         <h1 class="section-title">Statistiques</h1>
-        {% page_lead "stats.dashboard" %}
+        <p class="stats-lead">
           Usage du site et engagement des musiciens — pour décider quoi simplifier ou développer.
           Période&nbsp;: {{ period.label }}.
-        {% endpage_lead %}
+        </p>
       </div>
       <div class="stats-filters">
         {% for days, label in period_choices %}

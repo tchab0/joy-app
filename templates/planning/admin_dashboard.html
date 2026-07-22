@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load page_lead %}
 
 {% block title %}Admin planning — JOY{% endblock %}
 
@@ -11,9 +10,7 @@
 <div class="pl">
   <header class="pl-head" data-tour="staff-admin">
     <h1>Admin planning</h1>
-    {% page_lead "planning.admin_dashboard" class="page-lead--in-head" %}
-      Effectifs, sondages et matériel.
-    {% endpage_lead %}
+    <p class="pl-sub">Effectifs, sondages et matériel.</p>
   </header>
 
   {% include "planning/_module_nav.html" with active="admin" %}

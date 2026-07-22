@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load page_lead %}
 {% block title %}Messages de contact — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -71,9 +70,7 @@
     <div class="admin-toolbar">
       <div>
         <h1 class="section-title">Messages de contact</h1>
-        {% page_lead "core.admin_contact" %}
-          Demandes reçues depuis le formulaire public.
-        {% endpage_lead %}
+        <p style="color:var(--muted);margin-top:.5rem">Demandes reçues depuis le formulaire public.</p>
       </div>
       <div class="admin-filters">
         <a href="{% url 'admin_contact' %}" class="filter-link {% if not kind_actif and not statut_actif %}active{% endif %}">Tous</a>

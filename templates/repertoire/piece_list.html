@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load page_lead %}
 
 {% block title %}Répertoire — JOY{% endblock %}
 
@@ -12,9 +11,7 @@
 <div class="pl">
   <header class="pl-head">
     <h1>Répertoire</h1>
-    {% page_lead "repertoire.pieces" class="page-lead--in-head" %}
-      Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.
-    {% endpage_lead %}
+    <p class="pl-sub">Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.</p>
   </header>
 
   {% include "planning/_module_nav.html" with active="repertoire" %}
