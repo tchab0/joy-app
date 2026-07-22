@@ -35,3 +35,29 @@ class UsageEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class PublicPageView(models.Model):
+    """Vue de page publique (anonyme) pour mesurer l’audience du site."""
+
+    path = models.CharField("Chemin", max_length=300, db_index=True)
+    session_key = models.CharField(
+        "Clé de session",
+        max_length=40,
+        blank=True,
+        db_index=True,
+        help_text="Identifiant de session Django (pas d’IP stockée).",
+    )
+    created_at = models.DateTimeField("Date", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "vue page publique"
+        verbose_name_plural = "vues pages publiques"
+        indexes = [
+            models.Index(fields=["created_at", "path"]),
+            models.Index(fields=["session_key", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.path} @ {self.created_at:%Y-%m-%d %H:%M}"

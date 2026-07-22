@@ -19,6 +19,7 @@ def dashboard(request):
     # Séries pour Chart.js
     ctx["charts_json"] = json.dumps(
         {
+            "pageviews": ctx["visitors"]["public_series"],
             "contacts": ctx["visitors"]["contact_series"],
             "chat": ctx["musicians"]["chat_series"],
             "usage": ctx["usage"]["series"],

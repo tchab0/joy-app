@@ -119,14 +119,33 @@
     {# —— Visiteurs —— #}
     <div class="stats-section">
       <h2>Visiteurs &amp; public</h2>
-      <p class="sub">Signaux issus du site public (formulaires, votes, retours). Le trafic global reste dans Google Analytics si configuré.</p>
+      <p class="sub">Audience du site public (pages HTML) + formulaires, votes et retours. Pas de Google Analytics requis.</p>
       <div class="stats-kpis">
+        <div class="stats-kpi"><div class="n">{{ visitors.unique_visitors }}</div><div class="l">Visiteurs (sessions)</div></div>
+        <div class="stats-kpi"><div class="n">{{ visitors.pageviews }}</div><div class="l">Pages vues</div></div>
         <div class="stats-kpi"><div class="n">{{ visitors.contacts_total }}</div><div class="l">Messages contact / prestation</div></div>
         <div class="stats-kpi"><div class="n">{{ visitors.media_votes }}</div><div class="l">Votes médias</div></div>
-        <div class="stats-kpi"><div class="n">{{ visitors.feedback_count }}</div><div class="l">Retours pages</div></div>
-        <div class="stats-kpi"><div class="n">{% if ga_configured %}Oui{% else %}Non{% endif %}</div><div class="l">Google Analytics</div></div>
       </div>
       <div class="stats-grid">
+        <div class="stats-panel">
+          <h3>Pages vues / jour</h3>
+          <canvas id="chart-pageviews" aria-label="Pages vues publiques par jour"></canvas>
+        </div>
+        <div class="stats-panel">
+          <h3>Pages les plus consultées</h3>
+          {% if visitors.top_pages %}
+          <table class="stats-table">
+            <thead><tr><th>Page</th><th class="num">Vues</th></tr></thead>
+            <tbody>
+              {% for row in visitors.top_pages %}
+              <tr><td><code style="font-size:.85em;color:var(--text)">{{ row.path }}</code></td><td class="num">{{ row.count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="stats-muted">Pas encore de vues enregistrées sur la période — le compteur démarre dès la mise en ligne.</p>
+          {% endif %}
+        </div>
         <div class="stats-panel">
           <h3>Messages par jour</h3>
           <canvas id="chart-contacts" aria-label="Messages de contact par jour"></canvas>
@@ -187,12 +206,9 @@
         </div>
       </div>
       <div class="stats-note">
+        Compteur first-party&nbsp;: pages HTML publiques uniquement (bots exclus), visiteurs ≈ sessions navigateur, rétention {{ usage.retention_days }}&nbsp;j.
         {% if ga_configured %}
-          Trafic web (sessions, pages vues)&nbsp;: console
-          <a href="https://analytics.google.com/" target="_blank" rel="noopener">Google Analytics</a>
-          (propriété {{ ga_id }}).
-        {% else %}
-          Aucun <code>GA_MEASUREMENT_ID</code> configuré — le trafic public n’est pas mesuré côté Analytics.
+          Google Analytics est aussi configuré ({{ ga_id }}) — doublon possible.
         {% endif %}
       </div>
     </div>
@@ -393,7 +409,8 @@
     });
   }
 
-  lineChart('chart-contacts', data.contacts, accent);
+  lineChart('chart-pageviews', data.pageviews, accent);
+  lineChart('chart-contacts', data.contacts, gold);
   lineChart('chart-chat', data.chat, ok);
   lineChart('chart-usage', data.usage, gold);
 

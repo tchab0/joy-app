@@ -1,4 +1,4 @@
-"""Middleware de collecte d’usage (espaces authentifiés uniquement)."""
+"""Middleware de collecte d’usage (public + espaces authentifiés)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class UsageTrackingMiddleware:
             if 200 <= response.status_code < 400:
                 from stats.tracking import record_request_usage
 
-                record_request_usage(request)
+                record_request_usage(request, response)
         except Exception:
             # Jamais bloquer la réponse métier pour de la télémétrie.
             pass

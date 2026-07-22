@@ -75,6 +75,15 @@ def _safe_usage_qs(since):
         return None
 
 
+def _safe_public_views_qs(since):
+    try:
+        from stats.models import PublicPageView
+
+        return PublicPageView.objects.filter(created_at__gte=since)
+    except Exception:
+        return None
+
+
 def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any]:
     from django.contrib.auth import get_user_model
 
@@ -199,6 +208,25 @@ def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any
         .order_by("-n")[:10]
     )
 
+    public_qs = _safe_public_views_qs(since)
+    pageviews = 0
+    unique_visitors = 0
+    public_series: list[dict[str, Any]] = []
+    top_pages: list[dict[str, Any]] = []
+    if public_qs is not None:
+        pageviews = public_qs.count()
+        unique_visitors = (
+            public_qs.exclude(session_key="")
+            .values("session_key")
+            .distinct()
+            .count()
+        )
+        public_series = _series_from_trunc(public_qs, "created_at")
+        top_pages = [
+            {"path": row["path"] or "/", "count": row["n"]}
+            for row in public_qs.values("path").annotate(n=Count("id")).order_by("-n")[:15]
+        ]
+
     profile_count = MusicianProfile.objects.filter(user__is_active=True).count()
 
     # Phase B — usage events
@@ -234,6 +262,10 @@ def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any
         "ga_configured": bool(ga_id),
         "ga_id": ga_id,
         "visitors": {
+            "pageviews": pageviews,
+            "unique_visitors": unique_visitors,
+            "public_series": public_series,
+            "top_pages": top_pages,
             "contacts_total": contacts.count(),
             "contact_by_kind": [
                 {

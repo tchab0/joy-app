@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.contrib.auth import get_user_model
 
 from stats.services import resolve_period
@@ -33,3 +33,28 @@ class UsageEventTests(TestCase):
 
         self.assertEqual(UsageEvent.objects.count(), 1)
         self.assertEqual(UsageEvent.objects.get().name, "planning.view")
+
+
+@override_settings(ALLOWED_HOSTS=["*"])
+class PublicPageViewTests(TestCase):
+    def test_public_home_is_counted(self):
+        from stats.models import PublicPageView
+
+        c = Client()
+        r = c.get("/", HTTP_USER_AGENT="Mozilla/5.0 TestBrowser")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreaterEqual(PublicPageView.objects.filter(path="/").count(), 1)
+
+    def test_bots_are_ignored(self):
+        from stats.models import PublicPageView
+
+        c = Client()
+        c.get("/", HTTP_USER_AGENT="Googlebot/2.1")
+        self.assertEqual(PublicPageView.objects.count(), 0)
+
+    def test_private_paths_not_public_counted(self):
+        from stats.models import PublicPageView
+
+        c = Client()
+        c.get("/compte/connexion/", HTTP_USER_AGENT="Mozilla/5.0 TestBrowser")
+        self.assertEqual(PublicPageView.objects.count(), 0)

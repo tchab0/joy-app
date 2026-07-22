@@ -9,7 +9,10 @@ from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = "Purge les UsageEvent plus anciens que USAGE_EVENT_RETENTION_DAYS."
+    help = (
+        "Purge UsageEvent et PublicPageView plus anciens que "
+        "USAGE_EVENT_RETENTION_DAYS."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -30,14 +33,24 @@ class Command(BaseCommand):
             days = int(getattr(settings, "USAGE_EVENT_RETENTION_DAYS", 90))
         cutoff = timezone.now() - timedelta(days=days)
         try:
-            from stats.models import UsageEvent
+            from stats.models import PublicPageView, UsageEvent
 
-            qs = UsageEvent.objects.filter(created_at__lt=cutoff)
-            count = qs.count()
+            usage_qs = UsageEvent.objects.filter(created_at__lt=cutoff)
+            public_qs = PublicPageView.objects.filter(created_at__lt=cutoff)
+            usage_n = usage_qs.count()
+            public_n = public_qs.count()
             if options["dry_run"]:
-                self.stdout.write(f"{count} événement(s) à purger (avant {cutoff:%Y-%m-%d}).")
+                self.stdout.write(
+                    f"{usage_n} UsageEvent + {public_n} PublicPageView "
+                    f"à purger (avant {cutoff:%Y-%m-%d})."
+                )
                 return
-            deleted, _ = qs.delete()
-            self.stdout.write(self.style.SUCCESS(f"{deleted} événement(s) purgé(s)."))
+            deleted_u, _ = usage_qs.delete()
+            deleted_p, _ = public_qs.delete()
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"{deleted_u} UsageEvent + {deleted_p} PublicPageView purgé(s)."
+                )
+            )
         except (ProgrammingError, OperationalError) as exc:
             self.stderr.write(f"Table absente ou erreur DB : {exc}")

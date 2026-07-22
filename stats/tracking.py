@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from django.db import OperationalError, ProgrammingError
@@ -31,11 +32,20 @@ SKIP_PREFIXES = (
     "/admin/",
     "/sw.js",
     "/manifest.webmanifest",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/favicon",
 )
 
 # Téléchargements loggés explicitement dans les vues (évite le double hit).
 SKIP_EXACT_OR_PREFIX = (
     "/repertoire/partition/",
+)
+
+_BOT_RE = re.compile(
+    r"bot|crawl|spider|slurp|bingpreview|facebookexternalhit|wget|curl|python-requests|"
+    r"httpclient|monitoring|uptime|headless",
+    re.I,
 )
 
 
@@ -51,6 +61,22 @@ def feature_name_for_path(path: str) -> str | None:
         if path.startswith(prefix):
             return name
     return None
+
+
+def _is_bot(request: HttpRequest) -> bool:
+    ua = request.META.get("HTTP_USER_AGENT") or ""
+    if not ua.strip():
+        return True
+    return bool(_BOT_RE.search(ua))
+
+
+def _is_trackable_html(request: HttpRequest, response) -> bool:
+    if request.method != "GET":
+        return False
+    ctype = (response.get("Content-Type") or "").lower()
+    if ctype and "text/html" not in ctype:
+        return False
+    return True
 
 
 def record_usage(
@@ -74,13 +100,56 @@ def record_usage(
         logger.exception("Échec enregistrement UsageEvent (%s)", name)
 
 
-def record_request_usage(request: HttpRequest) -> None:
-    user = getattr(request, "user", None)
-    if not user or not user.is_authenticated:
+def record_public_pageview(request: HttpRequest) -> None:
+    """Enregistre une vue de page publique (session anonyme, pas d’IP)."""
+    from core.seo import path_should_noindex
+
+    path = request.path or "/"
+    if path_should_noindex(path):
+        return
+    if any(path.startswith(p) for p in SKIP_PREFIXES):
+        return
+    if _is_bot(request):
+        return
+
+    try:
+        # Crée une session si besoin pour compter les visiteurs uniques.
+        if not request.session.session_key:
+            request.session.save()
+        session_key = request.session.session_key or ""
+        from stats.models import PublicPageView
+
+        PublicPageView.objects.create(
+            path=path[:300],
+            session_key=session_key[:40],
+        )
+    except (ProgrammingError, OperationalError) as exc:
+        logger.warning("PublicPageView ignoré (%s): %s", path, exc)
+    except Exception:
+        logger.exception("Échec enregistrement PublicPageView (%s)", path)
+
+
+def record_request_usage(request: HttpRequest, response=None) -> None:
+    if response is not None and not _is_trackable_html(request, response):
         return
     if request.method not in ("GET", "HEAD"):
         return
+
+    user = getattr(request, "user", None)
     path = request.path or ""
+
+    # Audience publique (y compris staff/musiciens qui consultent le site public).
+    from core.seo import path_should_noindex
+
+    if not path_should_noindex(path):
+        if response is None or _is_trackable_html(request, response):
+            if request.method == "GET" and not _is_bot(request):
+                record_public_pageview(request)
+        return
+
+    # Outils authentifiés uniquement.
+    if not user or not user.is_authenticated:
+        return
     name = feature_name_for_path(path)
     if not name:
         return
