@@ -26,6 +26,54 @@ from users.notify import notify_users
 logger = logging.getLogger(__name__)
 
 REHEARSAL_TYPE_NAME = "Répétition"
+DEFAULT_REHEARSAL_VENUE_NOM = "Salle Mingus Cyel"
+DEFAULT_REHEARSAL_VENUE_VILLE = "La Roche-sur-Yon"
+
+
+def is_default_rehearsal_venue(venue: Venue | None) -> bool:
+    if venue is None:
+        return False
+    return (venue.nom or "").strip().casefold() == DEFAULT_REHEARSAL_VENUE_NOM.casefold()
+
+
+def resolve_rehearsal_venue(
+    *,
+    mode: str = "default",
+    nom: str = "",
+    ville: str = "",
+    adresse: str = "",
+) -> Venue:
+    """Lieu par défaut (Mingus) ou nouveau lieu saisi — sans liste des salles concerts."""
+    mode = (mode or "default").strip()
+    if mode != "custom":
+        existing = (
+            Venue.objects.filter(nom__iexact=DEFAULT_REHEARSAL_VENUE_NOM)
+            .order_by("pk")
+            .first()
+        )
+        if existing:
+            return existing
+        return Venue.objects.create(
+            nom=DEFAULT_REHEARSAL_VENUE_NOM,
+            ville=DEFAULT_REHEARSAL_VENUE_VILLE,
+        )
+
+    nom = (nom or "").strip()
+    ville = (ville or "").strip()
+    adresse = (adresse or "").strip()
+    if not nom or not ville:
+        raise ValueError("Nom et ville du lieu sont requis.")
+    existing = (
+        Venue.objects.filter(nom__iexact=nom, ville__iexact=ville)
+        .order_by("pk")
+        .first()
+    )
+    if existing:
+        if adresse and not existing.adresse:
+            existing.adresse = adresse
+            existing.save(update_fields=["adresse"])
+        return existing
+    return Venue.objects.create(nom=nom, ville=ville, adresse=adresse)
 
 
 def get_or_create_rehearsal_type() -> EventType:

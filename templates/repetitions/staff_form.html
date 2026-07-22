@@ -48,20 +48,68 @@
   </div>
   {% endif %}
 
-  <form method="post" class="rep-setlist-form" x-data="setlistBuilder()">
+  <form method="post" class="rep-setlist-form"
+        x-data="setlistBuilder({
+          venueMode: '{{ form.venue_mode.value|default:'default'|escapejs }}'
+        })">
     {% csrf_token %}
 
     <div class="rep-form-stack rep-form-stack--wide">
       {% for field in form %}
+      {% if field.name == "venue_mode" or field.name == "venue_nom" or field.name == "venue_ville" or field.name == "venue_adresse" %}
+      {% elif field.name == "notify_musicians" %}
       <div>
-        {% if field.name == "notify_musicians" %}
         <label class="rep-check">{{ field }} {{ field.label }}</label>
-        {% else %}
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% endif %}
         {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
       </div>
+      {% elif field.name == "time_end" %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      <div>
+        <label>Lieu</label>
+        <div class="pl-mode-toggle" role="group" aria-label="Lieu de répétition">
+          <button type="button" class="pl-mode-toggle__btn"
+                  :class="{ 'is-active': venueMode === 'default' }"
+                  @click="venueMode = 'default'">{{ default_rehearsal_venue_nom }}</button>
+          <button type="button" class="pl-mode-toggle__btn"
+                  :class="{ 'is-active': venueMode === 'custom' }"
+                  @click="venueMode = 'custom'">Autre lieu</button>
+        </div>
+        <input type="hidden" name="venue_mode"
+               value="{{ form.venue_mode.value|default:'default' }}"
+               :value="venueMode">
+        <p class="pl-row__meta" x-show="venueMode === 'default'" x-cloak>
+          Lieu habituel des répétitions.
+        </p>
+        <div x-show="venueMode === 'custom'" x-cloak style="display:grid;gap:.75rem;margin-top:.5rem">
+          <div>
+            <label for="{{ form.venue_nom.id_for_label }}">{{ form.venue_nom.label }}</label>
+            {{ form.venue_nom }}
+            {% if form.venue_nom.errors %}<ul class="errorlist">{% for e in form.venue_nom.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+          <div>
+            <label for="{{ form.venue_ville.id_for_label }}">{{ form.venue_ville.label }}</label>
+            {{ form.venue_ville }}
+            {% if form.venue_ville.errors %}<ul class="errorlist">{% for e in form.venue_ville.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+          <div>
+            <label for="{{ form.venue_adresse.id_for_label }}">{{ form.venue_adresse.label }} <span class="pl-row__meta">(optionnel)</span></label>
+            {{ form.venue_adresse }}
+            {% if form.venue_adresse.errors %}<ul class="errorlist">{% for e in form.venue_adresse.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+        </div>
+        {% if form.venue_mode.errors %}<ul class="errorlist">{% for e in form.venue_mode.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% else %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% endif %}
       {% endfor %}
     </div>
 
@@ -230,10 +278,12 @@
     try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
   }
 
-  window.setlistBuilder = function () {
+  window.setlistBuilder = function (opts) {
+    opts = opts || {};
     const initialPieces = readJson('builder-pieces-data', []);
     const initialSelected = readJson('builder-selected-data', []);
     return {
+      venueMode: opts.venueMode === 'custom' ? 'custom' : 'default',
       pieces: initialPieces.map(p => ({ id: p.id, title: p.title })),
       selected: initialSelected.map(p => ({
         id: p.id, title: p.title, note: p.note || '',

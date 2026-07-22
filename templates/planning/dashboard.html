@@ -98,12 +98,26 @@
             · {{ p.event.type.nom }}
           </p>
         </div>
-        <div class="pl-row__actions">
+        <div class="pl-row__actions"
+             {% if p.event.is_rehearsal %}
+             x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
+             {% endif %}>
           {% if p.event.is_rehearsal %}
-          <a class="pl-btn {% if p.status.code == 'confirmed' %}pl-btn--no{% else %}pl-btn--yes{% endif %}"
-             href="{% url 'repetitions:detail' p.event.pk %}">
-            {% if p.status.code == 'confirmed' %}Signaler absence{% else %}Présence{% endif %}
-          </a>
+          <span class="pl-badge"
+                :class="absent ? 'pl-badge--danger' : 'pl-badge--success'"
+                x-text="absent ? 'Absent' : 'Présent'">
+            {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}Absent{% else %}Présent{% endif %}
+          </span>
+          <button type="button"
+                  class="pl-btn"
+                  :class="absent ? 'pl-btn--yes' : 'pl-btn--no'"
+                  :disabled="busy"
+                  @click="toggle()"
+                  style="min-height:44px">
+            <span x-text="absent ? 'Annuler l’absence' : 'Signaler absence'">
+              {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}Annuler l’absence{% else %}Signaler absence{% endif %}
+            </span>
+          </button>
           {% else %}
           <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
           {% endif %}
@@ -238,6 +252,38 @@ function respondButtons(pk, initialCode) {
         } else {
           window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.error || 'Erreur' }));
         }
+      } finally {
+        this.busy = false;
+      }
+    },
+  };
+}
+
+function rehearsalAbsence(url, initialAbsent) {
+  return {
+    absent: !!initialAbsent,
+    busy: false,
+    async toggle() {
+      const next = !this.absent;
+      this.busy = true;
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ absent: next }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.absent = d.absent;
+          this.$dispatch('pl-toast', d.absent ? 'Absence enregistrée' : 'Absence annulée');
+        } else {
+          this.$dispatch('pl-toast', d.error || 'Erreur');
+        }
+      } catch (e) {
+        this.$dispatch('pl-toast', 'Erreur réseau');
       } finally {
         this.busy = false;
       }

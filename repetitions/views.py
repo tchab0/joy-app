@@ -18,14 +18,20 @@ from planning.models import EventParticipation, SubstituteRequest
 from planning.services import chat_link_for_event, get_participation_for
 from planning.views import PlanningStaffRequiredMixin
 from repertoire.models import Piece
-from repetitions.forms import RehearsalCreateForm, RehearsalEditForm
+from repetitions.forms import (
+    RehearsalCreateForm,
+    RehearsalEditForm,
+    venue_initial_from_event,
+)
 from repetitions.models import RehearsalPlan
 from repetitions.services import (
+    DEFAULT_REHEARSAL_VENUE_NOM,
     absent_with_eligible_subs,
     attendance_for_event,
     create_rehearsal,
     get_or_create_plan,
     notify_substitute_for_absence,
+    resolve_rehearsal_venue,
     set_rehearsal_absence,
     sync_roadmap_items,
 )
@@ -292,9 +298,15 @@ class StaffRehearsalCreateView(PlanningStaffRequiredMixin, View):
         date_debut = _combine_local(data["date"], data["time_start"])
         date_fin = _combine_local(data["date"], data.get("time_end"))
         try:
+            venue = resolve_rehearsal_venue(
+                mode=data.get("venue_mode") or "default",
+                nom=data.get("venue_nom") or "",
+                ville=data.get("venue_ville") or "",
+                adresse=data.get("venue_adresse") or "",
+            )
             event, plan = create_rehearsal(
                 titre=data["titre"],
-                venue=data["venue"],
+                venue=venue,
                 date_debut=date_debut,
                 date_fin=date_fin,
                 description=data.get("description") or "",
@@ -319,6 +331,7 @@ class StaffRehearsalCreateView(PlanningStaffRequiredMixin, View):
             "event": None,
             "is_planning_staff": True,
             "creating": True,
+            "default_rehearsal_venue_nom": DEFAULT_REHEARSAL_VENUE_NOM,
             **_builder_context(plan),
         }
         if piece_ids is not None:
@@ -351,10 +364,10 @@ class StaffRehearsalEditView(PlanningStaffRequiredMixin, View):
                 "time_end": (
                     local_end.time().replace(microsecond=0) if local_end else None
                 ),
-                "venue": event.venue_id,
                 "description": event.description,
                 "notes": plan.notes,
                 "statut": event.statut,
+                **venue_initial_from_event(event.venue),
             }
         )
         return self._render(request, form, event, plan)
@@ -370,9 +383,21 @@ class StaffRehearsalEditView(PlanningStaffRequiredMixin, View):
                 request, form, event, plan, piece_ids=piece_ids, notes=notes
             )
         data = form.cleaned_data
+        try:
+            venue = resolve_rehearsal_venue(
+                mode=data.get("venue_mode") or "default",
+                nom=data.get("venue_nom") or "",
+                ville=data.get("venue_ville") or "",
+                adresse=data.get("venue_adresse") or "",
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return self._render(
+                request, form, event, plan, piece_ids=piece_ids, notes=notes
+            )
         with transaction.atomic():
             event.titre = data["titre"].strip()
-            event.venue = data["venue"]
+            event.venue = venue
             event.description = (data.get("description") or "").strip()
             event.statut = data["statut"]
             event.date_debut = _combine_local(data["date"], data["time_start"])
@@ -392,6 +417,7 @@ class StaffRehearsalEditView(PlanningStaffRequiredMixin, View):
             "event": event,
             "is_planning_staff": True,
             "creating": False,
+            "default_rehearsal_venue_nom": DEFAULT_REHEARSAL_VENUE_NOM,
             "attendance": attendance_for_event(event),
             "absent_rows": absent_with_eligible_subs(event),
             **_builder_context(plan),
