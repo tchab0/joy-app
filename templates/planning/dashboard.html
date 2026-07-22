@@ -16,7 +16,7 @@
   {% include "planning/_module_nav.html" with active="mes_dates" %}
 
   {% if pending %}
-  <section class="pl-section" data-tour="rsvp-actions">
+  <section class="pl-section pl-section--panel pl-section--pending" data-tour="rsvp-actions">
     <h2>À répondre</h2>
     {% for p in pending %}
     <div class="pl-row"
@@ -24,7 +24,7 @@
          x-show="true"
          x-transition.opacity.duration.200ms>
       <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+        <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
         <p class="pl-row__meta">
           {{ p.event.date_debut|date:"D d/m H:i" }}
           {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
@@ -49,7 +49,7 @@
     {% for s in sub_offers %}
     <div class="pl-row" x-data="{ busy: false }">
       <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
+        <a class="pl-row__title{% if s.participation.event.is_rehearsal %} is-rehearsal{% elif s.participation.event.statut == 'tentative' %} is-proposal{% elif s.participation.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
         <p class="pl-row__meta">
           Remplacer {{ s.participation.user.get_full_name|default:s.participation.user.username }}
           · {{ s.participation.event.date_debut|date:"d/m H:i" }}
@@ -88,30 +88,23 @@
   </section>
   {% endif %}
 
-  <section class="pl-section"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
+  <section class="pl-section pl-section--panel pl-section--upcoming"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
     <h2>Prochaines dates</h2>
     {% if upcoming %}
       {% for p in upcoming %}
-      <div class="pl-row"
+      <div class="pl-row{% if p.status.code == 'invited' or p.status.code == 'maybe' %} pl-row--needs-response{% endif %}"
            {% if p.event.is_rehearsal %}
            x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
            {% else %}
            x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %} })"
            {% endif %}>
         <div class="pl-row__main">
-          <a class="pl-row__title" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
+          <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
           <p class="pl-row__meta">
             {{ p.event.date_debut|date:"D d/m/Y H:i" }}
             {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
             · {{ p.event.type.nom }}
             {% if p.poste %} · {{ p.poste_label }}{% endif %}
-            {% if p.event.is_rehearsal %}
-            · <span class="pl-badge pl-badge--danger">Répétition</span>
-            {% elif p.event.statut == 'tentative' %}
-            · <span class="pl-badge pl-badge--warning">Proposition</span>
-            {% elif p.event.statut == 'confirme' %}
-            · <span class="pl-badge pl-badge--success">Confirmé</span>
-            {% endif %}
           </p>
         </div>
         <div class="pl-row__actions">
@@ -125,17 +118,16 @@
                   class="pl-btn {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}pl-btn--yes{% else %}pl-btn--no{% endif %}"
                   :class="{ 'pl-btn--yes': absent, 'pl-btn--no': !absent }"
                   :disabled="busy"
-                  @click="toggle()"
-                  style="min-height:44px">
+                  @click="toggle()">
             <span x-text="absent ? 'Annuler l’absence' : 'Signaler absence'">
               {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}Annuler l’absence{% else %}Signaler absence{% endif %}
             </span>
           </button>
           {% else %}
           <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
-          <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')" style="min-height:44px">Oui</button>
-          <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')" style="min-height:44px">Peut-être</button>
-          <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')" style="min-height:44px">Non</button>
+          <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
+          <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+          <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')">Non</button>
           {% endif %}
         </div>
         {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
