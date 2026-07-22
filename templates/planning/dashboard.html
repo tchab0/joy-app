@@ -37,8 +37,8 @@
       <div class="pl-row__actions">
         <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
         <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
-        <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
-        <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')">Non</button>
+        <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+        <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy" @click="respond('no')">Non</button>
       </div>
       {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
     </div>
@@ -129,8 +129,8 @@
           {% else %}
           <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
           <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
-          <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
-          <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')">Non</button>
+          <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+          <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy" @click="respond('no')">Non</button>
           {% endif %}
         </div>
         {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}

@@ -142,6 +142,12 @@
     justify-content: center;
     box-sizing: border-box;
   }
+  /* Invalidation d’un Oui : Non discret (moitié de hauteur) */
+  .pl-row__actions .pl-btn--no.is-invalidate {
+    min-height: 22px;
+    padding-block: .15rem;
+    font-size: .7rem;
+  }
   .pl-row__actions .pl-badge {
     padding: .4rem .75rem;
     font-size: .75rem;
@@ -608,7 +614,16 @@
     display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem;
     width: 100%;
   }
+  .pl-accept__actions.is-confirmed-rsvp {
+    grid-template-columns: 1fr 1fr;
+  }
   .pl-accept__actions .pl-btn { min-height: 48px; width: 100%; justify-content: center; }
+  .pl-accept__actions .pl-btn--no.is-invalidate {
+    min-height: 24px;
+    padding-block: .2rem;
+    font-size: .75rem;
+    align-self: end;
+  }
   .pl-accept__response { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
   .pl-accept__staff {
     margin-top: 2rem; padding: 1rem; border: 1px solid var(--border);

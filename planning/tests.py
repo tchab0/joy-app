@@ -222,6 +222,26 @@ class RespondTests(PlanningBaseTestCase):
         self.participation.refresh_from_db()
         self.assertEqual(self.participation.status.code, "maybe")
 
+    def test_confirmed_cannot_become_maybe(self):
+        set_participation_response(self.participation, "yes")
+        with self.assertRaises(ValueError):
+            set_participation_response(self.participation, "maybe")
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "confirmed")
+
+    def test_api_confirmed_cannot_become_maybe(self):
+        set_participation_response(self.participation, "yes")
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:respond", args=[self.participation.pk]),
+            data='{"response":"maybe"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(r.json().get("ok", True))
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "confirmed")
+
     @patch("planning.services.notify_users")
     def test_invalidate_confirmed_without_comment_notifies_staff(self, mock_notify):
         mock_notify.return_value = 1

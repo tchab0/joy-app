@@ -22,7 +22,10 @@ function respondButtons(pk, initialCode, opts) {
       this.invalidateError = '';
     },
     async respond(response) {
-      if (this.code === 'confirmed' && response !== 'yes') {
+      if (this.code === 'confirmed' && response === 'maybe') {
+        return;
+      }
+      if (this.code === 'confirmed' && response === 'no') {
         this.pendingResponse = response;
         this.justification = '';
         this.invalidateError = '';

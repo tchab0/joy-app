@@ -115,7 +115,12 @@ def set_participation_response(
     old_code = participation.status.code if participation.status_id else None
     new_code = RESPOND_MAP[response]
     comment = (comment or "").strip()
-    leaving_confirmed = old_code == "confirmed" and new_code in ("declined", "maybe")
+    # Confirmé → Non (invalidation) ok ; Confirmé → Peut-être interdit.
+    if old_code == "confirmed" and new_code == "maybe":
+        raise ValueError(
+            "Une présence confirmée ne peut pas passer en « peut-être »."
+        )
+    leaving_confirmed = old_code == "confirmed" and new_code == "declined"
     participation.status = get_status(new_code)
     if comment:
         participation.comment = comment
@@ -141,7 +146,6 @@ def notify_staff_presence_invalidated(
     date_label = local.strftime("%d/%m/%Y %H:%M")
     status_label = {
         "declined": "ne pourra pas venir",
-        "maybe": "passe en « peut-être »",
         "replacement_needed": "demande un remplacement",
     }.get(new_code, f"passe de {old_code} à {new_code}")
     poste = participation.poste_label

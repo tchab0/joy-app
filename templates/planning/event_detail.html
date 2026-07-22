@@ -107,10 +107,10 @@
   {% if participation %}
   <section class="pl-accept__response"
            x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}', { eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %} })">
-    <div class="pl-row__actions pl-accept__actions">
+    <div class="pl-row__actions pl-accept__actions" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
       <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
-      <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
-      <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy"
+      <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+      <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy"
         @click="respond('no')">Non</button>
     </div>
 
