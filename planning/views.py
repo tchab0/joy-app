@@ -33,11 +33,15 @@ from planning.services import (
     attach_calendar_chat_links,
     attach_calendar_setlists,
     attach_calendar_summaries,
+    attach_roster_substitutes,
     cast_date_vote,
     chat_link_for_event,
     draft_proposal_for_event,
     eligible_substitutes_for,
+    ensure_default_equipment,
     ensure_participation_statuses,
+    EQUIPMENT_CATEGORIES,
+    get_or_create_equipment_item,
     get_or_create_profile,
     get_participation_for,
     invite_musician_to_event,
@@ -49,6 +53,7 @@ from planning.services import (
     propose_event,
     propose_substitute,
     respond_substitute_request,
+    roster_by_stage,
     user_can_access_poll,
     set_participation_response,
     vote_counts_for_option,
@@ -896,7 +901,7 @@ class PlanningAdminView(PlanningStaffRequiredMixin, TemplateView):
             status=DateProposal.Status.DRAFT
         ).annotate(n_options=Count("options"))
         sections = OrchestraSection.objects.filter(is_active=True)
-        equipment = EquipmentItem.objects.filter(is_active=True)
+        equipment = ensure_default_equipment()
         context.update(
             {
                 "events": events,
@@ -904,6 +909,7 @@ class PlanningAdminView(PlanningStaffRequiredMixin, TemplateView):
                 "draft_polls": draft_polls,
                 "sections": sections,
                 "equipment_items": equipment,
+                "equipment_categories": EQUIPMENT_CATEGORIES,
                 "venues": Venue.objects.all().order_by("ville", "nom"),
                 "event_types": EventType.objects.all().order_by("nom"),
             }
@@ -920,7 +926,7 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
             Event.objects.select_related("venue", "type", "parent"),
             pk=kwargs["pk"],
         )
-        parts = (
+        parts = list(
             EventParticipation.objects.filter(event=event)
             .select_related("user", "status", "user__musician_profile__section")
             .order_by(
@@ -928,14 +934,14 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
                 "user__first_name",
             )
         )
-        by_section: dict[str, list] = defaultdict(list)
-        section_order: dict[str, int] = {}
-        for p in parts:
-            section = p.section_for_roster()
-            name = section.name if section else "Sans pupitre"
-            by_section[name].append(p)
-            if name not in section_order:
-                section_order[name] = section.sort_order if section else 999
+        stage = roster_by_stage(parts)
+        taken_ids = {
+            p.user_id
+            for p in parts
+            if getattr(getattr(p, "status", None), "code", None)
+            in ("confirmed", "invited", "maybe")
+        }
+        attach_roster_substitutes(stage, taken_user_ids=taken_ids)
 
         gear = EventEquipmentAssignment.objects.filter(event=event).select_related(
             "item", "assigned_to"
@@ -948,15 +954,12 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
         context.update(
             {
                 "event": event,
-                "by_section": {
-                    name: by_section[name]
-                    for name in sorted(
-                        by_section.keys(),
-                        key=lambda n: (section_order.get(n, 999), n),
-                    )
-                },
+                "roster_rows": stage["rows"],
+                "roster_extras": stage["extras"],
+                "roster_unassigned": stage["unassigned"],
                 "gear": gear,
-                "equipment_catalog": EquipmentItem.objects.filter(is_active=True),
+                "equipment_catalog": ensure_default_equipment(),
+                "equipment_categories": EQUIPMENT_CATEGORIES,
                 "musicians": musicians,
                 "invite_musicians": invite_musicians_for_form(musicians),
                 "parent_events": _parent_events_qs(exclude_pk=event.pk),
@@ -1207,8 +1210,24 @@ class InviteTitulairesView(PlanningStaffRequiredMixin, View):
 class AddEventEquipmentView(PlanningStaffRequiredMixin, View):
     def post(self, request, pk):
         event = get_object_or_404(Event, pk=pk)
-        item_id = request.POST.get("item_id")
-        item = get_object_or_404(EquipmentItem, pk=item_id)
+        item_id = (request.POST.get("item_id") or "").strip()
+        item_name = (request.POST.get("item_name") or "").strip()
+        item_category = (request.POST.get("item_category") or "").strip()
+
+        if item_id == "__new__" or (not item_id and item_name):
+            if not item_name:
+                messages.error(request, "Indiquez le nom du nouveau matériel.")
+                return redirect("planning:event_roster", pk=pk)
+            try:
+                item = get_or_create_equipment_item(
+                    item_name, category=item_category
+                )
+            except ValueError as exc:
+                messages.error(request, str(exc) or "Matériel invalide.")
+                return redirect("planning:event_roster", pk=pk)
+        else:
+            item = get_object_or_404(EquipmentItem, pk=item_id)
+
         assigned_to_id = request.POST.get("assigned_to") or None
         assigned_to = None
         if assigned_to_id:
@@ -1231,11 +1250,14 @@ class CreateEquipmentItemView(PlanningStaffRequiredMixin, View):
         if not name:
             messages.error(request, "Nom requis.")
             return redirect("planning:admin")
-        EquipmentItem.objects.create(
-            name=name,
-            category=(request.POST.get("category") or "").strip(),
-            description=(request.POST.get("description") or "").strip(),
-        )
+        try:
+            get_or_create_equipment_item(
+                name,
+                category=(request.POST.get("category") or "").strip(),
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc) or "Matériel invalide.")
+            return redirect("planning:admin")
         messages.success(request, "Matériel ajouté au catalogue.")
         return redirect("planning:admin")
 

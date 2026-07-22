@@ -77,6 +77,20 @@ class MusicianProfile(models.Model):
         CHANT = "chant", "Chant"
         PERCUSSION = "percussion", "Percussions"
 
+    # Disposition scène admin roster (4 rangées, gauche → droite).
+    POSTE_STAGE_ROWS = (
+        (Poste.BARYTON, Poste.ALTO_2, Poste.ALTO_1, Poste.TENOR_1, Poste.TENOR_2),
+        (
+            Poste.TROMPETTE_4,
+            Poste.TROMPETTE_3,
+            Poste.TROMPETTE_1,
+            Poste.TROMPETTE_2,
+            Poste.CLARINETTE,
+        ),
+        (Poste.TROMBONE_4, Poste.TROMBONE_3, Poste.TROMBONE_1, Poste.TROMBONE_2),
+        (Poste.CHANT, Poste.GUITARE, Poste.BATTERIE, Poste.BASSE, Poste.PIANO),
+    )
+
     # Poste → code OrchestraSection (aligné sur seed_planning.DEFAULT_SECTIONS).
     POSTE_SECTION_CODE = {
         Poste.ALTO_1: "sax-alto",

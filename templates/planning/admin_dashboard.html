@@ -124,7 +124,12 @@
         </div>
         <div>
           <label for="eq_cat">Catégorie</label>
-          <input type="text" name="category" id="eq_cat" placeholder="ex. Sono, Transport">
+          <select name="category" id="eq_cat" required>
+            <option value="">— Choisir… —</option>
+            {% for cat in equipment_categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
       <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter</button>

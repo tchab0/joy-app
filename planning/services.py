@@ -19,6 +19,7 @@ from planning.models import (
     DateOption,
     DateProposal,
     DateVote,
+    EquipmentItem,
     EventParticipation,
     MusicianProfile,
     OrchestraSection,
@@ -52,6 +53,114 @@ RESPOND_MAP = {
 
 
 _STATUS_CACHE: dict[str, ParticipationStatus] | None = None
+
+# Matériel collectif utile à un big band (hors instruments / matos perso).
+DEFAULT_BIG_BAND_EQUIPMENT: list[tuple[str, str, int]] = [
+    ("Pupitre chef", "Scène", 10),
+    ("Pupitres musiciens (lot)", "Scène", 20),
+    ("Chaise / tabouret chef", "Scène", 30),
+    ("Tapis antidérapant scène", "Scène", 40),
+    ("Système de sonorisation (PA)", "Sono", 50),
+    ("Table de mixage", "Sono", 60),
+    ("Enceintes façade", "Sono", 70),
+    ("Retours de scène", "Sono", 80),
+    ("Micro chant", "Sono", 90),
+    ("Micros section / ambiance", "Sono", 100),
+    ("Pieds de micro", "Sono", 110),
+    ("Câbles XLR", "Sono", 120),
+    ("Multipaire / snake", "Sono", 130),
+    ("Boîtes de direct (DI)", "Sono", 140),
+    ("Multiprise / rallonge", "Sono", 150),
+    ("Partition chef (pad)", "Partitions", 160),
+    ("Classeurs / partitions orchestre", "Partitions", 170),
+    ("Véhicule transport", "Transport", 180),
+    ("Chariot / diable", "Transport", 190),
+    ("Gaffer / scotch scène", "Divers", 200),
+    ("Signalétique / affiche concert", "Divers", 210),
+]
+
+EQUIPMENT_CATEGORIES: tuple[str, ...] = tuple(
+    dict.fromkeys(cat for _, cat, _ in DEFAULT_BIG_BAND_EQUIPMENT)
+)
+
+
+def ensure_default_equipment(*, force: bool = False) -> list[EquipmentItem]:
+    """Crée / met à jour le catalogue matériel big band (idempotent)."""
+    existing = {
+        item.name.casefold(): item
+        for item in EquipmentItem.objects.filter(
+            name__in=[name for name, _, _ in DEFAULT_BIG_BAND_EQUIPMENT]
+        )
+    }
+    if len(existing) == len(DEFAULT_BIG_BAND_EQUIPMENT) and not force:
+        stale = False
+        for name, category, order in DEFAULT_BIG_BAND_EQUIPMENT:
+            item = existing.get(name.casefold())
+            if item is None:
+                stale = True
+                break
+            if (
+                item.category != category
+                or item.sort_order != order
+                or not item.is_active
+            ):
+                stale = True
+                break
+        if not stale:
+            return list(
+                EquipmentItem.objects.filter(is_active=True).order_by(
+                    "sort_order", "name"
+                )
+            )
+
+    for name, category, order in DEFAULT_BIG_BAND_EQUIPMENT:
+        EquipmentItem.objects.update_or_create(
+            name=name,
+            defaults={
+                "category": category,
+                "sort_order": order,
+                "is_active": True,
+            },
+        )
+    return list(
+        EquipmentItem.objects.filter(is_active=True).order_by("sort_order", "name")
+    )
+
+
+def get_or_create_equipment_item(
+    name: str,
+    *,
+    category: str = "",
+) -> EquipmentItem:
+    """Résout un matériel catalogue par nom (création si besoin)."""
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise ValueError("Nom de matériel requis.")
+    cat = (category or "").strip()
+    if cat not in EQUIPMENT_CATEGORIES:
+        raise ValueError("Catégorie invalide.")
+    existing = (
+        EquipmentItem.objects.filter(name__iexact=cleaned)
+        .order_by("pk")
+        .first()
+    )
+    if existing is not None:
+        updates: list[str] = []
+        if not existing.is_active:
+            existing.is_active = True
+            updates.append("is_active")
+        if existing.category != cat:
+            existing.category = cat
+            updates.append("category")
+        if updates:
+            existing.save(update_fields=updates)
+        return existing
+    return EquipmentItem.objects.create(
+        name=cleaned,
+        category=cat,
+        sort_order=900,
+        is_active=True,
+    )
 
 
 def ensure_participation_statuses(*, force: bool = False) -> dict[str, ParticipationStatus]:
@@ -1032,6 +1141,112 @@ def _expected_sections() -> list[OrchestraSection]:
         .distinct()
         .order_by("sort_order", "name")
     )
+
+
+def roster_by_stage(parts) -> dict:
+    """
+    Effectif admin disposé comme sur scène (chaises vides incluses).
+
+    Retourne :
+    - rows : 4 rangées de cellules ``{poste, label, parts}``
+    - extras : postes hors scène (ex. percussion) avec au moins une participation
+    - unassigned : participations sans poste
+    """
+    labels = dict(MusicianProfile.Poste.choices)
+    stage_postes: set[str] = set()
+    for row in MusicianProfile.POSTE_STAGE_ROWS:
+        stage_postes.update(row)
+
+    by_poste: dict[str, list] = defaultdict(list)
+    unassigned: list = []
+    for p in parts:
+        if p.poste:
+            by_poste[p.poste].append(p)
+        else:
+            unassigned.append(p)
+
+    rows = [
+        [
+            {
+                "poste": poste,
+                "label": labels.get(poste, poste),
+                "parts": by_poste.get(poste, []),
+            }
+            for poste in row
+        ]
+        for row in MusicianProfile.POSTE_STAGE_ROWS
+    ]
+
+    extras = [
+        {
+            "poste": code,
+            "label": labels.get(code, code),
+            "parts": by_poste[code],
+        }
+        for code, _label in MusicianProfile.Poste.choices
+        if code not in stage_postes and by_poste.get(code)
+    ]
+    return {"rows": rows, "extras": extras, "unassigned": unassigned}
+
+
+def remplacants_for_poste(
+    poste: str,
+    *,
+    taken_user_ids: set[int] | None = None,
+) -> list[dict]:
+    """
+    Remplaçants déclarés pour une chaise précise (hors déjà pris sur l’événement).
+
+    Chaque entrée : user_id, name, poste, invite_slot (« user_id:poste »).
+    """
+    poste = (poste or "").strip()
+    if not poste:
+        return []
+    taken = taken_user_ids or set()
+    profiles = (
+        MusicianProfile.objects.select_related("user")
+        .filter(user__is_active=True, user__is_musician=True)
+        .filter(_remplacant_matches_poste_q(poste))
+        .order_by("user__last_name", "user__first_name")
+    )
+    out: list[dict] = []
+    for profile in profiles:
+        if profile.user_id in taken:
+            continue
+        name = profile.user.get_full_name() or profile.user.username
+        out.append(
+            {
+                "user_id": profile.user_id,
+                "name": name,
+                "poste": poste,
+                "invite_slot": f"{profile.user_id}:{poste}",
+            }
+        )
+    return out
+
+
+def attach_roster_substitutes(stage: dict, *, taken_user_ids: set[int]) -> dict:
+    """Ajoute needs_substitute + eligible (remp. par chaise) aux cellules du stage."""
+
+    def enrich(cell: dict) -> None:
+        parts = cell.get("parts") or []
+        needs = not any(
+            getattr(getattr(p, "status", None), "code", None) == "confirmed"
+            for p in parts
+        )
+        cell["needs_substitute"] = needs
+        cell["eligible"] = (
+            remplacants_for_poste(cell.get("poste") or "", taken_user_ids=taken_user_ids)
+            if needs
+            else []
+        )
+
+    for row in stage.get("rows") or []:
+        for cell in row:
+            enrich(cell)
+    for cell in stage.get("extras") or []:
+        enrich(cell)
+    return stage
 
 
 def remplacants_by_section_code() -> dict[str, list[dict]]:

@@ -19,12 +19,15 @@ from planning.models import (
     SubstituteRequest,
 )
 from planning.services import (
+    attach_roster_substitutes,
     calendar_chat_links_for_user,
     calendar_summaries_for_events,
     ensure_participation_statuses,
     invite_slots_for_profile,
     propose_substitute,
+    remplacants_for_poste,
     respond_substitute_request,
+    roster_by_stage,
     set_participation_response,
 )
 from planning import services as planning_services
@@ -654,6 +657,52 @@ class EquipmentTests(PlanningBaseTestCase):
             ).exists()
         )
 
+    def test_roster_lists_default_big_band_equipment(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Système de sonorisation (PA)")
+        self.assertContains(r, "Pupitres musiciens (lot)")
+        self.assertContains(r, "+ Nouveau matériel")
+        self.assertTrue(
+            EquipmentItem.objects.filter(name="Câbles XLR", is_active=True).exists()
+        )
+
+    def test_staff_can_add_new_equipment_from_roster(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:add_event_equipment", args=[self.event.pk]),
+            {
+                "item_id": "__new__",
+                "item_name": "Pied de partition pliant",
+                "item_category": "Scène",
+                "assigned_to": self.musician.pk,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        item = EquipmentItem.objects.get(name="Pied de partition pliant")
+        self.assertEqual(item.category, "Scène")
+        self.assertTrue(
+            EventEquipmentAssignment.objects.filter(
+                event=self.event, item=item
+            ).exists()
+        )
+
+    def test_new_equipment_rejects_unknown_category(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:add_event_equipment", args=[self.event.pk]),
+            {
+                "item_id": "__new__",
+                "item_name": "Truc inventé",
+                "item_category": "Hors catalogue",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(
+            EquipmentItem.objects.filter(name="Truc inventé").exists()
+        )
+
 
 class StaffAdminTests(PlanningBaseTestCase):
     def test_admin_staff_only(self):
@@ -1144,6 +1193,231 @@ class InvitePosteChoiceTests(PlanningBaseTestCase):
         self.assertContains(r, '"poste": "tenor_1"')
         self.assertContains(r, '"poste": "alto_2"')
         self.assertContains(r, "Titulaire par défaut")
+
+
+class RosterStageLayoutTests(PlanningBaseTestCase):
+    def test_roster_by_stage_order_and_empty_chairs(self):
+        stage = roster_by_stage([self.participation])
+        self.assertEqual(len(stage["rows"]), 4)
+        row1 = [c["poste"] for c in stage["rows"][0]]
+        row2 = [c["poste"] for c in stage["rows"][1]]
+        row3 = [c["poste"] for c in stage["rows"][2]]
+        row4 = [c["poste"] for c in stage["rows"][3]]
+        self.assertEqual(
+            row1,
+            [
+                MusicianProfile.Poste.BARYTON,
+                MusicianProfile.Poste.ALTO_2,
+                MusicianProfile.Poste.ALTO_1,
+                MusicianProfile.Poste.TENOR_1,
+                MusicianProfile.Poste.TENOR_2,
+            ],
+        )
+        self.assertEqual(
+            row2,
+            [
+                MusicianProfile.Poste.TROMPETTE_4,
+                MusicianProfile.Poste.TROMPETTE_3,
+                MusicianProfile.Poste.TROMPETTE_1,
+                MusicianProfile.Poste.TROMPETTE_2,
+                MusicianProfile.Poste.CLARINETTE,
+            ],
+        )
+        self.assertEqual(
+            row3,
+            [
+                MusicianProfile.Poste.TROMBONE_4,
+                MusicianProfile.Poste.TROMBONE_3,
+                MusicianProfile.Poste.TROMBONE_1,
+                MusicianProfile.Poste.TROMBONE_2,
+            ],
+        )
+        self.assertEqual(
+            row4,
+            [
+                MusicianProfile.Poste.CHANT,
+                MusicianProfile.Poste.GUITARE,
+                MusicianProfile.Poste.BATTERIE,
+                MusicianProfile.Poste.BASSE,
+                MusicianProfile.Poste.PIANO,
+            ],
+        )
+        tp1 = next(
+            c
+            for c in stage["rows"][1]
+            if c["poste"] == MusicianProfile.Poste.TROMPETTE_1
+        )
+        self.assertEqual(tp1["parts"], [self.participation])
+        empty = next(
+            c
+            for c in stage["rows"][0]
+            if c["poste"] == MusicianProfile.Poste.BARYTON
+        )
+        self.assertEqual(empty["parts"], [])
+        self.assertEqual(stage["extras"], [])
+        self.assertEqual(stage["unassigned"], [])
+
+    def test_roster_extras_and_unassigned(self):
+        perc = User.objects.create_user(
+            username="perc1",
+            password="pass12345",
+            is_musician=True,
+            first_name="Pat",
+            last_name="Percu",
+        )
+        bare = User.objects.create_user(
+            username="bare1",
+            password="pass12345",
+            is_musician=True,
+            first_name="Bob",
+            last_name="Sansposte",
+        )
+        part_perc = EventParticipation.objects.create(
+            event=self.event,
+            user=perc,
+            status=self.statuses["confirmed"],
+            poste=MusicianProfile.Poste.PERCUSSION,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+        part_bare = EventParticipation.objects.create(
+            event=self.event,
+            user=bare,
+            status=self.statuses["invited"],
+            poste="",
+            role_kind="",
+        )
+        stage = roster_by_stage([self.participation, part_perc, part_bare])
+        self.assertEqual(len(stage["extras"]), 1)
+        self.assertEqual(stage["extras"][0]["poste"], MusicianProfile.Poste.PERCUSSION)
+        self.assertEqual(stage["extras"][0]["parts"], [part_perc])
+        self.assertEqual(stage["unassigned"], [part_bare])
+
+    def test_roster_page_stage_status_classes_and_remplacant(self):
+        set_participation_response(self.participation, "yes")
+        remp = User.objects.create_user(
+            username="remp_stage",
+            password="pass12345",
+            is_musician=True,
+            first_name="Remy",
+            last_name="Stage",
+        )
+        maybe_u = User.objects.create_user(
+            username="maybe_stage",
+            password="pass12345",
+            is_musician=True,
+            first_name="Maya",
+            last_name="Maybe",
+        )
+        no_u = User.objects.create_user(
+            username="no_stage",
+            password="pass12345",
+            is_musician=True,
+            first_name="Ned",
+            last_name="No",
+        )
+        EventParticipation.objects.create(
+            event=self.event,
+            user=remp,
+            status=self.statuses["confirmed"],
+            poste=MusicianProfile.Poste.TROMPETTE_2,
+            role_kind=EventParticipation.RoleKind.REMPLACANT,
+        )
+        EventParticipation.objects.create(
+            event=self.event,
+            user=maybe_u,
+            status=self.statuses["maybe"],
+            poste=MusicianProfile.Poste.TROMPETTE_3,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+        EventParticipation.objects.create(
+            event=self.event,
+            user=no_u,
+            status=self.statuses["declined"],
+            poste=MusicianProfile.Poste.TROMPETTE_4,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'class="pl-stage"')
+        self.assertContains(r, 'data-poste="trompette_1"')
+        self.assertContains(r, 'data-poste="baryton"')
+        self.assertContains(r, "pl-stage__person--confirmed")
+        self.assertContains(r, "pl-stage__person--maybe")
+        self.assertContains(r, "pl-stage__person--declined")
+        # Empty chairs keep the same red cell size as non-confirmed seats
+        self.assertContains(r, "pl-stage__person--vacant")
+        self.assertContains(r, "remplaçant")
+        self.assertContains(r, "Ada Lovelace")
+        self.assertContains(r, "Remy Stage")
+        # Status color carries meaning — no Confirmé badge as primary signal
+        self.assertNotContains(r, 'class="pl-badge pl-badge--success"')
+
+    def test_remplacants_for_poste_filters_taken(self):
+        eligible = remplacants_for_poste(
+            MusicianProfile.Poste.TROMPETTE_2,
+            taken_user_ids=set(),
+        )
+        self.assertTrue(any(e["user_id"] == self.sub.pk for e in eligible))
+        self.assertEqual(
+            next(e["invite_slot"] for e in eligible if e["user_id"] == self.sub.pk),
+            f"{self.sub.pk}:trompette_2",
+        )
+        blocked = remplacants_for_poste(
+            MusicianProfile.Poste.TROMPETTE_2,
+            taken_user_ids={self.sub.pk},
+        )
+        self.assertFalse(any(e["user_id"] == self.sub.pk for e in blocked))
+
+    def test_attach_roster_substitutes_on_open_chairs(self):
+        stage = roster_by_stage([self.participation])
+        attach_roster_substitutes(stage, taken_user_ids={self.musician.pk})
+        tp1 = next(
+            c
+            for c in stage["rows"][1]
+            if c["poste"] == MusicianProfile.Poste.TROMPETTE_1
+        )
+        tp2 = next(
+            c
+            for c in stage["rows"][1]
+            if c["poste"] == MusicianProfile.Poste.TROMPETTE_2
+        )
+        # Invited (not confirmed) still needs a substitute proposal
+        self.assertTrue(tp1["needs_substitute"])
+        self.assertTrue(tp2["needs_substitute"])
+        self.assertTrue(any(e["user_id"] == self.sub.pk for e in tp2["eligible"]))
+        set_participation_response(self.participation, "yes")
+        stage2 = roster_by_stage([self.participation])
+        attach_roster_substitutes(stage2, taken_user_ids={self.musician.pk})
+        tp1b = next(
+            c
+            for c in stage2["rows"][1]
+            if c["poste"] == MusicianProfile.Poste.TROMPETTE_1
+        )
+        self.assertFalse(tp1b["needs_substitute"])
+        self.assertEqual(tp1b["eligible"], [])
+
+    def test_roster_page_shows_poste_substitute_invite(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "data-roster-invite-locks")
+        self.assertContains(r, 'class="pl-stage__invite"')
+        self.assertContains(r, f"{self.sub.pk}:trompette_2")
+        self.assertContains(r, 'class="pl-form__actions pl-form__actions--inline"')
+        self.assertContains(r, "invite-musician-form--inline")
+        self.assertContains(r, "pl-form__row--gear")
+
+    def test_invite_remplacant_from_roster_poste_cell(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:invite_musician", args=[self.event.pk]),
+            {"invite_slot": f"{self.sub.pk}:trompette_2"},
+        )
+        self.assertEqual(r.status_code, 302)
+        part = EventParticipation.objects.get(event=self.event, user=self.sub)
+        self.assertEqual(part.poste, MusicianProfile.Poste.TROMPETTE_2)
+        self.assertEqual(part.role_kind, EventParticipation.RoleKind.REMPLACANT)
 
 
 class EventPhotosRequestTests(TestCase):

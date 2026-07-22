@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="pl">
+<div class="pl pl--roster">
   {% include "planning/_module_nav.html" with active="admin" %}
   <div class="pl-nav-context">
     <a href="{% url 'planning:event_detail' event.pk %}">Vue musicien</a>
@@ -18,11 +18,10 @@
     <p class="pl-sub">
       {{ event.date_debut|date:"l d F Y · H:i" }}
       {% if event.venue %} · {{ event.lieu_affiche }}{% endif %}
-      {% if event.parent %}<br>Dans : {{ event.parent.titre }}{% endif %}
-      {% if event.organisme %}<br>Organisé par {{ event.organisme }}{% endif %}
+      {% if event.parent %} · Dans : {{ event.parent.titre }}{% endif %}
+      {% if event.organisme %} · {{ event.organisme }}{% endif %}
       {% if event.show_contact %}
-      <br>
-      Contact{% if event.contact_nom %} : {{ event.contact_nom }}{% endif %}
+      · Contact{% if event.contact_nom %} {{ event.contact_nom }}{% endif %}
       {% if event.contact_telephone %}
         · <a href="tel:{{ event.contact_telephone }}" style="color:var(--accent)">{{ event.contact_telephone }}</a>
       {% endif %}
@@ -34,15 +33,15 @@
   </header>
 
   {% if draft_proposal %}
-  <section class="pl-section" style="border:2px solid var(--accent);border-radius:var(--r);padding:1rem;background:var(--surface)">
+  <section class="pl-section pl-section--panel pl-section--pending">
     <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
-    <p class="pl-row__meta" style="margin-bottom:1rem">
+    <p class="pl-row__meta pl-roster-lead">
       Lancez le sondage pour que les musiciens invités indiquent leur disponibilité
       (message mis en évidence dans le salon + notification).
     </p>
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:44px">
         Lancer le sondage de disponibilité
       </button>
     </form>
@@ -51,7 +50,7 @@
 
   <section class="pl-section">
     <h2>Publication sur le site</h2>
-    <p class="pl-row__meta" style="margin-bottom:1rem">
+    <p class="pl-row__meta pl-roster-lead">
       {% if event.public %}
         Actuellement <strong style="color:var(--ok)">visible</strong> sur l’accueil et la page Concerts.
       {% else %}
@@ -101,86 +100,203 @@
                  :required="parentMode === 'new'">
         </div>
       </div>
-      <label class="pl-check">
-        <input type="checkbox" name="public" {% if event.public %}checked{% endif %}>
-        Visible sur le site public
-      </label>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">
-        Enregistrer la publication
-      </button>
+      <div class="pl-form__actions pl-form__actions--inline">
+        <label class="pl-check">
+          <input type="checkbox" name="public" {% if event.public %}checked{% endif %}>
+          Visible sur le site public
+        </label>
+        <button type="submit" class="pl-btn pl-btn--primary">
+          Enregistrer la publication
+        </button>
+      </div>
     </form>
   </section>
 
   <section class="pl-section">
     <h2>Effectif par pupitre</h2>
-    {% for section, parts in by_section.items %}
-    <div class="pl-section-block">
-      <h3>{{ section }}</h3>
-      {% for p in parts %}
-      <div class="pl-row">
-        <div class="pl-row__main">
-          <span class="pl-row__title">{{ p.user.get_full_name|default:p.user.username }}</span>
-          {% if p.poste %}
-          <p class="pl-row__meta">{{ p.poste_label }}</p>
-          {% endif %}
-          {% if p.status.code == "maybe" %}
-          <p class="pl-row__meta" style="color:var(--text);margin-top:.25rem">
-            {% if p.maybe_remind_at %}
-            Relance prévue le {{ p.maybe_remind_at|date:"d/m/Y" }}{% if p.maybe_remind_weekly %} (puis chaque semaine){% endif %}
-            {% elif p.maybe_remind_weekly %}
-            Relance chaque semaine
-            {% else %}
-            Pas de date de relance
+    <div class="pl-stage" aria-label="Disposition scène" data-roster-invite-locks>
+      {% for row in roster_rows %}
+      <div class="pl-stage__row">
+        {% for cell in row %}
+        <div class="pl-stage__seat{% if cell.needs_substitute %} is-open{% endif %}" data-poste="{{ cell.poste }}">
+          <div class="pl-stage__poste">{{ cell.label }}</div>
+          {% for p in cell.parts %}
+          <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+            <div class="pl-stage__line">
+              <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+              {% if p.role_kind == "remplacant" %}
+              <span class="pl-stage__role">remplaçant</span>
+              {% endif %}
+            </div>
+            {% if p.status.code == "maybe" %}
+            <p class="pl-stage__meta">
+              {% if p.maybe_remind_at %}
+              Relance le {{ p.maybe_remind_at|date:"d/m/Y" }}{% if p.maybe_remind_weekly %} (hebdo){% endif %}
+              {% elif p.maybe_remind_weekly %}
+              Relance chaque semaine
+              {% else %}
+              Pas de date de relance
+              {% endif %}
+            </p>
             {% endif %}
-          </p>
-          {% endif %}
-          {% if p.comment %}
-          <p class="pl-row__meta" style="color:var(--text);margin-top:.2rem">{{ p.comment }}</p>
+            {% if p.comment %}
+            <p class="pl-stage__meta">{{ p.comment }}</p>
+            {% endif %}
+          </div>
+          {% empty %}
+          <div class="pl-stage__person pl-stage__person--vacant" aria-label="Poste vacant">
+            {% if cell.eligible %}
+            <form class="pl-stage__invite"
+                  method="post"
+                  action="{% url 'planning:invite_musician' event.pk %}">
+              {% csrf_token %}
+              <label class="visually-hidden" for="sub_{{ cell.poste }}">Remplaçant {{ cell.label }}</label>
+              <select name="invite_slot" id="sub_{{ cell.poste }}" required
+                      aria-label="Remplaçant pour {{ cell.label }}">
+                <option value="">Remplaçant…</option>
+                {% for e in cell.eligible %}
+                <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+            </form>
+            {% else %}
+            <span class="pl-stage__invite-none">Aucun remp.</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+          {% if cell.parts and cell.needs_substitute %}
+            {% if cell.eligible %}
+            <form class="pl-stage__invite"
+                  method="post"
+                  action="{% url 'planning:invite_musician' event.pk %}">
+              {% csrf_token %}
+              <label class="visually-hidden" for="sub_filled_{{ cell.poste }}">Remplaçant {{ cell.label }}</label>
+              <select name="invite_slot" id="sub_filled_{{ cell.poste }}" required
+                      aria-label="Remplaçant pour {{ cell.label }}">
+                <option value="">Remplaçant…</option>
+                {% for e in cell.eligible %}
+                <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+            </form>
+            {% else %}
+            <span class="pl-stage__invite-none">Aucun remp.</span>
+            {% endif %}
           {% endif %}
         </div>
-        <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
+        {% endfor %}
       </div>
       {% endfor %}
     </div>
-    {% empty %}
-    <p class="pl-empty">Personne d’invité.</p>
-    {% endfor %}
 
-    <form class="pl-form" method="post" action="{% url 'planning:invite_titulaires' event.pk %}" style="margin-bottom:1rem">
+    {% if roster_extras or roster_unassigned %}
+    <div class="pl-stage-extras">
+      <h3>Autres</h3>
+      {% for cell in roster_extras %}
+      <div class="pl-stage__seat pl-stage__seat--extra{% if cell.needs_substitute %} is-open{% endif %}" data-poste="{{ cell.poste }}">
+        <div class="pl-stage__poste">{{ cell.label }}</div>
+        {% for p in cell.parts %}
+        <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+          <div class="pl-stage__line">
+            <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+            {% if p.role_kind == "remplacant" %}
+            <span class="pl-stage__role">remplaçant</span>
+            {% endif %}
+          </div>
+          {% if p.comment %}
+          <p class="pl-stage__meta">{{ p.comment }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% if cell.needs_substitute and cell.eligible %}
+        <form class="pl-stage__invite"
+              method="post"
+              action="{% url 'planning:invite_musician' event.pk %}">
+          {% csrf_token %}
+          <select name="invite_slot" required aria-label="Remplaçant pour {{ cell.label }}">
+            <option value="">Remplaçant…</option>
+            {% for e in cell.eligible %}
+            <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% for p in roster_unassigned %}
+      <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+        <div class="pl-stage__line">
+          <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+          <span class="pl-stage__role">sans poste</span>
+        </div>
+        {% if p.comment %}
+        <p class="pl-stage__meta">{{ p.comment }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form class="pl-form pl-form--tight" method="post" action="{% url 'planning:invite_titulaires' event.pk %}">
       {% csrf_token %}
       <button type="submit" class="pl-btn pl-btn--primary">Convoquer tous les titulaires</button>
     </form>
 
     {% if invite_musicians %}
     {% url 'planning:invite_musician' event.pk as invite_form_action %}
-    {% include "planning/_invite_musician_form.html" with form_action=invite_form_action invite_musicians=invite_musicians submit_label="Inviter" id_prefix="roster_invite" %}
+    {% include "planning/_invite_musician_form.html" with form_action=invite_form_action invite_musicians=invite_musicians submit_label="Inviter" id_prefix="roster_invite" inline_submit=True %}
     {% endif %}
   </section>
 
   <section class="pl-section">
     <h2>Matériel pour cette date</h2>
     {% for g in gear %}
-    <div class="pl-row">
-      <div class="pl-row__main">
-        <span class="pl-row__title">{{ g.item.name }}</span>
-        <p class="pl-row__meta">
-          {% if g.assigned_to %}{{ g.assigned_to.get_full_name|default:g.assigned_to.username }}{% else %}Non assigné{% endif %}
-          · {{ g.get_status_display }}
-        </p>
-      </div>
+    <div class="pl-gear-line">
+      <span class="pl-gear-line__name">{{ g.item.name }}</span>
+      <span class="pl-gear-line__meta">
+        {% if g.assigned_to %}{{ g.assigned_to.get_full_name|default:g.assigned_to.username }}{% else %}Non assigné{% endif %}
+        · {{ g.get_status_display }}
+      </span>
     </div>
     {% empty %}
     <p class="pl-empty">Aucun matériel listé.</p>
     {% endfor %}
 
-    <form class="pl-form" method="post" action="{% url 'planning:add_event_equipment' event.pk %}">
+    <form class="pl-form pl-form--tight" method="post" action="{% url 'planning:add_event_equipment' event.pk %}"
+          x-data="{ itemId: '' }">
       {% csrf_token %}
-      <div class="pl-form__row pl-form__row--2">
+      <div class="pl-form__row pl-form__row--gear">
         <div>
           <label for="item_id">Matériel</label>
-          <select name="item_id" id="item_id" required>
-            {% for item in equipment_catalog %}
-            <option value="{{ item.pk }}">{{ item.name }}</option>
+          <select name="item_id" id="item_id" required x-model="itemId">
+            <option value="">— Choisir… —</option>
+            {% regroup equipment_catalog by category as catalog_groups %}
+            {% for group in catalog_groups %}
+            <optgroup label="{{ group.grouper|default:'Divers' }}">
+              {% for item in group.list %}
+              <option value="{{ item.pk }}">{{ item.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+            <option value="__new__">+ Nouveau matériel…</option>
+          </select>
+        </div>
+        <div x-show="itemId === '__new__'" x-cloak>
+          <label for="item_name">Nom</label>
+          <input type="text" name="item_name" id="item_name"
+                 placeholder="ex. Pied de partition"
+                 :required="itemId === '__new__'">
+        </div>
+        <div x-show="itemId === '__new__'" x-cloak>
+          <label for="item_category">Catégorie</label>
+          <select name="item_category" id="item_category"
+                  :required="itemId === '__new__'">
+            <option value="">— Choisir… —</option>
+            {% for cat in equipment_categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
             {% endfor %}
           </select>
         </div>
@@ -193,9 +309,59 @@
             {% endfor %}
           </select>
         </div>
+        <div class="pl-form__submit">
+          <button type="submit" class="pl-btn pl-btn--primary">Ajouter</button>
+        </div>
       </div>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter</button>
+      <p class="invite-musician-form__hint">
+        Catalogue big band (hors instruments perso). Nouveau matériel : choisir une catégorie existante (Scène, Sono…).
+      </p>
     </form>
   </section>
 </div>
+<script>
+/** Un remplacant multi-postes ne reste sélectionnable que sur une chaise à la fois. */
+(function initRosterInviteLocks() {
+  const root = document.querySelector('[data-roster-invite-locks]');
+  if (!root || root.dataset.locksReady) return;
+  root.dataset.locksReady = '1';
+  const selects = [...root.querySelectorAll('select[name="invite_slot"]')];
+  selects.forEach((sel) => {
+    sel._inviteOptions = [...sel.options].map((o) => ({
+      value: o.value,
+      text: o.textContent,
+      userId: o.dataset.userId || '',
+    }));
+  });
+  const sync = () => {
+    const taken = new Map();
+    selects.forEach((sel) => {
+      const opt = sel.selectedOptions[0];
+      const uid = opt && opt.dataset.userId;
+      if (uid) taken.set(uid, sel);
+    });
+    selects.forEach((sel) => {
+      const current = sel.value;
+      const keep = sel._inviteOptions.filter((o) => {
+        if (!o.value) return true;
+        const owner = taken.get(o.userId);
+        return !owner || owner === sel;
+      });
+      sel.replaceChildren();
+      keep.forEach((o) => {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.text;
+        if (o.userId) opt.dataset.userId = o.userId;
+        sel.appendChild(opt);
+      });
+      sel.value = keep.some((o) => o.value === current) ? current : '';
+    });
+  };
+  root.addEventListener('change', (e) => {
+    if (e.target.matches && e.target.matches('select[name="invite_slot"]')) sync();
+  });
+  sync();
+})();
+</script>
 {% endblock %}

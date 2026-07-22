@@ -3,12 +3,15 @@ from django.utils import timezone
 
 from events.models import Event, EventType
 from planning.models import (
-    EquipmentItem,
     EventParticipation,
     MusicianProfile,
     OrchestraSection,
 )
-from planning.services import ensure_participation_statuses
+from planning.services import (
+    DEFAULT_BIG_BAND_EQUIPMENT,
+    ensure_default_equipment,
+    ensure_participation_statuses,
+)
 from users.models import User
 
 
@@ -21,14 +24,6 @@ DEFAULT_SECTIONS = [
     ("trombone", "Trombones", 50),
     ("rythmique", "Rythmique", 60),
     ("chant", "Chant", 70),
-]
-
-DEFAULT_EQUIPMENT = [
-    ("Pupitre chef", "Scène"),
-    ("Sonorisation portable", "Sono"),
-    ("Câbles XLR", "Sono"),
-    ("Partition complète", "Partitions"),
-    ("Véhicule transport", "Transport"),
 ]
 
 
@@ -46,12 +41,11 @@ class Command(BaseCommand):
             )
         self.stdout.write(f"{len(DEFAULT_SECTIONS)} pupitres OK")
 
-        for name, category in DEFAULT_EQUIPMENT:
-            EquipmentItem.objects.update_or_create(
-                name=name,
-                defaults={"category": category, "is_active": True},
-            )
-        self.stdout.write(f"{len(DEFAULT_EQUIPMENT)} matériels OK")
+        equipment = ensure_default_equipment(force=True)
+        self.stdout.write(
+            f"{len(DEFAULT_BIG_BAND_EQUIPMENT)} matériels catalogue "
+            f"({len(equipment)} actifs) OK"
+        )
 
         EventType.objects.get_or_create(nom="Répétition")
         EventType.objects.get_or_create(nom="Concert")
