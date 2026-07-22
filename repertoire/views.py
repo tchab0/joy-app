@@ -455,7 +455,16 @@ class StaffSetlistCreateView(PlanningStaffRequiredMixin, View):
     template_name = "repertoire/staff_setlist_form.html"
 
     def get(self, request):
-        return self._render(request, SetlistForm(), None)
+        initial = {}
+        event_id = request.GET.get("event")
+        if event_id:
+            from events.models import Event
+
+            event = Event.objects.filter(pk=event_id).first()
+            if event:
+                initial["event"] = event
+                initial["title"] = event.titre
+        return self._render(request, SetlistForm(initial=initial), None)
 
     def post(self, request):
         form = SetlistForm(request.POST)
@@ -499,6 +508,25 @@ class StaffSetlistCreateView(PlanningStaffRequiredMixin, View):
                 if pid in titles
             ]
         return TemplateResponse(request, self.template_name, ctx)
+
+
+class StaffSetlistAttachView(PlanningStaffRequiredMixin, View):
+    """Lie une setlist existante à un événement (depuis la fiche planning)."""
+
+    def post(self, request, event_id: int):
+        from events.models import Event
+
+        event = get_object_or_404(Event, pk=event_id)
+        setlist = get_object_or_404(Setlist, pk=request.POST.get("setlist_id"))
+        with transaction.atomic():
+            Setlist.objects.filter(event=event, is_active=True).exclude(
+                pk=setlist.pk
+            ).update(is_active=False)
+            setlist.event = event
+            setlist.is_active = True
+            setlist.save(update_fields=["event", "is_active", "updated_at"])
+        messages.success(request, f"Setlist « {setlist.title} » liée à l’événement.")
+        return redirect("planning:event_detail", pk=event.pk)
 
 
 class StaffSetlistEditView(PlanningStaffRequiredMixin, View):

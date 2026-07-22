@@ -689,6 +689,32 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertContains(r, "Instruments manquants")
         self.assertContains(r, "(1 tit. · 0 remp.)")
 
+    def test_calendar_shows_setlist_link(self):
+        from repertoire.models import Setlist
+
+        concert_type = EventType.objects.create(nom="Concert setlist")
+        concert = Event.objects.create(
+            titre="Bal setlist",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=25),
+            statut=Event.Statut.CONFIRME,
+            public=True,
+        )
+        sl = Setlist.objects.create(title="Programme bal", event=concert, is_active=True)
+
+        self.client.login(username="musi", password="pass12345")
+        year = timezone.localtime(concert.date_debut).year
+        r = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Setlist — Programme bal")
+        self.assertContains(r, f"{reverse('planning:event_detail', args=[concert.pk])}#setlist")
+
+        self.client.login(username="staff1", password="pass12345")
+        r2 = self.client.get(reverse("planning:dashboard"), {"year": year})
+        self.assertEqual(r2.status_code, 200)
+        self.assertContains(r2, reverse("repertoire:staff_setlist_edit", args=[sl.pk]))
+
     def test_calendar_shows_chat_link_with_unread(self):
         room = ChatRoom.objects.get(event=self.event)
         post_message(room=room, author=self.staff, body="Coucou orchestre")

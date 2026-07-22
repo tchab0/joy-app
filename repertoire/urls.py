@@ -53,6 +53,11 @@ urlpatterns = [
         name="staff_setlist_create",
     ),
     path(
+        "staff/setlists/lier/<int:event_id>/",
+        views.StaffSetlistAttachView.as_view(),
+        name="staff_setlist_attach",
+    ),
+    path(
         "staff/setlists/<int:pk>/",
         views.StaffSetlistEditView.as_view(),
         name="staff_setlist_edit",

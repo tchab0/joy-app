@@ -12,6 +12,11 @@
   {% if is_planning_staff %}
   <div class="pl-nav-context">
     <a href="{% url 'planning:event_roster' event.pk %}">Effectif staff</a>
+    {% if setlist %}
+    <a href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}">Setlist</a>
+    {% else %}
+    <a href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">Créer setlist</a>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -42,7 +47,11 @@
   {% endif %}
 
   {% if setlist %}
-  <section class="pl-section" style="margin-top:1.25rem">
+  <a class="pl-day-events__salon" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' setlist.pk %}{% else %}#setlist{% endif %}">
+    <span>Setlist — {{ setlist.title }}</span>
+    <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
+  </a>
+  <section id="setlist" class="pl-section" style="margin-top:1.25rem">
     <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
     {% if setlist.notes %}<p class="pl-row__meta" style="margin-bottom:.5rem">{{ setlist.notes }}</p>{% endif %}
     <ol style="margin:0;padding-left:1.25rem">
@@ -57,6 +66,32 @@
       <li class="pl-empty">Setlist vide.</li>
       {% endfor %}
     </ol>
+    {% if is_planning_staff %}
+    <p style="margin-top:.85rem">
+      <a class="pl-btn" href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}" style="min-height:44px">Modifier la setlist</a>
+    </p>
+    {% endif %}
+  </section>
+  {% elif is_planning_staff %}
+  <section class="pl-section" style="margin-top:1.25rem">
+    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
+    <p class="pl-row__meta" style="margin-bottom:.75rem">Aucune setlist liée à cet événement.</p>
+    <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem">
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}" style="min-height:44px">Créer une setlist</a>
+    </div>
+    {% if attachable_setlists %}
+    <form method="post" action="{% url 'repertoire:staff_setlist_attach' event.pk %}" style="margin-top:1.1rem;max-width:22rem">
+      {% csrf_token %}
+      <label for="attach-setlist" style="display:block;font-size:.85rem;font-weight:600;margin-bottom:.35rem;color:var(--text)">Ou lier une setlist existante</label>
+      <select name="setlist_id" id="attach-setlist" class="pl-input" required style="width:100%;margin-bottom:.5rem;min-height:44px">
+        <option value="">Choisir…</option>
+        {% for s in attachable_setlists %}
+        <option value="{{ s.pk }}">{{ s.title }}{% if s.event %} — {{ s.event.titre }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="pl-btn" style="min-height:44px;width:100%">Lier à cet événement</button>
+    </form>
+    {% endif %}
   </section>
   {% endif %}
 

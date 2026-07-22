@@ -31,6 +31,7 @@ from planning.models import (
 )
 from planning.services import (
     attach_calendar_chat_links,
+    attach_calendar_setlists,
     attach_calendar_summaries,
     cast_date_vote,
     chat_link_for_event,
@@ -344,6 +345,7 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         )
         attach_calendar_summaries(events)
         attach_calendar_chat_links(events, user)
+        attach_calendar_setlists(events)
         attach_weather(events, concerts_only=True)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
@@ -565,6 +567,17 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             .order_by("item__sort_order", "item__name")
         )
 
+        is_staff = user.is_staff or user.is_superuser
+        setlist = _active_setlist_for_event(event)
+        attachable_setlists = None
+        if is_staff and not setlist:
+            from repertoire.models import Setlist
+
+            attachable_setlists = list(
+                Setlist.objects.select_related("event")
+                .order_by("-updated_at")[:80]
+            )
+
         context.update(
             {
                 "event": event,
@@ -581,8 +594,9 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "my_sub_requests": my_sub_requests,
                 "gear": gear,
                 "chat_link": chat_link,
-                "is_planning_staff": user.is_staff or user.is_superuser,
-                "setlist": _active_setlist_for_event(event),
+                "is_planning_staff": is_staff,
+                "setlist": setlist,
+                "attachable_setlists": attachable_setlists,
             }
         )
         return context

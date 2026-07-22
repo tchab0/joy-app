@@ -216,6 +216,63 @@ class SetlistTests(TestCase):
         self.assertEqual([i.piece_id for i in items], [p2.pk, p1.pk])
         self.assertEqual(items[0].note, "opener")
 
+    def test_staff_create_prefills_event(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from events.models import Event, EventType, Venue
+
+        staff = User.objects.create_user(
+            username="setlist-prefill", password="x", is_staff=True
+        )
+        venue = Venue.objects.create(nom="Salle Prefill", ville="La Roche-sur-Yon")
+        et = EventType.objects.create(nom="Concert prefill")
+        event = Event.objects.create(
+            titre="Gala JOY",
+            type=et,
+            venue=venue,
+            date_debut=timezone.now() + timedelta(days=30),
+        )
+        self.client.login(username="setlist-prefill", password="x")
+        r = self.client.get(
+            reverse("repertoire:staff_setlist_create"), {"event": event.pk}
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Gala JOY")
+        form = r.context["form"]
+        self.assertEqual(form.initial.get("event"), event)
+        self.assertEqual(form.initial.get("title"), "Gala JOY")
+
+    def test_staff_attach_setlist_to_event(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from events.models import Event, EventType, Venue
+
+        staff = User.objects.create_user(
+            username="setlist-attach", password="x", is_staff=True
+        )
+        venue = Venue.objects.create(nom="Salle Attach", ville="La Roche-sur-Yon")
+        et = EventType.objects.create(nom="Concert attach")
+        event = Event.objects.create(
+            titre="Soirée attach",
+            type=et,
+            venue=venue,
+            date_debut=timezone.now() + timedelta(days=40),
+        )
+        sl = Setlist.objects.create(title="Programme libre")
+        self.client.login(username="setlist-attach", password="x")
+        r = self.client.post(
+            reverse("repertoire:staff_setlist_attach", args=[event.pk]),
+            {"setlist_id": sl.pk},
+        )
+        self.assertEqual(r.status_code, 302)
+        sl.refresh_from_db()
+        self.assertEqual(sl.event_id, event.pk)
+        self.assertTrue(sl.is_active)
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class MusicianViewsTests(TestCase):

@@ -190,6 +190,17 @@
                 {% endif %}
               </a>
               {% endif %}
+              {% if event.cal_setlist %}
+              <a class="pl-day-events__salon" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' event.cal_setlist.id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}#setlist{% endif %}">
+                <span>Setlist — {{ event.cal_setlist.title }}</span>
+                <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
+              </a>
+              {% elif is_planning_staff and not s.is_rehearsal %}
+              <a class="pl-day-events__salon" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
+                <span>Setlist</span>
+                <span>Créer</span>
+              </a>
+              {% endif %}
             </article>
             {% endwith %}
             {% endfor %}

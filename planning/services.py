@@ -988,6 +988,40 @@ def attach_calendar_chat_links(events, user) -> list:
     return list(events)
 
 
+def attach_calendar_setlists(events) -> list:
+    """Attache ``event.cal_setlist`` ({id, title} ou None) pour la setlist active."""
+    events = list(events)
+    for event in events:
+        event.cal_setlist = None
+    if not events:
+        return events
+    try:
+        from django.db import OperationalError, ProgrammingError
+
+        from repertoire.models import Setlist
+    except ImportError:
+        return events
+
+    event_ids = [e.pk for e in events]
+    try:
+        rows = (
+            Setlist.objects.filter(event_id__in=event_ids, is_active=True)
+            .order_by("event_id", "-updated_at")
+            .values("id", "title", "event_id")
+        )
+    except (ProgrammingError, OperationalError):
+        return events
+
+    by_event: dict[int, dict] = {}
+    for row in rows:
+        eid = row["event_id"]
+        if eid not in by_event:
+            by_event[eid] = {"id": row["id"], "title": row["title"]}
+    for event in events:
+        event.cal_setlist = by_event.get(event.pk)
+    return events
+
+
 def chat_link_for_event(event, user) -> dict | None:
     """Salon + non lus pour un événement, ou None si pas d’accès."""
     return calendar_chat_links_for_user([event], user).get(event.pk)
