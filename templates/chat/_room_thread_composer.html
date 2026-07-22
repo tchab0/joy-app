@@ -5,33 +5,71 @@
     <div class="chat-msg"
          :class="{
            'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
-           'chat-msg--highlight': msg.highlight
+           'chat-msg--highlight': msg.highlight,
+           'chat-msg--hidden': msg.hidden && !msg.deleted
          }">
-      <p class="chat-msg__meta">
-        <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
-        · <span x-text="formatTime(msg.created_at)"></span>
-      </p>
-      <template x-if="msg.deleted">
-        <p class="chat-msg__body chat-msg__body--deleted">Message supprimé</p>
+      <template x-if="msg.hidden && !msg.deleted">
+        <div class="chat-msg__hidden">
+          <p class="chat-msg__body chat-msg__body--deleted">Message masqué</p>
+          <button type="button" class="chat-react__unhide"
+                  @click="toggleReaction(msg, 'down')"
+                  :disabled="busyReact === msg.id">
+            Afficher
+          </button>
+        </div>
       </template>
-      <template x-if="!msg.deleted && msg.body">
-        <p class="chat-msg__body" x-text="msg.body"></p>
-      </template>
-      <template x-if="msg.highlight && msg.poll_url">
-        <a class="chat-msg__poll-link" :href="msg.poll_url">Répondre au sondage →</a>
-      </template>
-      <ul class="chat-atts" x-show="msg.attachments && msg.attachments.length">
-        <template x-for="att in msg.attachments" :key="att.id">
-          <li>
-            <template x-if="att.is_image">
-              <a :href="att.url" target="_blank" rel="noopener"><img :src="att.url" :alt="att.name" loading="lazy"></a>
+      <template x-if="!msg.hidden || msg.deleted">
+        <div>
+          <div class="chat-msg__meta">
+            <span class="chat-msg__meta-info">
+              <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
+              · <span x-text="formatTime(msg.created_at)"></span>
+            </span>
+            <span class="chat-react" x-show="!msg.deleted">
+              <button type="button"
+                      class="chat-react__btn"
+                      :class="{ 'is-active': msg.mine === 'up' }"
+                      @click="toggleReaction(msg, 'up')"
+                      :disabled="busyReact === msg.id"
+                      :aria-pressed="msg.mine === 'up' ? 'true' : 'false'"
+                      aria-label="Pouce levé">
+                <span aria-hidden="true">👍</span>
+                <span class="chat-react__count" x-show="msg.likes > 0" x-text="msg.likes"></span>
+              </button>
+              <button type="button"
+                      class="chat-react__btn"
+                      :class="{ 'is-active': msg.mine === 'down' }"
+                      @click="toggleReaction(msg, 'down')"
+                      :disabled="busyReact === msg.id"
+                      :aria-pressed="msg.mine === 'down' ? 'true' : 'false'"
+                      aria-label="Masquer ce message">
+                <span aria-hidden="true">👎</span>
+              </button>
+            </span>
+          </div>
+          <template x-if="msg.deleted">
+            <p class="chat-msg__body chat-msg__body--deleted">Message supprimé</p>
+          </template>
+          <template x-if="!msg.deleted && msg.body">
+            <p class="chat-msg__body" x-text="msg.body"></p>
+          </template>
+          <template x-if="msg.highlight && msg.poll_url">
+            <a class="chat-msg__poll-link" :href="msg.poll_url">Répondre au sondage →</a>
+          </template>
+          <ul class="chat-atts" x-show="msg.attachments && msg.attachments.length">
+            <template x-for="att in msg.attachments" :key="att.id">
+              <li>
+                <template x-if="att.is_image">
+                  <a :href="att.url" target="_blank" rel="noopener"><img :src="att.url" :alt="att.name" loading="lazy"></a>
+                </template>
+                <template x-if="!att.is_image">
+                  <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
+                </template>
+              </li>
             </template>
-            <template x-if="!att.is_image">
-              <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
-            </template>
-          </li>
-        </template>
-      </ul>
+          </ul>
+        </div>
+      </template>
     </div>
   </template>
 </div>

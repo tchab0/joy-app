@@ -8,11 +8,13 @@ from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from chat.models import ChatMembership, ChatRoom
+from chat.models import ChatMembership, ChatMessageReaction, ChatRoom
 from chat.services import (
     ensure_orchestra_room,
     post_message,
+    serialize_message,
     sync_musician_to_orchestra,
+    toggle_reaction,
 )
 from events.models import Event, EventType, Venue
 from planning.models import EventParticipation, MusicianProfile
@@ -206,3 +208,36 @@ class ChatCoreTests(TestCase):
         self.assertEqual(r.status_code, 302)
         self.musician.refresh_from_db()
         self.assertFalse(self.musician.chat_auto_subscribe)
+
+    def test_message_reactions_like_and_hide(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        msg = post_message(room=room, author=self.other, body="Réagissez")
+
+        up = toggle_reaction(
+            message=msg, user=self.musician, value=ChatMessageReaction.Value.UP
+        )
+        self.assertEqual(up["likes"], 1)
+        self.assertEqual(up["mine"], "up")
+        self.assertFalse(up["hidden"])
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.post(
+            reverse("chat:api_react", args=[room.pk]),
+            {"message_id": msg.pk, "value": "down"},
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["likes"], 0)
+        self.assertEqual(data["mine"], "down")
+        self.assertTrue(data["hidden"])
+
+        msg.refresh_from_db()
+        payload = serialize_message(msg, viewer=self.musician)
+        self.assertTrue(payload["hidden"])
+        self.assertEqual(payload["likes"], 0)
+        payload_other = serialize_message(msg, viewer=self.other)
+        self.assertFalse(payload_other["hidden"])

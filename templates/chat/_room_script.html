@@ -12,14 +12,18 @@ function chatRoom(cfg) {
     }
   }
   return {
-    messages: loadMessages(cfg.messagesScriptId),
+    messages: loadMessages(cfg.messagesScriptId).map(function (m) {
+      return Object.assign({ likes: 0, mine: null, hidden: false }, m);
+    }),
     currentUserId: cfg.currentUserId,
     wsUrl: cfg.wsUrl,
     apiSendUrl: cfg.apiSendUrl || '',
+    apiReactUrl: cfg.apiReactUrl || '',
     csrfToken: cfg.csrfToken || '',
     embedded: !!cfg.embedded,
     body: '',
     busy: false,
+    busyReact: null,
     status: 'connecting',
     menuOpen: false,
     fileLabel: '',
@@ -108,11 +112,42 @@ function chatRoom(cfg) {
         try { data = JSON.parse(ev.data); } catch (_) { return; }
         if (data.type === 'chat.message' && data.message) {
           if (!this.messages.find(m => m.id === data.message.id)) {
-            this.messages.push(data.message);
+            this.messages.push(Object.assign(
+              { likes: 0, mine: null, hidden: false },
+              data.message
+            ));
             this.$nextTick(() => this.scrollBottom(false));
           }
+        } else if (data.type === 'chat.reaction' && data.message_id) {
+          const msg = this.messages.find(m => m.id === data.message_id);
+          if (msg) msg.likes = data.likes || 0;
         }
       };
+    },
+    async toggleReaction(msg, value) {
+      if (!msg || msg.deleted || !this.apiReactUrl || this.busyReact) return;
+      this.busyReact = msg.id;
+      const fd = new FormData();
+      fd.append('message_id', msg.id);
+      fd.append('value', value);
+      try {
+        const r = await fetch(this.apiReactUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          body: fd,
+        });
+        const data = await r.json();
+        if (!data.ok) {
+          alert(data.error || 'Erreur');
+        } else {
+          msg.likes = data.likes || 0;
+          msg.mine = data.mine || null;
+          msg.hidden = !!data.hidden;
+        }
+      } catch (e) {
+        alert('Échec de la réaction');
+      }
+      this.busyReact = null;
     },
     formatTime(iso) {
       try {

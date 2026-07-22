@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
+from chat.models import (
+    ChatAttachment,
+    ChatMembership,
+    ChatMessage,
+    ChatMessageReaction,
+    ChatRoom,
+)
 
 
 class ChatAttachmentInline(admin.TabularInline):
@@ -53,3 +59,16 @@ class ChatMessageAdmin(admin.ModelAdmin):
 class ChatAttachmentAdmin(admin.ModelAdmin):
     list_display = ("original_name", "message", "content_type", "size", "created_at")
     search_fields = ("original_name",)
+
+
+@admin.register(ChatMessageReaction)
+class ChatMessageReactionAdmin(admin.ModelAdmin):
+    list_display = ("id", "message", "user", "value", "updated_at")
+    list_filter = ("value",)
+    search_fields = (
+        "user__username",
+        "user__first_name",
+        "user__last_name",
+        "message__body",
+    )
+    autocomplete_fields = ("user", "message")

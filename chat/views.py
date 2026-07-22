@@ -19,6 +19,7 @@ from chat.services import (
     ensure_staff_membership,
     post_message,
     serialize_message,
+    toggle_reaction,
     user_can_access_room,
 )
 from users.forms import ChatNotificationPrefsForm
@@ -195,7 +196,43 @@ def api_send(request: HttpRequest, room_id: int) -> JsonResponse:
         )
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-    return JsonResponse({"ok": True, "message": serialize_message(message)})
+    return JsonResponse(
+        {"ok": True, "message": serialize_message(message, viewer=request.user)}
+    )
+
+
+@login_required
+@require_POST
+def api_react(request: HttpRequest, room_id: int) -> JsonResponse:
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    try:
+        message_id = int(request.POST.get("message_id") or 0)
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Message invalide."}, status=400)
+    value = (request.POST.get("value") or "").strip()
+
+    message = get_object_or_404(ChatMessage, pk=message_id, room=room)
+    try:
+        payload = toggle_reaction(message=message, user=request.user, value=value)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message_id": message.pk,
+            "likes": payload["likes"],
+            "mine": payload["mine"],
+            "hidden": payload["hidden"],
+        }
+    )
 
 
 @login_required

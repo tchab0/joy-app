@@ -13,7 +13,13 @@ from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
 
-from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
+from chat.models import (
+    ChatAttachment,
+    ChatMembership,
+    ChatMessage,
+    ChatMessageReaction,
+    ChatRoom,
+)
 
 ORCHESTRA_ROOM_TITLE = "Orchestre"
 CHAT_HISTORY_LIMIT = 100
@@ -238,14 +244,29 @@ def serialize_attachment(att: ChatAttachment) -> dict:
     }
 
 
-def serialize_message(message: ChatMessage) -> dict:
+def _reaction_payload(message: ChatMessage, viewer=None) -> dict:
+    """Compteurs / état perso (down = masquage local uniquement)."""
+    reactions = list(message.reactions.all())
+    likes = sum(1 for r in reactions if r.value == ChatMessageReaction.Value.UP)
+    mine = None
+    hidden = False
+    if viewer is not None and getattr(viewer, "is_authenticated", False):
+        for r in reactions:
+            if r.user_id == viewer.pk:
+                mine = r.value
+                hidden = r.value == ChatMessageReaction.Value.DOWN
+                break
+    return {"likes": likes, "mine": mine, "hidden": hidden}
+
+
+def serialize_message(message: ChatMessage, viewer=None) -> dict:
     author = message.author
     poll_url = ""
     if message.related_proposal_id and message.kind == ChatMessage.Kind.POLL_LAUNCH:
         poll_url = reverse(
             "planning:poll_detail", kwargs={"pk": message.related_proposal_id}
         )
-    return {
+    data = {
         "id": message.pk,
         "kind": message.kind,
         "highlight": message.kind == ChatMessage.Kind.POLL_LAUNCH,
@@ -263,6 +284,64 @@ def serialize_message(message: ChatMessage) -> dict:
         ),
         "attachments": [serialize_attachment(a) for a in message.attachments.all()],
     }
+    data.update(_reaction_payload(message, viewer))
+    return data
+
+
+@transaction.atomic
+def toggle_reaction(
+    *,
+    message: ChatMessage,
+    user,
+    value: str,
+) -> dict:
+    """
+    Bascule une réaction (up/down). Même valeur = retrait.
+    Retourne {likes, mine, hidden} pour le viewer.
+    """
+    if value not in {
+        ChatMessageReaction.Value.UP,
+        ChatMessageReaction.Value.DOWN,
+    }:
+        raise ValueError("Réaction invalide.")
+    if message.is_deleted:
+        raise ValueError("Message supprimé.")
+
+    existing = (
+        ChatMessageReaction.objects.select_for_update()
+        .filter(message=message, user=user)
+        .first()
+    )
+    if existing and existing.value == value:
+        existing.delete()
+    elif existing:
+        existing.value = value
+        existing.save(update_fields=["value", "updated_at"])
+    else:
+        ChatMessageReaction.objects.create(message=message, user=user, value=value)
+
+    message = (
+        ChatMessage.objects.select_related("author", "related_proposal")
+        .prefetch_related("attachments", "reactions")
+        .get(pk=message.pk)
+    )
+    payload = _reaction_payload(message, user)
+    broadcast_reaction(message.room, message.pk, payload["likes"])
+    return payload
+
+
+def broadcast_reaction(room: ChatRoom, message_id: int, likes: int) -> None:
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    async_to_sync(layer.group_send)(
+        room.channel_group,
+        {
+            "type": "chat.reaction",
+            "message_id": message_id,
+            "likes": likes,
+        },
+    )
 
 
 def _validate_chat_file(f) -> tuple[str, str]:
@@ -334,7 +413,7 @@ def post_message(
         )
     message = (
         ChatMessage.objects.select_related("author", "related_proposal")
-        .prefetch_related("attachments")
+        .prefetch_related("attachments", "reactions")
         .get(pk=message.pk)
     )
     broadcast_message(message)
@@ -389,7 +468,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
             list(
                 ChatMessage.objects.filter(room=room)
                 .select_related("author", "related_proposal")
-                .prefetch_related("attachments")
+                .prefetch_related("attachments", "reactions")
                 .order_by("-created_at")[:CHAT_HISTORY_LIMIT]
             )
         )
@@ -446,7 +525,8 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
     ws_scheme = "wss" if request.is_secure() else "ws"
     ws_url = f"{ws_scheme}://{request.get_host()}/ws/chat/{room.pk}/"
     api_send_url = reverse("chat:api_send", kwargs={"room_id": room.pk})
-    messages_data = [serialize_message(m) for m in history]
+    api_react_url = reverse("chat:api_react", kwargs={"room_id": room.pk})
+    messages_data = [serialize_message(m, viewer=user) for m in history]
 
     return {
         "room": room,
@@ -458,6 +538,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         "show_leave_hint": show_leave_hint,
         "ws_url": ws_url,
         "api_send_url": api_send_url,
+        "api_react_url": api_react_url,
         "current_user_id": user.pk,
         "is_planning_staff": is_staff,
         "draft_proposal": draft_proposal,

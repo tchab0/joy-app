@@ -77,6 +77,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps({"type": "chat.message", "message": event["message"]})
         )
 
+    async def chat_reaction(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "chat.reaction",
+                    "message_id": event["message_id"],
+                    "likes": event["likes"],
+                }
+            )
+        )
+
     @database_sync_to_async
     def _get_room(self):
         try:

@@ -1,6 +1,6 @@
 {% comment %}
 Embedded chat salon. Expects: room, membership, messages_data, messages_script_id, ws_url, api_send_url,
-current_user_id, is_planning_staff, draft_proposal, invite_musicians, open_proposal,
+api_react_url, current_user_id, is_planning_staff, draft_proposal, invite_musicians, open_proposal,
 embedded (True), show_chat_chrome (False on poll).
 {% endcomment %}
 {% if room %}
@@ -11,6 +11,7 @@ embedded (True), show_chat_chrome (False on poll).
        currentUserId: {{ current_user_id }},
        wsUrl: '{{ ws_url|escapejs }}',
        apiSendUrl: '{{ api_send_url|escapejs }}',
+       apiReactUrl: '{{ api_react_url|escapejs }}',
        csrfToken: '{{ csrf_token }}',
        embedded: {{ embedded|yesno:'true,false' }}
      })"

@@ -243,3 +243,55 @@ class ChatAttachment(models.Model):
     @property
     def is_pdf(self) -> bool:
         return self.content_type == "application/pdf"
+
+
+class ChatMessageReaction(models.Model):
+    """
+    Réaction d'un participant sur un message.
+    - up : pouce levé (compteur visible pour tous)
+    - down : pouce baissé (masque le message uniquement pour l'auteur de la réaction)
+    """
+
+    class Value(models.TextChoices):
+        UP = "up", "Pouce levé"
+        DOWN = "down", "Pouce baissé"
+
+    message = models.ForeignKey(
+        ChatMessage,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+        verbose_name="Message",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_reactions",
+        verbose_name="Utilisateur",
+    )
+    value = models.CharField(
+        "Réaction",
+        max_length=8,
+        choices=Value.choices,
+        db_index=True,
+    )
+    created_at = models.DateTimeField("Créé le", auto_now_add=True)
+    updated_at = models.DateTimeField("Modifié le", auto_now=True)
+
+    class Meta:
+        verbose_name = "réaction chat"
+        verbose_name_plural = "réactions chat"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="unique_chat_message_reaction",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["message", "value"],
+                name="chat_react_msg_value_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} {self.value} on #{self.message_id}"

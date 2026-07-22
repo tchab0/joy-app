@@ -11,4 +11,5 @@ urlpatterns = [
     path("<int:room_id>/", views.room_detail, name="room"),
     path("<int:room_id>/rejoindre/", views.room_rejoin, name="rejoin"),
     path("<int:room_id>/api/send/", views.api_send, name="api_send"),
+    path("<int:room_id>/api/react/", views.api_react, name="api_react"),
 ]
