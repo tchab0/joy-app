@@ -162,18 +162,22 @@ class PartDownloadView(MusicianRequiredMixin, View):
             raise Http404
         from stats.tracking import record_usage
 
+        inline = request.GET.get("inline") in ("1", "true", "yes")
         record_usage(
-            name="repertoire.pdf",
+            name="repertoire.pdf_preview" if inline else "repertoire.pdf",
             user=request.user,
             path=request.path,
         )
         response = FileResponse(
             part.file.open("rb"),
-            as_attachment=True,
+            as_attachment=not inline,
             filename=Path(part.file.name).name,
             content_type="application/pdf",
         )
         response["X-Content-Type-Options"] = "nosniff"
+        if inline:
+            # Autorise l’embed dans une modale same-origin (prod = DENY par défaut).
+            response["X-Frame-Options"] = "SAMEORIGIN"
         return response
 
 

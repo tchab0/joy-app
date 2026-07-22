@@ -70,7 +70,10 @@
       {% for part in parts %}
       <li>
         <span>{{ part.get_poste_display }}</span>
-        <a href="{% url 'repertoire:part_pdf' part.pk %}">Ouvrir le PDF</a>
+        <span class="rep-part-list__actions">
+          {% include "repertoire/_pdf_preview_icon.html" with part=part title="Aperçu PDF" %}
+          <a href="{% url 'repertoire:part_pdf' part.pk %}">PDF</a>
+        </span>
       </li>
       {% endfor %}
     </ul>

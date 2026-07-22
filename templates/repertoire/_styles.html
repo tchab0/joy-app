@@ -39,6 +39,16 @@
     padding: .5rem 0; min-height: 44px; display: inline-flex; align-items: center;
   }
   .rep-part-list a:hover { color: var(--accent-h); }
+  .rep-part-list__actions {
+    display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; flex-shrink: 0;
+  }
+  .pl-btn--icon {
+    width: 44px; min-width: 44px; height: 44px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--accent); text-decoration: none;
+  }
+  .pl-btn--icon:hover { color: var(--accent-h); border-color: var(--accent); }
+  .rep-pdf-preview__icon { display: block; flex-shrink: 0; }
   .rep-form-stack { display: flex; flex-direction: column; gap: .75rem; max-width: 36rem; }
   .rep-form-stack label {
     display: block; font-size: .8rem; font-weight: 600; color: var(--muted);

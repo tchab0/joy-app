@@ -243,6 +243,18 @@ class MusicianViewsTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, "Route 66")
 
+    def test_pdf_download_vs_inline_preview(self):
+        self.client.login(username="player", password="x")
+        part = self.piece.parts.get()
+        url = reverse("repertoire:part_pdf", args=[part.pk])
+        dl = self.client.get(url)
+        self.assertEqual(dl.status_code, 200)
+        self.assertIn("attachment", dl.get("Content-Disposition", ""))
+        preview = self.client.get(url, {"inline": "1"})
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn("inline", preview.get("Content-Disposition", ""))
+        self.assertEqual(preview.get("X-Frame-Options"), "SAMEORIGIN")
+
 class ChorusOrderHelpersTests(TestCase):
     def test_parse_multiline_and_inline(self):
         self.assertEqual(

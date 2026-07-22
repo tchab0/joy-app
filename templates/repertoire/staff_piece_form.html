@@ -144,7 +144,8 @@
           <strong>{{ part.get_poste_display }}</strong>
           {% if part.source_name %}<span class="rep-muted"> · {{ part.source_name }}</span>{% endif %}
         </span>
-        <span style="display:flex;gap:.4rem;align-items:center">
+        <span class="rep-part-list__actions">
+          {% include "repertoire/_pdf_preview_icon.html" with part=part title="Aperçu PDF" %}
           <a href="{% url 'repertoire:part_pdf' part.pk %}">PDF</a>
           <form method="post" action="{% url 'repertoire:staff_part_delete' part.pk %}" onsubmit="return confirm('Supprimer cette partition ?');">
             {% csrf_token %}
