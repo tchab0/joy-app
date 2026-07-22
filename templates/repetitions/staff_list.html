@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Répétitions — Staff{% endblock %}
 
@@ -10,7 +11,9 @@
 <div class="pl">
   <header class="pl-head">
     <h1>Répétitions</h1>
-    <p class="pl-sub">Planifier les répé, feuille de route et présences.</p>
+    {% page_lead "repetitions.staff_list" class="page-lead--in-head" %}
+      Planifier les répé, feuille de route et présences.
+    {% endpage_lead %}
   </header>
 
   {% include "planning/_module_nav.html" with active="repes" %}

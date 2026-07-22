@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Chat — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -115,7 +116,9 @@
 {% block content %}
 <div class="chat-wrap" data-tour="chat-list">
   <h1>Chat</h1>
-  <p class="chat-lead">Salons de l’orchestre, des morceaux et des événements — messages et documents.</p>
+  {% page_lead "chat.rooms" %}
+    Salons de l’orchestre, des morceaux et des événements — messages et documents.
+  {% endpage_lead %}
   <div class="chat-toolbar">
     <a href="{% url 'chat:prefs' %}">Notifications</a>
   </div>

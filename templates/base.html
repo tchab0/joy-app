@@ -133,6 +133,46 @@
     .section { padding: 4rem 0; }
     .section-title { font-family: var(--font-d); font-style: italic; font-size: clamp(1.8rem, 3vw, 2.5rem); color: var(--text); margin-bottom: 2rem; }
 
+    /* Aides de page (carte effaçable) — fond blanc pour contraster le cream */
+    .page-lead {
+      position: relative;
+      display: block;
+      max-width: 36rem;
+      margin: .5rem 0 1.25rem;
+      padding: .9rem 1.1rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--r);
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .page-lead--dismissible { padding-right: 3rem; }
+    .page-lead--center { margin-left: auto; margin-right: auto; text-align: left; }
+    .page-lead--in-head { margin-bottom: 0; margin-top: .45rem; }
+    .page-lead__text {
+      color: var(--muted);
+      font-size: .95rem;
+      line-height: 1.45;
+      margin: 0;
+    }
+    .page-lead__dismiss {
+      position: absolute;
+      top: .15rem; right: .15rem;
+      width: 44px; height: 44px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: none; background: transparent;
+      color: var(--muted); font-size: 1.5rem; line-height: 1;
+      cursor: pointer; border-radius: var(--r);
+      transition: color var(--trans), background var(--trans);
+    }
+    .page-lead__dismiss:hover,
+    .page-lead__dismiss:focus-visible {
+      color: var(--text);
+      background: rgba(0,0,0,.06);
+      outline: none;
+    }
+
     .btn { display: inline-block; padding: .65rem 1.5rem; border-radius: var(--r); font-family: var(--font-b); font-size: .875rem; font-weight: 600; text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: background var(--trans), color var(--trans); cursor: pointer; border: none; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-h); }

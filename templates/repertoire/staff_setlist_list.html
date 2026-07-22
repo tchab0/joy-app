@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Setlists — JOY{% endblock %}
 
@@ -13,7 +14,9 @@
     <div class="pl-head__row">
       <div>
         <h1>Setlists</h1>
-        <p class="pl-sub">Programmes liés aux événements — visibles par les musiciens sur la fiche de l’événement.</p>
+        {% page_lead "repertoire.staff_setlists" class="page-lead--in-head" %}
+          Programmes liés aux événements — visibles par les musiciens sur la fiche de l’événement.
+        {% endpage_lead %}
       </div>
       <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}">+ Nouvelle</a>
     </div>

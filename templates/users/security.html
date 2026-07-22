@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Sécurité — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -14,9 +15,9 @@
 <section class="section">
   <div class="container">
     <h1 class="section-title">Sécurité</h1>
-    <p style="color:var(--muted);max-width:560px;margin-bottom:1.5rem">
+    {% page_lead "users.security" %}
       Double authentification via application, notification ou e-mail.
-    </p>
+    {% endpage_lead %}
     {% if messages %}<ul class="messages" style="margin-bottom:1rem">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
 
     <div class="sec-card">

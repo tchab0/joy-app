@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Contact — JOY{% endblock %}
 {% block og_title %}Contact — Jazz Orchestra Yonnais{% endblock %}
 {% block twitter_title %}Contact — Jazz Orchestra Yonnais{% endblock %}
@@ -140,7 +141,7 @@
 <section class="section">
   <div class="container contact-page">
     <h1 class="section-title">Contact</h1>
-    <p class="contact-lead">
+    {% page_lead "core.contact" %}
       {% if mode == "prestation" %}
         Demande de prestation pour le Jazz Orchestra Yonnais (big band).
         Envoi sans engagement — nous vous répondons après étude de votre projet.
@@ -148,7 +149,7 @@
         Une question, une demande presse ou autre sujet&nbsp;? Écrivez-nous.
         Pour une prestation musicale, utilisez l’onglet dédié.
       {% endif %}
-    </p>
+    {% endpage_lead %}
 
     <div class="contact-modes" role="tablist" aria-label="Type de demande">
       <a href="{% url 'contact' %}?mode=contact"

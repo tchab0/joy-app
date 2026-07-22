@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}{% if setlist %}{{ setlist.title }}{% else %}Nouvelle setlist{% endif %} — JOY{% endblock %}
 
@@ -16,7 +17,9 @@
 
   <header class="pl-head">
     <h1>{% if setlist %}{{ setlist.title }}{% else %}Nouvelle setlist{% endif %}</h1>
-    <p class="pl-sub">Glissez les morceaux vers la setlist, puis réordonnez-les.</p>
+    {% page_lead "repertoire.staff_setlist_form" class="page-lead--in-head" %}
+      Glissez les morceaux vers la setlist, puis réordonnez-les.
+    {% endpage_lead %}
   </header>
 
   <form method="post" class="rep-setlist-form" x-data="setlistBuilder()">

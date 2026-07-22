@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %} — Atelier{% endblock %}
 
@@ -21,7 +22,9 @@
 
   <header class="pl-head">
     <h1>{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %}</h1>
-    <p class="pl-sub">Glissez musiciens / postes vers l’ordre des solos.</p>
+    {% page_lead "repertoire.staff_piece_form" class="page-lead--in-head" %}
+      Glissez musiciens / postes vers l’ordre des solos.
+    {% endpage_lead %}
   </header>
 
   <form method="post" enctype="multipart/form-data" class="rep-setlist-form" x-data="soloBuilder()">

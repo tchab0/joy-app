@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Planning — JOY{% endblock %}
 
@@ -10,7 +11,9 @@
 <div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   <header class="pl-head">
     <h1>Planning</h1>
-    <p class="pl-sub">Prochaines dates, réponses et matériel — l’essentiel, rien de plus.</p>
+    {% page_lead "planning.dashboard" class="page-lead--in-head" %}
+      Prochaines dates, réponses et matériel — l’essentiel, rien de plus.
+    {% endpage_lead %}
   </header>
 
   {% include "planning/_module_nav.html" with active="mes_dates" %}

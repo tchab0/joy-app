@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Découpe — {{ piece.title }} — Atelier{% endblock %}
 
@@ -20,7 +21,9 @@
 
   <header class="pl-head">
     <h1>Découpe PDF</h1>
-    <p class="pl-sub">{{ piece.title }} — assignez une plage contiguë de pages par poste, puis enregistrez.</p>
+    {% page_lead "repertoire.staff_piece_split" class="page-lead--in-head" %}
+      {{ piece.title }} — assignez une plage contiguë de pages par poste, puis enregistrez.
+    {% endpage_lead %}
   </header>
 
   {# Source : serveur d’abord, upload local en secours #}

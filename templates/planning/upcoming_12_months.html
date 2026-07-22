@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Planning {{ range_label }} — JOY{% endblock %}
 
@@ -18,11 +19,11 @@
 
   <header class="pl-head">
     <h1>Planning</h1>
-    <p class="pl-sub">
+    {% page_lead "planning.calendar" class="page-lead--in-head" %}
       {{ range_label }} — concerts et répétitions sur 12 mois.
       Survolez une date pour l’aperçu ; touchez-la pour le détail.
       {% if can_propose_event or is_planning_staff %}Clic sur un jour : ajouter un événement{% if is_planning_staff %} ou une répétition{% endif %}.{% endif %}
-    </p>
+    {% endpage_lead %}
   </header>
 
   {% include "planning/_module_nav.html" with active="calendrier" %}

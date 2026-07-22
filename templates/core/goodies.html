@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Goodies — JOY{% endblock %}
 {% block og_title %}Goodies — Jazz Orchestra Yonnais{% endblock %}
 {% block twitter_title %}Goodies — Jazz Orchestra Yonnais{% endblock %}
@@ -9,7 +10,9 @@
 <section class="section">
   <div class="container" style="max-width:640px;text-align:center">
     <h1 class="section-title">Goodies officiels</h1>
-    <p style="color:var(--muted);margin-bottom:2rem">Soutenez le JOY avec la boutique officielle : badges, casquettes, mugs, tee-shirts, sweatshirts…</p>
+    {% page_lead "core.goodies" class="page-lead--center" %}
+      Soutenez le JOY avec la boutique officielle : badges, casquettes, mugs, tee-shirts, sweatshirts…
+    {% endpage_lead %}
     {% if lien %}
     <a href="{{ lien.url }}" class="btn btn-primary" target="_blank" rel="noopener">{{ lien.titre }} ↗</a>
     {% endif %}
