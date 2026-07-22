@@ -1,0 +1,136 @@
+<script>
+function respondButtons(pk, initialCode, opts) {
+  opts = opts || {};
+  const labels = {
+    invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
+    declined: 'Refusé', replacement_needed: 'Remplacement demandé'
+  };
+  return {
+    pk,
+    code: initialCode,
+    label: labels[initialCode] || initialCode,
+    busy: false,
+    eventConfirmed: !!opts.eventConfirmed,
+    showInvalidate: false,
+    pendingResponse: null,
+    justification: '',
+    invalidateError: '',
+    closeInvalidate() {
+      this.showInvalidate = false;
+      this.pendingResponse = null;
+      this.justification = '';
+      this.invalidateError = '';
+    },
+    async respond(response) {
+      if (this.code === 'confirmed' && response !== 'yes') {
+        this.pendingResponse = response;
+        this.justification = '';
+        this.invalidateError = '';
+        this.showInvalidate = true;
+        return;
+      }
+      await this._submit(response, '');
+    },
+    async confirmInvalidate() {
+      const text = (this.justification || '').trim();
+      const ok = await this._submit(this.pendingResponse, text);
+      if (ok) this.closeInvalidate();
+    },
+    async _submit(response, comment) {
+      this.busy = true;
+      this.invalidateError = '';
+      try {
+        const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ response, comment: comment || '' }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.code = d.status.code;
+          this.label = d.status.label;
+          window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
+          return true;
+        }
+        const err = d.error || 'Erreur';
+        this.invalidateError = err;
+        window.dispatchEvent(new CustomEvent('pl-toast', { detail: err }));
+        return false;
+      } catch (e) {
+        this.invalidateError = 'Erreur réseau';
+        window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Erreur réseau' }));
+        return false;
+      } finally {
+        this.busy = false;
+      }
+    },
+  };
+}
+
+function rehearsalAbsence(url, initialAbsent) {
+  return {
+    absent: !!initialAbsent,
+    busy: false,
+    showInvalidate: false,
+    eventConfirmed: true,
+    justification: '',
+    invalidateError: '',
+    closeInvalidate() {
+      this.showInvalidate = false;
+      this.justification = '';
+      this.invalidateError = '';
+    },
+    toggle() {
+      if (!this.absent) {
+        this.justification = '';
+        this.invalidateError = '';
+        this.showInvalidate = true;
+        return;
+      }
+      this._submit(false, '');
+    },
+    async confirmInvalidate() {
+      const text = (this.justification || '').trim();
+      const ok = await this._submit(true, text);
+      if (ok) this.closeInvalidate();
+    },
+    async _submit(absent, comment) {
+      this.busy = true;
+      this.invalidateError = '';
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ absent, comment: comment || '' }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.absent = d.absent;
+          this.$dispatch('pl-toast', d.absent ? 'Absence enregistrée' : 'Absence annulée');
+          return true;
+        }
+        const err = d.error || 'Erreur';
+        this.invalidateError = err;
+        this.$dispatch('pl-toast', err);
+        return false;
+      } catch (e) {
+        this.invalidateError = 'Erreur réseau';
+        this.$dispatch('pl-toast', 'Erreur réseau');
+        return false;
+      } finally {
+        this.busy = false;
+      }
+    },
+  };
+}
+
+function absenceToggle(url, initialAbsent) {
+  return rehearsalAbsence(url, initialAbsent);
+}
+</script>

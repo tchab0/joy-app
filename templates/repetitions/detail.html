@@ -155,6 +155,7 @@
         <span x-text="absent ? 'Je serai présent·e' : 'Je serai absent·e'"></span>
       </button>
     </div>
+    {% include "planning/_rsvp_invalidate_modal.html" with prefix="rep" %}
   </section>
   {% elif not is_planning_staff %}
   <p class="pl-empty">Vous n’êtes pas inscrit·e à cette répétition.</p>
@@ -217,6 +218,9 @@
       <div>
         <strong>{{ row.participation.user.get_full_name|default:row.participation.user.username }}</strong>
         <span class="pl-row__meta"> · {{ row.participation.poste_label }}</span>
+        {% if row.participation.comment %}
+        <p class="pl-row__meta" style="margin:.2rem 0 0;color:var(--text)">{{ row.participation.comment }}</p>
+        {% endif %}
       </div>
       {% if row.eligible %}
       <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;width:100%;max-width:28rem">
@@ -243,38 +247,5 @@
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
-<script>
-function absenceToggle(url, initialAbsent) {
-  return {
-    absent: !!initialAbsent,
-    busy: false,
-    toggle() {
-      const next = !this.absent;
-      this.busy = true;
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': '{{ csrf_token }}',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ absent: next }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          this.busy = false;
-          if (d.ok) {
-            this.absent = d.absent;
-            this.$dispatch('pl-toast', d.label || (next ? 'Absence enregistrée' : 'Présence confirmée'));
-          } else {
-            this.$dispatch('pl-toast', d.error || 'Erreur');
-          }
-        })
-        .catch(() => {
-          this.busy = false;
-          this.$dispatch('pl-toast', 'Erreur réseau');
-        });
-    },
-  };
-}
-</script>
+{% include "planning/_respond_buttons_js.html" %}
 {% endblock %}

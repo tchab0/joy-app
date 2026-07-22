@@ -16,6 +16,7 @@ from planning.services import (
     eligible_substitutes_for,
     ensure_participation_statuses,
     get_status,
+    notify_staff_presence_invalidated,
     propose_substitute,
     titulaires_queryset,
 )
@@ -251,17 +252,28 @@ def set_rehearsal_absence(
     participation: EventParticipation,
     *,
     absent: bool,
+    comment: str = "",
 ) -> EventParticipation:
     """Présent par défaut (confirmed) ; absent = declined."""
     if not is_rehearsal_event(participation.event):
         raise ValueError("Cet événement n’est pas une répétition")
     ensure_participation_statuses()
+    old_code = participation.status.code if participation.status_id else None
+    comment = (comment or "").strip()
+    leaving_confirmed = bool(absent) and old_code == "confirmed"
     participation.status = get_status("declined" if absent else "confirmed")
-    if not absent and participation.comment == "Absent à la répétition":
+    if absent:
+        if comment:
+            participation.comment = comment
+        elif not participation.comment:
+            participation.comment = "Absent à la répétition"
+    elif old_code in ("declined", "replacement_needed"):
         participation.comment = ""
-    elif absent and not participation.comment:
-        participation.comment = "Absent à la répétition"
     participation.save(update_fields=["status", "comment", "updated_at"])
+    if leaving_confirmed:
+        notify_staff_presence_invalidated(
+            participation, old_code="confirmed", new_code="declined"
+        )
     return participation
 
 

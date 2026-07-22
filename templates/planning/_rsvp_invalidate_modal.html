@@ -1,0 +1,38 @@
+{# Modal d’invalidation d’une présence confirmée — à placer dans le même x-data Alpine. #}
+<div class="pl-modal-root" x-show="showInvalidate" x-cloak
+     x-transition.opacity
+     role="dialog" aria-modal="true" aria-labelledby="pl-invalidate-title-{{ prefix|default:'rsvp' }}">
+  <div class="pl-modal-backdrop" @click="closeInvalidate()"></div>
+  <div class="pl-modal" @click.stop>
+    <header class="pl-modal__head">
+      <h2 id="pl-invalidate-title-{{ prefix|default:'rsvp' }}">Modifier votre présence</h2>
+      <button type="button" class="pl-btn" @click="closeInvalidate()" aria-label="Fermer" style="min-height:44px;min-width:44px">✕</button>
+    </header>
+    <p class="pl-row__meta" style="margin:0 0 .85rem;line-height:1.45;color:var(--text)">
+      Vous aviez confirmé votre présence.
+      <span x-show="eventConfirmed"> L’événement est déjà confirmé — l’équipe sera prévenue tout de suite.</span>
+      Si vous ne pouvez plus venir, ce n’est pas grave : une courte explication l’aide simplement à s’organiser.
+    </p>
+    <div class="pl-form" style="border-top:none;margin:0;padding:0">
+      <div>
+        <label for="pl-invalidate-reason-{{ prefix|default:'rsvp' }}">Votre explication <span style="font-weight:500;color:var(--muted)">(facultatif)</span></label>
+        <textarea id="pl-invalidate-reason-{{ prefix|default:'rsvp' }}"
+                  x-model="justification"
+                  rows="3"
+                  maxlength="500"
+                  placeholder="Ex. empêchement familial, santé, déplacement pro…"
+                  style="resize:vertical;min-height:5.5rem;color:var(--text)"></textarea>
+      </div>
+      <p class="pl-row__meta" x-show="invalidateError" x-text="invalidateError"
+         style="color:var(--accent);margin:0"></p>
+      <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem;margin-top:.25rem">
+        <button type="button" class="pl-btn" :disabled="busy" @click="closeInvalidate()" style="min-height:44px;flex:1 1 8rem">
+          Garder ma confirmation
+        </button>
+        <button type="button" class="pl-btn pl-btn--no" :disabled="busy" @click="confirmInvalidate()" style="min-height:44px;flex:1 1 8rem">
+          <span x-text="busy ? 'Envoi…' : 'Confirmer le changement'">Confirmer le changement</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -191,8 +191,12 @@ class ToggleAbsenceView(MusicianRequiredMixin, View):
             absent = raw.lower() in ("1", "true", "yes", "on")
         else:
             absent = bool(raw)
+        comment = (body.get("comment") or "").strip()
+
         try:
-            part = set_rehearsal_absence(participation, absent=absent)
+            part = set_rehearsal_absence(
+                participation, absent=absent, comment=comment
+            )
         except ValueError as exc:
             return _json_error(str(exc))
 

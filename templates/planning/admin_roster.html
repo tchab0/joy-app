@@ -101,6 +101,9 @@
           {% if p.poste %}
           <p class="pl-row__meta">{{ p.poste_label }}</p>
           {% endif %}
+          {% if p.comment %}
+          <p class="pl-row__meta" style="color:var(--text);margin-top:.2rem">{{ p.comment }}</p>
+          {% endif %}
         </div>
         <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
       </div>

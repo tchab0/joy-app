@@ -106,7 +106,7 @@
 
   {% if participation %}
   <section class="pl-accept__response"
-           x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}')">
+           x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}', { eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %} })">
     <div class="pl-row__actions pl-accept__actions">
       <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
       <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
@@ -131,6 +131,7 @@
       </div>
     </div>
     {% endif %}
+    {% include "planning/_rsvp_invalidate_modal.html" with prefix=participation.pk %}
   </section>
   {% else %}
   <p class="pl-empty">Vous n’êtes pas invité à cette date.</p>
@@ -139,40 +140,5 @@
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
-<script>
-function respondButtons(pk, initialCode) {
-  const labels = {
-    invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
-    declined: 'Refusé', replacement_needed: 'Remplacement demandé'
-  };
-  return {
-    pk,
-    code: initialCode,
-    label: labels[initialCode] || initialCode,
-    busy: false,
-    async respond(response) {
-      this.busy = true;
-      try {
-        const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ response }),
-        });
-        const d = await r.json();
-        if (d.ok) {
-          this.code = d.status.code;
-          this.label = d.status.label;
-          window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
-        }
-        return d;
-      } finally {
-        this.busy = false;
-      }
-    },
-  };
-}
-</script>
+{% include "planning/_respond_buttons_js.html" %}
 {% endblock %}

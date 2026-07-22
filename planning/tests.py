@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -26,13 +27,15 @@ from planning.services import (
     respond_substitute_request,
     set_participation_response,
 )
+from planning import services as planning_services
 
 User = get_user_model()
 
 
 class PlanningBaseTestCase(TestCase):
     def setUp(self):
-        self.statuses = ensure_participation_statuses()
+        planning_services._STATUS_CACHE = None
+        self.statuses = ensure_participation_statuses(force=True)
         self.section = OrchestraSection.objects.create(
             code="trompette", name="Trompettes", sort_order=10
         )
@@ -218,6 +221,62 @@ class RespondTests(PlanningBaseTestCase):
         set_participation_response(self.participation, "maybe")
         self.participation.refresh_from_db()
         self.assertEqual(self.participation.status.code, "maybe")
+
+    @patch("planning.services.notify_users")
+    def test_invalidate_confirmed_without_comment_notifies_staff(self, mock_notify):
+        mock_notify.return_value = 1
+        set_participation_response(self.participation, "yes")
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:respond", args=[self.participation.pk]),
+            data='{"response":"no"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "declined")
+        mock_notify.assert_called_once()
+        kwargs = mock_notify.call_args.kwargs
+        self.assertIn("Présence annulée", kwargs["title"])
+        self.assertIn("déjà confirmé", kwargs["body"])
+        staff_ids = {u.pk for u in mock_notify.call_args.args[0]}
+        self.assertIn(self.staff.pk, staff_ids)
+
+    @patch("planning.services.notify_users")
+    def test_invalidate_confirmed_with_comment_notifies_staff(self, mock_notify):
+        mock_notify.return_value = 1
+        set_participation_response(self.participation, "yes")
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:respond", args=[self.participation.pk]),
+            data='{"response":"no","comment":"Empêchement familial"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "declined")
+        self.assertEqual(self.participation.comment, "Empêchement familial")
+        mock_notify.assert_called_once()
+        kwargs = mock_notify.call_args.kwargs
+        self.assertIn("Présence annulée", kwargs["title"])
+        self.assertIn("Empêchement familial", kwargs["body"])
+        self.assertIn("déjà confirmé", kwargs["body"])
+        staff_ids = {u.pk for u in mock_notify.call_args.args[0]}
+        self.assertIn(self.staff.pk, staff_ids)
+
+    def test_decline_from_invited_without_comment_ok(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:respond", args=[self.participation.pk]),
+            data='{"response":"no"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.participation.refresh_from_db()
+        self.assertEqual(self.participation.status.code, "declined")
 
 
 class PollTests(PlanningBaseTestCase):

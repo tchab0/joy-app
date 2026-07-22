@@ -112,11 +112,69 @@ def set_participation_response(
 ) -> EventParticipation:
     if response not in RESPOND_MAP:
         raise ValueError("Réponse invalide")
-    participation.status = get_status(RESPOND_MAP[response])
+    old_code = participation.status.code if participation.status_id else None
+    new_code = RESPOND_MAP[response]
+    comment = (comment or "").strip()
+    leaving_confirmed = old_code == "confirmed" and new_code in ("declined", "maybe")
+    participation.status = get_status(new_code)
     if comment:
         participation.comment = comment
     participation.save(update_fields=["status", "comment", "updated_at"])
+    if leaving_confirmed:
+        notify_staff_presence_invalidated(
+            participation, old_code=old_code, new_code=new_code
+        )
     return participation
+
+
+def notify_staff_presence_invalidated(
+    participation: EventParticipation,
+    *,
+    old_code: str,
+    new_code: str,
+) -> int:
+    """Alerte immédiate staff quand une présence confirmée est annulée / assouplie."""
+    event = participation.event
+    musician = participation.user
+    name = musician.get_full_name() or musician.username
+    local = timezone.localtime(event.date_debut)
+    date_label = local.strftime("%d/%m/%Y %H:%M")
+    status_label = {
+        "declined": "ne pourra pas venir",
+        "maybe": "passe en « peut-être »",
+        "replacement_needed": "demande un remplacement",
+    }.get(new_code, f"passe de {old_code} à {new_code}")
+    poste = participation.poste_label
+    poste_bit = f" ({poste})" if poste and poste != "—" else ""
+    motif = (participation.comment or "").strip()
+    body_bits = [
+        f"{name}{poste_bit} {status_label} pour « {event.titre} » ({date_label}).",
+    ]
+    if motif:
+        body_bits.append(f"Motif : {motif[:200]}")
+    if getattr(event, "statut", None) == Event.Statut.CONFIRME:
+        body_bits.append("Événement déjà confirmé.")
+    try:
+        if getattr(event, "is_rehearsal", False):
+            url = reverse("repetitions:detail", kwargs={"pk": event.pk})
+        else:
+            url = reverse("planning:event_roster", kwargs={"pk": event.pk})
+    except Exception:
+        url = "/planning/moi/"
+    staff = User.objects.filter(is_active=True, is_staff=True)
+    try:
+        return notify_users(
+            staff,
+            title="JOY — Présence annulée",
+            body=" ".join(body_bits),
+            url=url,
+        )
+    except Exception:
+        logger.exception(
+            "Échec notif staff présence invalidée participation_id=%s",
+            participation.pk,
+        )
+        return 0
 
 
 def titulaires_queryset():

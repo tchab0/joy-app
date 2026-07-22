@@ -68,31 +68,25 @@
     body > nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
     .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
     .nav-logo {
-      display: flex; flex-direction: column; justify-content: center; gap: .1rem;
-      font-family: var(--font-d); font-style: normal; font-weight: 900; font-size: 1.05rem;
-      color: #fff; text-decoration: none; letter-spacing: .06em; text-transform: uppercase;
-      line-height: 1.15;
+      display: flex; align-items: center; gap: .65rem;
+      color: #fff; text-decoration: none; min-width: 0;
     }
-    .nav-logo .nav-logo-joy,
-    .nav-logo:link .nav-logo-joy,
-    .nav-logo:visited .nav-logo-joy,
-    .nav-logo:hover .nav-logo-joy {
-      color: var(--accent);
-    }
-    .nav-logo-full {
+    .nav-logo-img {
       display: block;
-      letter-spacing: .08em; color: #fff; font-weight: 700;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
-    .nav-logo-full-svg { display: none; }
-    .nav-logo-full-text { font-size: .85rem; }
+    .nav-logo-text {
+      display: none;
+      font-family: var(--font-d); font-style: normal; font-weight: 900;
+      font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase;
+      color: #fff; line-height: 1.15;
+    }
+    .nav-logo-text .nav-logo-joy { color: var(--accent); }
     @media (min-width: 769px) {
-      .nav-logo {
-        flex-direction: row; align-items: baseline; gap: .4rem;
-        font-size: 1.2rem; line-height: 1.2;
-      }
-      .nav-logo-full-text {
-        font-size: inherit; font-weight: 900; letter-spacing: .06em; color: #fff;
-      }
+      .nav-logo-img { width: 48px; height: 48px; }
+      .nav-logo-text { display: block; font-size: 1.15rem; }
     }
     .nav-links { display: flex; gap: 0; list-style: none; }
     .nav-links a { display: block; padding: .75rem 1rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); }
@@ -138,6 +132,7 @@
     .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
     .section { padding: 4rem 0; }
     .section-title { font-family: var(--font-d); font-style: italic; font-size: clamp(1.8rem, 3vw, 2.5rem); color: var(--text); margin-bottom: 2rem; }
+
     .btn { display: inline-block; padding: .65rem 1.5rem; border-radius: var(--r); font-family: var(--font-b); font-size: .875rem; font-weight: 600; text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: background var(--trans), color var(--trans); cursor: pointer; border: none; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-h); }
@@ -218,28 +213,8 @@
 
     /* RESPONSIVE NAV */
     @media (max-width: 768px) {
-      .nav-inner { height: 64px; gap: .5rem; }
-      .nav-logo {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-      .nav-logo-full {
-        width: 100%;
-        line-height: 1;
-      }
-      .nav-logo-full-text { display: none; }
-      .nav-logo-full-svg {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-      .nav-logo-full-svg text {
-        fill: #fff;
-        font-family: var(--font-d), Georgia, serif;
-        font-weight: 700;
-        font-size: 16px;
-      }
-      .nav-links { display: none; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
+      .nav-inner { height: 56px; gap: .5rem; }
+      .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
       .nav-links.open { display: flex; }
       .nav-links a { padding: .75rem 1.5rem; }
       .nav-burger { display: block; flex-shrink: 0; }
@@ -250,14 +225,9 @@
 <body>
 <nav x-data="{ open: false }">
   <div class="nav-inner">
-    <a class="nav-logo" href="{% url 'home' %}">
-      <span class="nav-logo-joy">J.O.Y</span>
-      <span class="nav-logo-full">
-        <span class="nav-logo-full-text">Jazz Orchestra Yonnais</span>
-        <svg class="nav-logo-full-svg" viewBox="0 0 280 20" preserveAspectRatio="xMinYMid meet" aria-hidden="true" focusable="false">
-          <text x="0" y="15" textLength="280" lengthAdjust="spacingAndGlyphs">JAZZ ORCHESTRA YONNAIS</text>
-        </svg>
-      </span>
+    <a class="nav-logo" href="{% url 'home' %}" aria-label="J.O.Y — Jazz Orchestra Yonnais">
+      <img class="nav-logo-img" src="{% static 'users/icons/logo-joy.webp' %}" alt="" width="48" height="48" decoding="async">
+      <span class="nav-logo-text"><span class="nav-logo-joy">J.O.Y</span> Jazz Orchestra Yonnais</span>
     </a>
     <button class="nav-burger" aria-label="Menu" @click="open = !open" :aria-expanded="open.toString()">
       <span :style="open ? 'transform:rotate(45deg) translate(5px,5px)' : ''"></span>

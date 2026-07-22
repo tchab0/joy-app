@@ -59,9 +59,14 @@ class RehearsalServicesTests(TestCase):
         set_rehearsal_absence(part, absent=True)
         part.refresh_from_db()
         self.assertEqual(part.status.code, "declined")
+        self.assertEqual(part.comment, "Absent à la répétition")
         set_rehearsal_absence(part, absent=False)
         part.refresh_from_db()
         self.assertEqual(part.status.code, "confirmed")
+        self.assertEqual(part.comment, "")
+        set_rehearsal_absence(part, absent=True, comment="Contrôle médical")
+        part.refresh_from_db()
+        self.assertEqual(part.comment, "Contrôle médical")
 
     def test_confirm_titulaires_idempotent(self):
         et = EventType.objects.create(nom="Répétition")

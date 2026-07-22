@@ -20,7 +20,7 @@
     <h2>À répondre</h2>
     {% for p in pending %}
     <div class="pl-row"
-         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}')"
+         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %} })"
          x-show="true"
          x-transition.opacity.duration.200ms>
       <div class="pl-row__main">
@@ -37,6 +37,7 @@
         <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
         <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')">Non</button>
       </div>
+      {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
     </div>
     {% endfor %}
   </section>
@@ -91,7 +92,12 @@
     <h2>Prochaines dates</h2>
     {% if upcoming %}
       {% for p in upcoming %}
-      <div class="pl-row">
+      <div class="pl-row"
+           {% if p.event.is_rehearsal %}
+           x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
+           {% else %}
+           x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %} })"
+           {% endif %}>
         <div class="pl-row__main">
           <a class="pl-row__title" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
           <p class="pl-row__meta">
@@ -108,10 +114,7 @@
             {% endif %}
           </p>
         </div>
-        <div class="pl-row__actions"
-             {% if p.event.is_rehearsal %}
-             x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
-             {% endif %}>
+        <div class="pl-row__actions">
           {% if p.event.is_rehearsal %}
           <span class="pl-badge {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}pl-badge--danger{% else %}pl-badge--success{% endif %}"
                 :class="{ 'pl-badge--danger': absent, 'pl-badge--success': !absent }"
@@ -129,9 +132,13 @@
             </span>
           </button>
           {% else %}
-          <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}">{{ p.status.label }}</span>
+          <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
+          <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')" style="min-height:44px">Oui</button>
+          <button type="button" class="pl-btn pl-btn--maybe" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')" style="min-height:44px">Peut-être</button>
+          <button type="button" class="pl-btn pl-btn--no" :class="(code === 'declined' || code === 'replacement_needed') && 'is-active'" :disabled="busy" @click="respond('no')" style="min-height:44px">Non</button>
           {% endif %}
         </div>
+        {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
       </div>
       {% endfor %}
     {% else %}
@@ -166,73 +173,5 @@
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
-<script>
-function respondButtons(pk, initialCode) {
-  const labels = {
-    invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
-    declined: 'Refusé', replacement_needed: 'Remplacement demandé'
-  };
-  return {
-    pk,
-    code: initialCode,
-    label: labels[initialCode] || initialCode,
-    busy: false,
-    async respond(response) {
-      this.busy = true;
-      try {
-        const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ response }),
-        });
-        const d = await r.json();
-        if (d.ok) {
-          this.code = d.status.code;
-          this.label = d.status.label;
-          window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
-        } else {
-          window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.error || 'Erreur' }));
-        }
-      } finally {
-        this.busy = false;
-      }
-    },
-  };
-}
-
-function rehearsalAbsence(url, initialAbsent) {
-  return {
-    absent: !!initialAbsent,
-    busy: false,
-    async toggle() {
-      const next = !this.absent;
-      this.busy = true;
-      try {
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ absent: next }),
-        });
-        const d = await r.json();
-        if (d.ok) {
-          this.absent = d.absent;
-          this.$dispatch('pl-toast', d.absent ? 'Absence enregistrée' : 'Absence annulée');
-        } else {
-          this.$dispatch('pl-toast', d.error || 'Erreur');
-        }
-      } catch (e) {
-        this.$dispatch('pl-toast', 'Erreur réseau');
-      } finally {
-        this.busy = false;
-      }
-    },
-  };
-}
-</script>
+{% include "planning/_respond_buttons_js.html" %}
 {% endblock %}
