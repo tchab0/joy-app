@@ -13,6 +13,7 @@
   font-size: 1.15rem;
   font-weight: 700;
   color: var(--text) !important;
+  padding-right: 2.25rem; /* place pour la croix */
 }
 .driver-popover.joy-tour-popover .driver-popover-description {
   color: var(--muted) !important;
@@ -34,8 +35,7 @@
   margin-top: .35rem;
 }
 .driver-popover.joy-tour-popover .driver-popover-prev-btn,
-.driver-popover.joy-tour-popover .driver-popover-next-btn,
-.driver-popover.joy-tour-popover .driver-popover-close-btn {
+.driver-popover.joy-tour-popover .driver-popover-next-btn {
   min-height: 44px;
   min-width: 44px;
   padding: .55rem 1rem;
@@ -55,12 +55,44 @@
   background: var(--accent-h) !important;
   border-color: var(--accent-h) !important;
 }
-.driver-popover.joy-tour-popover .driver-popover-prev-btn,
-.driver-popover.joy-tour-popover .driver-popover-close-btn {
+.driver-popover.joy-tour-popover .driver-popover-prev-btn {
   background: var(--surface) !important;
   color: var(--text) !important;
   border: 1px solid var(--border) !important;
   text-shadow: none !important;
+}
+
+/* Croix : compacte (ne pas hériter des 44px des CTA) */
+.driver-popover.joy-tour-popover .driver-popover-close-btn {
+  all: unset;
+  box-sizing: border-box;
+  position: absolute !important;
+  top: .35rem !important;
+  right: .35rem !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  border-radius: var(--r);
+  background: transparent !important;
+  color: var(--muted) !important;
+  font-size: 1.15rem !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  cursor: pointer;
+  text-shadow: none !important;
+  z-index: 2;
+}
+.driver-popover.joy-tour-popover .driver-popover-close-btn:hover,
+.driver-popover.joy-tour-popover .driver-popover-close-btn:focus {
+  color: var(--text) !important;
+  background: rgba(0, 0, 0, .06) !important;
 }
 
 /* Étapes sans cible : masquer la flèche, pas l’élément factice
@@ -90,5 +122,17 @@
 @media (max-width: 768px) {
   .driver-popover.joy-tour-popover {
     max-width: calc(100vw - 1rem);
+    padding: .85rem .85rem .75rem !important;
+  }
+  .driver-popover.joy-tour-popover .driver-popover-title {
+    font-size: 1.05rem;
+    padding-right: 2rem;
+  }
+  .driver-popover.joy-tour-popover .driver-popover-close-btn {
+    top: .25rem !important;
+    right: .25rem !important;
+    width: 1.75rem !important;
+    height: 1.75rem !important;
+    font-size: 1.05rem !important;
   }
 }

@@ -329,9 +329,9 @@
 {% if product_tour_config %}
   {{ product_tour_config|json_script:"joy-tour-config" }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
-  <link rel="stylesheet" href="{% static 'users/tour.css' %}?v=9">
+  <link rel="stylesheet" href="{% static 'users/tour.css' %}?v=10">
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
-  <script src="{% static 'users/tour.js' %}?v=9" defer></script>
+  <script src="{% static 'users/tour.js' %}?v=10" defer></script>
 {% endif %}
 {% block extra_js %}{% endblock %}
 </body>
