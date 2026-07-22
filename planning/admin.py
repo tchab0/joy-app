@@ -40,6 +40,7 @@ class MusicianProfileAdmin(admin.ModelAdmin):
         "poste_remplacant_2",
         "poste_remplacant_3",
         "poste_remplacant_4",
+        "poste_remplacant_5",
     )
     list_filter = (
         "section",
@@ -48,6 +49,7 @@ class MusicianProfileAdmin(admin.ModelAdmin):
         "poste_remplacant_2",
         "poste_remplacant_3",
         "poste_remplacant_4",
+        "poste_remplacant_5",
     )
     list_editable = (
         "poste_titulaire",
@@ -55,6 +57,7 @@ class MusicianProfileAdmin(admin.ModelAdmin):
         "poste_remplacant_2",
         "poste_remplacant_3",
         "poste_remplacant_4",
+        "poste_remplacant_5",
     )
     search_fields = ("user__username", "user__first_name", "user__last_name")
     autocomplete_fields = ("user", "section")

@@ -118,13 +118,35 @@
     return { ok: true };
   }
 
+  async function localSubscription() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return null;
+    }
+    const reg = await navigator.serviceWorker.getRegistration("/");
+    if (!reg) return null;
+    return reg.pushManager.getSubscription();
+  }
+
   async function status() {
     const r = await fetch("/compte/push/status/", {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
     });
-    if (!r.ok) return { ok: false, subscriptions: 0 };
-    return r.json();
+    const data = r.ok
+      ? await r.json()
+      : { ok: false, configured: false, subscriptions: 0 };
+    let thisDevice = false;
+    try {
+      thisDevice = !!(await localSubscription());
+    } catch (_e) {
+      thisDevice = false;
+    }
+    return {
+      ok: !!data.ok,
+      configured: !!data.configured,
+      subscriptions: data.subscriptions || 0,
+      thisDevice,
+    };
   }
 
   window.JoyPush = {

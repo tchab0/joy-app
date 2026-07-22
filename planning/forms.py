@@ -22,6 +22,7 @@ _POSTE_REMPLACANT_LABELS = (
     "Poste remplaçant 2",
     "Poste remplaçant 3",
     "Poste remplaçant 4",
+    "Poste remplaçant 5",
 )
 
 
@@ -76,7 +77,7 @@ class MusicianAdminForm(forms.Form):
         choices=[("", "— Non remplaçant —")] + list(MusicianProfile.Poste.choices),
         required=False,
         widget=forms.Select(attrs=_SELECT),
-        help_text="Jusqu’à 4 postes distincts du titulaire.",
+        help_text="Jusqu’à 5 postes distincts du titulaire.",
     )
     poste_remplacant_2 = forms.ChoiceField(
         label=_POSTE_REMPLACANT_LABELS[1],
@@ -92,6 +93,12 @@ class MusicianAdminForm(forms.Form):
     )
     poste_remplacant_4 = forms.ChoiceField(
         label=_POSTE_REMPLACANT_LABELS[3],
+        choices=[("", "— —")] + list(MusicianProfile.Poste.choices),
+        required=False,
+        widget=forms.Select(attrs=_SELECT),
+    )
+    poste_remplacant_5 = forms.ChoiceField(
+        label=_POSTE_REMPLACANT_LABELS[4],
         choices=[("", "— —")] + list(MusicianProfile.Poste.choices),
         required=False,
         widget=forms.Select(attrs=_SELECT),

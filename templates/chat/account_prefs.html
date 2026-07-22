@@ -172,16 +172,19 @@ function joyPushPrefs() {
       }
       try {
         const s = await JoyPush.status();
-        this.hasPush = !!(s.subscriptions && s.subscriptions > 0);
+        this.hasPush = !!s.thisDevice;
         if (!s.configured) {
           this.statusText = 'Push non configuré côté serveur — alertes par e-mail.';
           this.statusClass = 'is-warn';
         } else if (this.showIosHint) {
           this.statusText = 'Installez JOY sur l’écran d’accueil pour activer le push.';
           this.statusClass = 'is-warn';
-        } else if (this.hasPush) {
-          this.statusText = 'Notifications push actives sur au moins un appareil.';
+        } else if (s.thisDevice) {
+          this.statusText = 'Notifications actives sur cet appareil.';
           this.statusClass = 'is-ok';
+        } else if (s.subscriptions > 0) {
+          this.statusText = 'Push actif sur un autre appareil — pas encore sur celui-ci.';
+          this.statusClass = '';
         } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
           this.statusText = 'Permission refusée — les alertes partiront par e-mail.';
           this.statusClass = 'is-warn';
@@ -199,9 +202,9 @@ function joyPushPrefs() {
       try {
         const res = await JoyPush.enable();
         if (res.ok) {
-          this.statusText = 'Notifications push activées.';
-          this.statusClass = 'is-ok';
           this.hasPush = true;
+          this.statusText = 'Notifications actives sur cet appareil.';
+          this.statusClass = 'is-ok';
         } else if (res.reason === 'ios_install_required') {
           this.showIosHint = true;
           this.statusText = 'Installez d’abord JOY sur l’écran d’accueil.';
@@ -224,9 +227,7 @@ function joyPushPrefs() {
       this.busy = true;
       try {
         await JoyPush.disable();
-        this.hasPush = false;
-        this.statusText = 'Push désactivé sur cet appareil — fallback e-mail.';
-        this.statusClass = '';
+        await this.refresh();
       } finally {
         this.busy = false;
       }

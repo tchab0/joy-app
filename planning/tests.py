@@ -93,13 +93,30 @@ class DashboardTests(PlanningBaseTestCase):
 
     def test_year_calendar_is_default_planning(self):
         self.client.login(username="musi", password="pass12345")
-        year = timezone.localdate().year
+        today = timezone.localdate()
+        r = self.client.get(reverse("planning:dashboard"), {"year": today.year})
+        self.assertEqual(r.status_code, 200)
+        months = r.context["months"]
+        self.assertEqual(len(months), 12)
+        self.assertEqual(months[0]["number"], today.month)
+        self.assertEqual(months[0]["year"], today.year)
+        # 12ᵉ mois = mois courant − 1 de l’année suivante (juil. → juin+1).
+        end_month = today.month - 1 if today.month > 1 else 12
+        end_year = today.year + 1 if today.month > 1 else today.year
+        self.assertEqual(months[-1]["number"], end_month)
+        self.assertEqual(months[-1]["year"], end_year)
+        self.assertEqual(r.context["start_month"], today.month)
+        self.assertContains(r, "Répète vendredi")
+
+    def test_rolling_calendar_shifted_year(self):
+        self.client.login(username="musi", password="pass12345")
+        today = timezone.localdate()
+        year = today.year + 1
         r = self.client.get(reverse("planning:dashboard"), {"year": year})
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Janvier")
-        self.assertContains(r, "Décembre")
-        self.assertContains(r, "Répète vendredi")
-        self.assertEqual(len(r.context["months"]), 12)
+        months = r.context["months"]
+        self.assertEqual(months[0]["number"], today.month)
+        self.assertEqual(months[0]["year"], year)
 
     def test_my_board_ok(self):
         self.client.login(username="musi", password="pass12345")
@@ -480,6 +497,7 @@ class StaffAdminTests(PlanningBaseTestCase):
                 "poste_remplacant_2": MusicianProfile.Poste.TROMPETTE_2,
                 "poste_remplacant_3": "",
                 "poste_remplacant_4": "",
+                "poste_remplacant_5": "",
                 "is_active": "on",
             },
         )
@@ -499,6 +517,38 @@ class StaffAdminTests(PlanningBaseTestCase):
         self.assertTrue(profile.is_remplacant)
         self.assertEqual(profile.section.code, "trompette")
 
+    def test_create_musician_with_five_remplacant_postes(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:admin_musician_add"),
+            {
+                "first_name": "Cinq",
+                "last_name": "Remp",
+                "email": "cinqremp@example.com",
+                "phone": "",
+                "poste_titulaire": MusicianProfile.Poste.TROMPETTE_1,
+                "poste_remplacant": MusicianProfile.Poste.TROMPETTE_2,
+                "poste_remplacant_2": MusicianProfile.Poste.TROMPETTE_3,
+                "poste_remplacant_3": MusicianProfile.Poste.TROMPETTE_4,
+                "poste_remplacant_4": MusicianProfile.Poste.ALTO_1,
+                "poste_remplacant_5": MusicianProfile.Poste.BARYTON,
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        profile = User.objects.get(email="cinqremp@example.com").musician_profile
+        self.assertEqual(
+            profile.postes_remplacant,
+            [
+                MusicianProfile.Poste.TROMPETTE_2,
+                MusicianProfile.Poste.TROMPETTE_3,
+                MusicianProfile.Poste.TROMPETTE_4,
+                MusicianProfile.Poste.ALTO_1,
+                MusicianProfile.Poste.BARYTON,
+            ],
+        )
+        self.assertEqual(profile.poste_remplacant_5, MusicianProfile.Poste.BARYTON)
+
     def test_reject_same_poste_for_both_roles(self):
         self.client.login(username="staff1", password="pass12345")
         r = self.client.post(
@@ -513,6 +563,7 @@ class StaffAdminTests(PlanningBaseTestCase):
                 "poste_remplacant_2": "",
                 "poste_remplacant_3": "",
                 "poste_remplacant_4": "",
+                "poste_remplacant_5": "",
                 "is_active": "on",
             },
         )
@@ -533,6 +584,7 @@ class StaffAdminTests(PlanningBaseTestCase):
                 "poste_remplacant_2": MusicianProfile.Poste.BASSE,
                 "poste_remplacant_3": "",
                 "poste_remplacant_4": "",
+                "poste_remplacant_5": "",
                 "is_active": "on",
             },
         )
@@ -583,6 +635,34 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         summary = calendar_summaries_for_events([self.event])[self.event.pk]
         self.assertIn("Trompettes", summary["instruments_manquants"])
         self.assertIn("Saxophones altos", summary["instruments_manquants"])
+
+    def test_missing_detail_lists_eligible_remplacants(self):
+        summary = calendar_summaries_for_events([self.event])[self.event.pk]
+        self.assertIn("Trompettes", summary["instruments_manquants"])
+        tromp = next(
+            d
+            for d in summary["instruments_manquants_detail"]
+            if d["code"] == "trompette"
+        )
+        eligible_ids = {e["user_id"] for e in tromp["eligible"]}
+        self.assertIn(self.sub.pk, eligible_ids)
+        self.assertNotIn(self.musician.pk, eligible_ids)
+        slot = next(e["invite_slot"] for e in tromp["eligible"] if e["user_id"] == self.sub.pk)
+        self.assertEqual(slot, f"{self.sub.pk}:trompette_2")
+
+    def test_calendar_staff_sees_invite_button_for_missing(self):
+        self.client.login(username="staff1", password="pass12345")
+        year = timezone.localtime(self.event.date_debut).year
+        day = timezone.localtime(self.event.date_debut).date().isoformat()
+        r = self.client.get(
+            reverse("planning:dashboard"),
+            {"year": year, "day": day},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Trompettes")
+        self.assertContains(r, "Inviter")
+        self.assertContains(r, f'name="invite_slot"')
+        self.assertContains(r, f"{self.sub.pk}:trompette_2")
 
     def test_calendar_shows_concert_and_presence_stats(self):
         from planning.services import invite_musician_to_event

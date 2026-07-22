@@ -776,6 +776,38 @@ def _expected_sections() -> list[OrchestraSection]:
     )
 
 
+def remplacants_by_section_code() -> dict[str, list[dict]]:
+    """
+    Remplaçants indexés par code de pupitre (via postes remplaçant).
+
+    Chaque entrée : user_id, name, poste, invite_slot (« user_id:poste »).
+    Un musicien n’apparaît qu’une fois par pupitre (1er poste remp. matching).
+    """
+    profiles = (
+        MusicianProfile.objects.select_related("user")
+        .filter(user__is_active=True, user__is_musician=True)
+        .filter(_remplacant_any_q())
+    )
+    by_section: dict[str, list[dict]] = defaultdict(list)
+    seen: dict[str, set[int]] = defaultdict(set)
+    for profile in profiles:
+        name = profile.user.get_full_name() or profile.user.username
+        for poste in profile.postes_remplacant:
+            section_code = MusicianProfile.POSTE_SECTION_CODE.get(poste or "")
+            if not section_code or profile.user_id in seen[section_code]:
+                continue
+            seen[section_code].add(profile.user_id)
+            by_section[section_code].append(
+                {
+                    "user_id": profile.user_id,
+                    "name": name,
+                    "poste": poste,
+                    "invite_slot": f"{profile.user_id}:{poste}",
+                }
+            )
+    return by_section
+
+
 def calendar_summaries_for_events(events) -> dict[int, dict]:
     """
     Résumés calendrier (présence + pupitres manquants), indexés par event.pk.
@@ -789,18 +821,22 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
 
     expected = _expected_sections()
     expected_ids = {s.pk for s in expected}
+    remplacants_idx = remplacants_by_section_code()
     by_event_confirmed: dict[int, list] = defaultdict(list)
+    by_event_taken: dict[int, set[int]] = defaultdict(set)
 
     parts = (
         EventParticipation.objects.filter(
             event_id__in=[e.pk for e in events],
-            status__code="confirmed",
+            status__code__in=["confirmed", "invited", "maybe"],
         )
-        .select_related("user__musician_profile__section")
+        .select_related("user__musician_profile__section", "status")
         .order_by("pk")
     )
     for p in parts:
-        by_event_confirmed[p.event_id].append(p)
+        by_event_taken[p.event_id].add(p.user_id)
+        if p.status.code == "confirmed":
+            by_event_confirmed[p.event_id].append(p)
 
     summaries: dict[int, dict] = {}
     for event in events:
@@ -829,7 +865,24 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
             if section is not None and section.pk in expected_ids:
                 covered_section_ids.add(section.pk)
 
-        missing = [s.name for s in expected if s.pk not in covered_section_ids]
+        missing_sections = [s for s in expected if s.pk not in covered_section_ids]
+        missing = [s.name for s in missing_sections]
+        taken = by_event_taken.get(event.pk, set())
+        missing_detail = []
+        for section in missing_sections:
+            eligible = [
+                entry
+                for entry in remplacants_idx.get(section.code, [])
+                if entry["user_id"] not in taken
+            ]
+            missing_detail.append(
+                {
+                    "section_id": section.pk,
+                    "code": section.code,
+                    "name": section.name,
+                    "eligible": eligible,
+                }
+            )
         local_start = timezone.localtime(event.date_debut)
         venue = event.venue
         lieu = ""
@@ -856,6 +909,7 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
             "instruments_manquants_label": (
                 ", ".join(missing) if missing else "Aucun"
             ),
+            "instruments_manquants_detail": missing_detail,
         }
     return summaries
 

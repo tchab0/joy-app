@@ -149,12 +149,21 @@ _FRENCH_MONTHS = (
 _WEEKDAY_LABELS = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
 
 
-def _build_year_calendar(year: int, events_by_day: dict[date, list]) -> list[dict]:
-    """Grille des 12 mois : chaque jour de l’année (lundi → dimanche)."""
+def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
+    """Décale (year, month) de ``delta`` mois (1–12)."""
+    idx = year * 12 + (month - 1) + delta
+    return idx // 12, idx % 12 + 1
+
+
+def _build_rolling_calendar(
+    start_year: int, start_month: int, events_by_day: dict[date, list], count: int = 12
+) -> list[dict]:
+    """Grille de ``count`` mois glissants à partir de start_year/start_month."""
     today = timezone.localdate()
     cal = calendar.Calendar(firstweekday=0)
     months: list[dict] = []
-    for month in range(1, 13):
+    for offset in range(count):
+        year, month = _add_months(start_year, start_month, offset)
         weeks = []
         for week in cal.monthdayscalendar(year, month):
             days = []
@@ -192,7 +201,9 @@ def _build_year_calendar(year: int, events_by_day: dict[date, list]) -> list[dic
         months.append(
             {
                 "number": month,
+                "year": year,
                 "name": _FRENCH_MONTHS[month],
+                "label": f"{_FRENCH_MONTHS[month]} {year}",
                 "weeks": weeks,
             }
         )
@@ -300,26 +311,34 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
 
 
 class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
-    """Planning par défaut : tous les jours des 12 mois de l’année."""
+    """Planning par défaut : 12 mois glissants à partir du mois en cours."""
 
     template_name = "planning/upcoming_12_months.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
+        today = timezone.localdate()
         try:
-            year = int(self.request.GET.get("year") or timezone.localdate().year)
+            year = int(self.request.GET.get("year") or today.year)
         except (TypeError, ValueError):
-            year = timezone.localdate().year
+            year = today.year
         year = max(2000, min(2100, year))
+        # Fenêtre ancrée sur le mois calendaire courant (ex. juil. → juin+1).
+        start_month = today.month
+        end_year, end_month = _add_months(year, start_month, 11)
 
         tz = timezone.get_current_timezone()
-        start = timezone.make_aware(datetime.combine(date(year, 1, 1), time.min), tz)
-        end = timezone.make_aware(
-            datetime.combine(date(year, 12, 31), time.max), tz
+        range_start = timezone.make_aware(
+            datetime.combine(date(year, start_month, 1), time.min), tz
+        )
+        # Dernier jour du 12ᵉ mois inclus.
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        range_end = timezone.make_aware(
+            datetime.combine(date(end_year, end_month, last_day), time.max), tz
         )
         events = list(
-            Event.objects.filter(date_debut__gte=start, date_debut__lte=end)
+            Event.objects.filter(date_debut__gte=range_start, date_debut__lte=range_end)
             .select_related("type", "venue", "chat_room")
             .order_by("date_debut", "titre")
         )
@@ -332,15 +351,20 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
 
         is_staff = user.is_staff or user.is_superuser
         can_propose = user_can_propose_event(user)
-        # Lieu / types nécessaires pour proposer (musiciens + staff).
         need_form_data = can_propose
+        start_label = f"{_FRENCH_MONTHS[start_month]} {year}"
+        end_label = f"{_FRENCH_MONTHS[end_month]} {end_year}"
         context.update(
             {
                 "calendar_year": year,
                 "prev_year": year - 1,
                 "next_year": year + 1,
+                "start_month": start_month,
+                "range_label": f"{start_label} — {end_label}",
                 "weekday_labels": _WEEKDAY_LABELS,
-                "months": _build_year_calendar(year, events_by_day),
+                "months": _build_rolling_calendar(
+                    year, start_month, events_by_day, count=12
+                ),
                 "is_planning_staff": is_staff,
                 "can_propose_event": can_propose,
                 "venues": (
@@ -360,11 +384,21 @@ PlanningUpcomingView = PlanningYearCalendarView
 
 
 def _calendar_url(day_raw: str) -> str:
+    """URL du calendrier glissant qui contient ce jour (+ ancre day)."""
     try:
-        year = date.fromisoformat(day_raw).year
-        return f"{reverse('planning:dashboard')}?year={year}"
+        day = date.fromisoformat(day_raw)
     except ValueError:
         return reverse("planning:dashboard")
+    today = timezone.localdate()
+    # Fenêtre ancrée sur today.month : si le jour est avant ce mois dans son année,
+    # il appartient à la fenêtre démarrée l’année précédente.
+    if day.month >= today.month:
+        window_year = day.year
+    else:
+        window_year = day.year - 1
+    return (
+        f"{reverse('planning:dashboard')}?year={window_year}&day={day.isoformat()}"
+    )
 
 
 class ProposeEventView(CanProposeEventMixin, View):

@@ -213,7 +213,18 @@
           </select>
         </div>
       </div>
-      <p class="pl-row__meta">Jusqu’à 4 postes de remplacement, distincts du titulaire. Le pupitre est déduit du poste titulaire.</p>
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="poste_remplacant_5">Poste remplaçant 5</label>
+          <select name="poste_remplacant_5" id="poste_remplacant_5">
+            <option value="">— —</option>
+            {% for value, label in postes %}
+            <option value="{{ value }}" {% if profile.poste_remplacant_5 == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <p class="pl-row__meta">Jusqu’à 5 postes de remplacement, distincts du titulaire. Le pupitre est déduit du poste titulaire.</p>
       <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Enregistrer</button>
     </form>
     {% endif %}

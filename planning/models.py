@@ -135,13 +135,14 @@ class MusicianProfile(models.Model):
         help_text="Chaise pour laquelle le musicien est titulaire "
         "(convoqué à chaque nouvelle date). Détermine le pupitre.",
     )
-    # Jusqu’à 4 chaises de remplacement (poste_remplacant = 1er slot).
-    MAX_POSTES_REMPLACANT = 4
+    # Jusqu’à 5 chaises de remplacement (poste_remplacant = 1er slot).
+    MAX_POSTES_REMPLACANT = 5
     POSTE_REMPLACANT_FIELDS = (
         "poste_remplacant",
         "poste_remplacant_2",
         "poste_remplacant_3",
         "poste_remplacant_4",
+        "poste_remplacant_5",
     )
 
     poste_remplacant = models.CharField(
@@ -168,6 +169,12 @@ class MusicianProfile(models.Model):
         blank=True,
         choices=Poste.choices,
         verbose_name="Poste remplaçant 4",
+    )
+    poste_remplacant_5 = models.CharField(
+        max_length=30,
+        blank=True,
+        choices=Poste.choices,
+        verbose_name="Poste remplaçant 5",
     )
 
     class Meta:

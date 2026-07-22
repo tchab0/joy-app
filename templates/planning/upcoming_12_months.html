@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Planning {{ calendar_year }} — JOY{% endblock %}
+{% block title %}Planning {{ range_label }} — JOY{% endblock %}
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
@@ -17,9 +17,9 @@
      @keydown.escape.window="closeAll(); hoverDay = null">
 
   <header class="pl-head">
-    <h1>Planning {{ calendar_year }}</h1>
+    <h1>Planning</h1>
     <p class="pl-sub">
-      Concerts et répétitions de l’année.
+      {{ range_label }} — concerts et répétitions sur 12 mois.
       Survolez une date pour l’aperçu ; touchez-la pour le détail.
       {% if can_propose_event or is_planning_staff %}Clic sur un jour : ajouter un événement{% if is_planning_staff %} ou une répétition{% endif %}.{% endif %}
     </p>
@@ -28,9 +28,9 @@
   {% include "planning/_module_nav.html" with active="calendrier" %}
 
   <div class="pl-year-nav">
-    <a class="pl-btn" href="?year={{ prev_year }}" aria-label="Année précédente">← {{ prev_year }}</a>
-    <span class="pl-year-nav__current">{{ calendar_year }}</span>
-    <a class="pl-btn" href="?year={{ next_year }}" aria-label="Année suivante">{{ next_year }} →</a>
+    <a class="pl-btn" href="?year={{ prev_year }}" aria-label="Période précédente">← {{ prev_year }}</a>
+    <span class="pl-year-nav__current">{{ range_label }}</span>
+    <a class="pl-btn" href="?year={{ next_year }}" aria-label="Période suivante">{{ next_year }} →</a>
   </div>
 
   <div class="pl-layers" role="group" aria-label="Calques du calendrier">
@@ -41,9 +41,9 @@
 
   <div class="pl-year">
     {% for month in months %}
-    <section class="pl-month" id="mois-{{ month.number }}">
-      <h2>{{ month.name }}</h2>
-      <div class="pl-cal" role="grid" aria-label="{{ month.name }} {{ calendar_year }}">
+    <section class="pl-month" id="mois-{{ month.year }}-{{ month.number }}">
+      <h2>{{ month.label }}</h2>
+      <div class="pl-cal" role="grid" aria-label="{{ month.label }}">
         <div class="pl-cal__weekdays" role="row">
           {% for label in weekday_labels %}
           <span class="pl-cal__wd" role="columnheader">{{ label }}</span>
@@ -108,7 +108,7 @@
       {% for week in month.weeks %}
         {% for day in week %}
           {% if day and day.events %}
-          <div class="pl-day-events" x-show="selectedDay === '{{ day.iso }}'" x-cloak>
+          <div class="pl-day-events" data-day="{{ day.iso }}" x-show="selectedDay === '{{ day.iso }}'" x-cloak>
             <p class="pl-day-events__label">{{ day.date|date:"l d F" }}</p>
             {% for event in day.events %}
             {% with s=event.cal_summary %}
@@ -142,10 +142,43 @@
                     </span>
                   </dd>
                 </div>
-                <div>
+                <div class="pl-event-stats__missing">
                   <dt>Instruments manquants</dt>
                   <dd class="{% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
-                    {{ s.instruments_manquants_label }}
+                    {% if s.instruments_manquants_detail %}
+                    <ul class="pl-missing__list">
+                      {% for m in s.instruments_manquants_detail %}
+                      <li class="pl-missing__item">
+                        <span class="pl-missing__name">{{ m.name }}</span>
+                        {% if is_planning_staff %}
+                          {% if m.eligible %}
+                          <form class="pl-missing__invite"
+                                method="post"
+                                action="{% url 'planning:invite_musician' event.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next"
+                                   value="{% url 'planning:dashboard' %}?year={{ calendar_year }}&day={{ day.iso }}">
+                            <select name="invite_slot" required
+                                    aria-label="Remplaçant pour {{ m.name }}">
+                              <option value="">Remplaçant…</option>
+                              {% for e in m.eligible %}
+                              <option value="{{ e.invite_slot }}">{{ e.name }}</option>
+                              {% endfor %}
+                            </select>
+                            <button type="submit" class="pl-btn pl-btn--primary">
+                              Inviter
+                            </button>
+                          </form>
+                          {% else %}
+                          <span class="pl-missing__none">Aucun remplaçant éligible</span>
+                          {% endif %}
+                        {% endif %}
+                      </li>
+                      {% endfor %}
+                    </ul>
+                    {% else %}
+                    Aucun
+                    {% endif %}
                   </dd>
                 </div>
               </dl>
@@ -295,7 +328,7 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     year,
     rehearsalCreateUrl,
     layer: savedLayer,
-    selectedDay: null,
+    selectedDay: (new URLSearchParams(window.location.search)).get('day') || null,
     hoverDay: null,
     modalOpen: false,
     choiceOpen: false,
@@ -305,6 +338,15 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     venueMode: 'existing',
     parentMode: 'none',
     finePointer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    init() {
+      if (!this.selectedDay) return;
+      this.$nextTick(() => {
+        const panel = document.querySelector(
+          `.pl-day-events[data-day="${this.selectedDay}"]`
+        );
+        panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    },
     setLayer(next) {
       this.layer = next;
       try { localStorage.setItem('pl-cal-layer', next); } catch (e) {}
