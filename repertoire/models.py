@@ -149,6 +149,15 @@ class Piece(models.Model):
             )
         return videos
 
+    def missing_big_band_postes(self) -> list[str]:
+        """Codes poste big band sans partition (utilise le prefetch `parts`)."""
+        present = {part.poste for part in self.parts.all()}
+        return [poste for poste in BIG_BAND_POSTES if poste not in present]
+
+    def missing_big_band_labels(self) -> list[str]:
+        labels = dict(PartPoste.choices)
+        return [labels.get(poste, poste) for poste in self.missing_big_band_postes()]
+
 
 class PartPoste(models.TextChoices):
     """Postes planning + conducteur / autre pour les partitions."""
@@ -205,6 +214,29 @@ class PartPoste(models.TextChoices):
     )
     CONDUCTEUR = "conducteur", "Conducteur"
     AUTRE = "autre", "Autre"
+
+
+# Chaises standard (5 sax / 4 tp / 4 tb / rythmique) — hors optionnels
+# (clarinette, chant, percussion, conducteur, autre).
+BIG_BAND_POSTES: tuple[str, ...] = (
+    PartPoste.ALTO_1,
+    PartPoste.ALTO_2,
+    PartPoste.TENOR_1,
+    PartPoste.TENOR_2,
+    PartPoste.BARYTON,
+    PartPoste.TROMPETTE_1,
+    PartPoste.TROMPETTE_2,
+    PartPoste.TROMPETTE_3,
+    PartPoste.TROMPETTE_4,
+    PartPoste.TROMBONE_1,
+    PartPoste.TROMBONE_2,
+    PartPoste.TROMBONE_3,
+    PartPoste.TROMBONE_4,
+    PartPoste.PIANO,
+    PartPoste.GUITARE,
+    PartPoste.BASSE,
+    PartPoste.BATTERIE,
+)
 
 
 class Part(models.Model):

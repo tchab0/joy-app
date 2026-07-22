@@ -27,6 +27,27 @@
     font-family: var(--font-b); line-height: 1.45;
   }
   .rep-muted { color: var(--muted); font-size: .85rem; }
+  .rep-alert-dot {
+    display: inline-block;
+    width: .55rem; height: .55rem;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: middle;
+    margin-left: .35rem;
+    flex-shrink: 0;
+  }
+  .rep-alert-meta { color: var(--accent); font-weight: 600; }
+  .rep-missing-alert {
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: .45rem;
+    margin: 0 0 .85rem; padding: .75rem .9rem;
+    background: rgba(var(--accent-rgb), .08);
+    border: 1px solid rgba(var(--accent-rgb), .28);
+    border-radius: var(--r);
+    color: var(--text); font-size: .88rem; line-height: 1.4;
+  }
+  .rep-missing-alert .rep-alert-dot {
+    margin: .35rem 0 0; flex-shrink: 0;
+  }
   .rep-part-list { list-style: none; padding: 0; margin: 0; }
   .rep-part-list li {
     display: flex; align-items: center; justify-content: space-between;

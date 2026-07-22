@@ -24,18 +24,30 @@
   {% if pieces %}
   <section class="pl-section">
     {% for piece in pieces %}
+    {% with missing=piece.missing_big_band_labels %}
     <div class="pl-row">
       <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'repertoire:staff_piece_edit' piece.slug %}">{{ piece.title }}</a>
+        <a class="pl-row__title" href="{% url 'repertoire:staff_piece_edit' piece.slug %}">
+          {{ piece.title }}
+          {% if missing %}
+          <span class="rep-alert-dot"
+                title="Partitions manquantes : {{ missing|join:', ' }}"
+                aria-label="{{ missing|length }} poste{{ missing|length|pluralize }} sans partition : {{ missing|join:', ' }}"></span>
+          {% endif %}
+        </a>
         <p class="pl-row__meta">
           {{ piece.parts.count }} part. ·
           {% if piece.is_published %}<span style="color:var(--ok)">publié</span>{% else %}brouillon{% endif %}
+          {% if missing %}
+          · <span class="rep-alert-meta">{{ missing|length }} poste{{ missing|length|pluralize }} manquant{{ missing|length|pluralize }}</span>
+          {% endif %}
         </p>
       </div>
       <div class="pl-row__actions">
         <a class="pl-btn" href="{% url 'repertoire:staff_piece_edit' piece.slug %}">Éditer</a>
       </div>
     </div>
+    {% endwith %}
     {% endfor %}
   </section>
   {% else %}

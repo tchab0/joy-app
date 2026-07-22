@@ -136,6 +136,15 @@
   {% if piece %}
   <section class="pl-section" style="margin-top:2rem">
     <h2>Partitions existantes</h2>
+    {% with missing=piece.missing_big_band_labels %}
+    {% if missing %}
+    <p class="rep-missing-alert" role="status">
+      <span class="rep-alert-dot" aria-hidden="true"></span>
+      {{ missing|length }} poste{{ missing|length|pluralize }} big band sans partition :
+      {{ missing|join:", " }}.
+    </p>
+    {% endif %}
+    {% endwith %}
     {% if parts %}
     <ul class="rep-part-list">
       {% for part in parts %}

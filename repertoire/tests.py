@@ -19,7 +19,7 @@ from repertoire.chorus import (
     resolve_solo_selection,
     solo_pool_entries,
 )
-from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem
+from repertoire.models import BIG_BAND_POSTES, Part, PartPoste, Piece, Setlist, SetlistItem
 from repertoire.pdf_utils import extract_pdf_pages_bytes, images_to_pdf_bytes, pdf_page_count
 
 User = get_user_model()
@@ -548,3 +548,63 @@ class PdfDecoupeEditorTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json()["ok"])
         self.assertEqual(r.json()["page_count"], 4)
+
+
+class MissingBigBandPartsTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="atelier-alert", password="x", is_staff=True
+        )
+        self.piece = Piece.objects.create(title="Splanky Incomplete", is_published=True)
+        Part.objects.create(
+            piece=self.piece,
+            poste=PartPoste.BASSE,
+            file=SimpleUploadedFile(
+                "basse.pdf", b"%PDF-1.4\n%", content_type="application/pdf"
+            ),
+        )
+
+    def test_missing_excludes_optional_postes(self):
+        missing = self.piece.missing_big_band_postes()
+        self.assertEqual(len(missing), len(BIG_BAND_POSTES) - 1)
+        self.assertNotIn(PartPoste.BASSE, missing)
+        self.assertNotIn(PartPoste.CLARINETTE, missing)
+        self.assertNotIn(PartPoste.CHANT, missing)
+        self.assertNotIn(PartPoste.CONDUCTEUR, missing)
+        self.assertIn(PartPoste.ALTO_1, missing)
+        self.assertIn("1er alto", self.piece.missing_big_band_labels())
+
+    def test_staff_list_shows_alert_dot(self):
+        self.client.login(username="atelier-alert", password="x")
+        r = self.client.get(reverse("repertoire:staff_list"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'class="rep-alert-dot"')
+        self.assertContains(r, "postes manquants")
+
+    def test_complete_piece_has_no_alert(self):
+        for poste in BIG_BAND_POSTES:
+            if poste == PartPoste.BASSE:
+                continue
+            Part.objects.create(
+                piece=self.piece,
+                poste=poste,
+                file=SimpleUploadedFile(
+                    f"{poste}.pdf", b"%PDF-1.4\n%", content_type="application/pdf"
+                ),
+            )
+        self.assertEqual(self.piece.missing_big_band_postes(), [])
+        self.client.login(username="atelier-alert", password="x")
+        r = self.client.get(reverse("repertoire:staff_list"))
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'class="rep-alert-dot"')
+        self.assertNotContains(r, "postes manquants")
+        self.assertNotContains(r, "poste manquant")
+    def test_edit_page_lists_missing_postes(self):
+        self.client.login(username="atelier-alert", password="x")
+        r = self.client.get(
+            reverse("repertoire:staff_piece_edit", args=[self.piece.slug])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "rep-missing-alert")
+        self.assertContains(r, "1er alto")
+        self.assertContains(r, "sans partition")
