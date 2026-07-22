@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load page_lead %}
 {% block title %}Proposer un média — JOY{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'core/photo-editor.css' %}">
@@ -37,7 +38,9 @@
       L’événement est déjà sélectionné ci-dessous — il ne reste qu’à envoyer vos fichiers.
     </p>
     {% else %}
-    <p style="color:var(--muted);margin-bottom:2rem;max-width:55ch">Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.</p>
+    {% page_lead "core.proposer_media" %}
+      Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.
+    {% endpage_lead %}
     {% endif %}
 
     <form class="upload-form" method="post" enctype="multipart/form-data" id="media-submit-form"

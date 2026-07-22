@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Retours utilisateurs — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -70,9 +71,9 @@
     <div class="admin-toolbar">
       <div>
         <h1 class="section-title">Retours utilisateurs</h1>
-        <p style="color:var(--muted);margin-top:.5rem">
+        {% page_lead "feedback.admin" %}
           Bugs, confort d’usage et demandes de fonctionnalités depuis le pied de page.
-        </p>
+        {% endpage_lead %}
       </div>
       <div class="admin-filters">
         <a href="{{ page_feedback_pending_list_url }}" class="filter-link {% if not page_feedback_show_treated and not page_feedback_show_in_progress and not page_feedback_show_snoozed %}active{% endif %}">

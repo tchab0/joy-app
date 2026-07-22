@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Gestion des musiciens — JOY{% endblock %}
 {% block extra_css %}
 {% include "planning/_styles.html" %}
@@ -33,7 +34,9 @@
     <div class="pl-head__row">
       <div>
         <h1>Musiciens</h1>
-        <p class="pl-sub">Comptes, postes titulaires et remplaçants.</p>
+        {% page_lead "planning.admin_musicians" class="page-lead--in-head" %}
+          Comptes, postes titulaires et remplaçants.
+        {% endpage_lead %}
       </div>
       <a href="{% url 'planning:admin_musician_add' %}" class="btn btn-primary">+ Ajouter</a>
     </div>

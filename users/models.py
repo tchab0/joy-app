@@ -88,6 +88,12 @@ class User(AbstractUser):
         default=0,
         help_text="0 = jamais terminé. Comparé à la version du guide actif.",
     )
+    dismissed_page_leads = models.JSONField(
+        "Aides de page masquées",
+        default=list,
+        blank=True,
+        help_text="Clés des textes d’aide masqués en haut de page.",
+    )
 
     class Meta:
         verbose_name = "utilisateur"

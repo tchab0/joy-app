@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load page_lead %}
 {% block title %}Notifications chat — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -100,10 +101,10 @@
 {% block content %}
 <section class="chat-prefs" x-data="joyPushPrefs()" x-init="init()">
   <h1>Notifications chat</h1>
-  <p class="chat-prefs__lead">
+  {% page_lead "chat.prefs" %}
     Choisissez si vous êtes automatiquement abonné aux alertes (push ou e-mail)
     des nouveaux salons d’événements.
-  </p>
+  {% endpage_lead %}
 
   <div class="chat-prefs__ios" x-show="showIosHint" x-cloak>
     <strong>iPhone / iPad —</strong>

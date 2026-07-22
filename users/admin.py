@@ -109,10 +109,12 @@ class UserAdmin(DjangoUserAdmin):
                 "fields": (
                     "tour_musician_version",
                     "tour_staff_version",
+                    "dismissed_page_leads",
                 ),
                 "description": (
                     "Remettre à 0 pour re-proposer automatiquement le guide "
-                    "à la prochaine connexion."
+                    "à la prochaine connexion. Vider dismissed_page_leads "
+                    "pour réafficher les aides de page."
                 ),
             },
         ),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}Atelier répertoire — JOY{% endblock %}
 
@@ -13,7 +14,9 @@
     <div class="pl-head__row">
       <div>
         <h1>Atelier répertoire</h1>
-        <p class="pl-sub">Créer les morceaux, découper les PDF et publier les parties par poste.</p>
+        {% page_lead "repertoire.staff_pieces" class="page-lead--in-head" %}
+          Créer les morceaux, découper les PDF et publier les parties par poste.
+        {% endpage_lead %}
       </div>
       <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_piece_create' %}">+ Nouveau</a>
     </div>
