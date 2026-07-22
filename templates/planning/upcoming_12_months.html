@@ -410,11 +410,21 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     finePointer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     init() {
       if (!this.selectedDay) return;
+      this.revealSelectedDay();
+    },
+    revealSelectedDay() {
+      if (!this.selectedDay) return;
+      // Wait for Alpine x-show to apply display, then layout, before scrolling.
       this.$nextTick(() => {
-        const panel = document.querySelector(
-          `.pl-day-events[data-day="${this.selectedDay}"]`
-        );
-        panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        requestAnimationFrame(() => {
+          const panel = document.querySelector(
+            `.pl-day-events[data-day="${this.selectedDay}"]`
+          );
+          if (!panel || panel.offsetParent === null) return;
+          // start (not nearest): on mobile the panel opens below the month grid
+          // and must be brought into the viewport without manual scroll.
+          panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
       });
     },
     setLayer(next) {
@@ -462,7 +472,9 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     onDayClick(iso, eventCount, hasVisible) {
       this.hoverDay = null;
       if (eventCount > 0) {
-        this.selectedDay = this.selectedDay === iso ? null : iso;
+        const opening = this.selectedDay !== iso;
+        this.selectedDay = opening ? iso : null;
+        if (opening) this.revealSelectedDay();
         return;
       }
       // Jour vide (ou tout masqué par le calque) → choix d’ajout.

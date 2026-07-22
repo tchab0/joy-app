@@ -397,6 +397,8 @@
     margin-top: .75rem; padding: .75rem 0 0;
     border-top: 1px solid var(--border);
     display: flex; flex-direction: column; gap: .65rem;
+    /* Sticky site nav (~64px) — keep day details under the chrome when scrolled into view */
+    scroll-margin-top: 5.5rem;
   }
   .pl-day-events__label {
     font-size: .75rem; font-weight: 600; letter-spacing: .04em;
