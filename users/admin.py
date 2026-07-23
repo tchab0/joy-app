@@ -34,7 +34,7 @@ class ProductTourAdmin(admin.ModelAdmin):
                 "fields": ("audience", "title", "version", "is_active"),
                 "description": (
                     "Modifiez le texte et l’ordre des étapes ci-dessous. "
-                    "Ancres disponibles : nav-planning, nav-repertoire, nav-chat, "
+                    "Ancres disponibles : nav-coulisses, nav-chat, "
                     "nav-account, module-calendrier, module-mes-dates, module-staff, "
                     "rsvp-actions, repertoire-filter, chat-list, staff-admin, "
                     "staff-musiciens, staff-atelier, footer-admin, account-replay. "

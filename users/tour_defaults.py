@@ -7,7 +7,7 @@ MUSICIAN_STEPS = [
         "title": "Bienvenue",
         "body": (
             "Ce guide présente les outils réservés aux musiciens : "
-            "planning, répertoire, chat et votre compte. "
+            "coulisses (planning et répertoire), chat et votre compte. "
             "Vous pourrez le rejouer depuis Mon compte → Réglages."
         ),
         "page_path": "/compte/",
@@ -16,11 +16,12 @@ MUSICIAN_STEPS = [
     },
     {
         "order": 2,
-        "anchor": "nav-planning",
-        "title": "Planning",
+        "anchor": "nav-coulisses",
+        "title": "Coulisses",
         "body": (
-            "Accédez au calendrier des dates : répétitions, concerts "
-            "et autres événements de l’orchestre."
+            "Dates, répétitions, concerts et répertoire : tout passe "
+            "par ici. Le calendrier annuel s’affiche en premier ; "
+            "les partitions sont dans l’onglet Morceaux."
         ),
         "page_path": "/compte/",
         "open_mobile_nav": True,
@@ -28,18 +29,6 @@ MUSICIAN_STEPS = [
     },
     {
         "order": 3,
-        "anchor": "nav-repertoire",
-        "title": "Répertoire",
-        "body": (
-            "Consultez les partitions et fichiers audio filtrés "
-            "selon votre poste."
-        ),
-        "page_path": "/compte/",
-        "open_mobile_nav": True,
-        "scroll_footer": False,
-    },
-    {
-        "order": 4,
         "anchor": "nav-chat",
         "title": "Chat",
         "body": (
@@ -51,7 +40,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 5,
+        "order": 4,
         "anchor": "nav-account",
         "title": "Mon compte",
         "body": (
@@ -63,7 +52,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 6,
+        "order": 5,
         "anchor": "module-calendrier",
         "title": "Calendrier",
         "body": (
@@ -75,7 +64,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 7,
+        "order": 6,
         "anchor": "module-mes-dates",
         "title": "Mes dates",
         "body": (
@@ -87,7 +76,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 8,
+        "order": 7,
         "anchor": "rsvp-actions",
         "title": "Répondre à une date",
         "body": (
@@ -99,7 +88,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 9,
+        "order": 8,
         "anchor": "repertoire-filter",
         "title": "Filtrer votre poste",
         "body": (
@@ -111,7 +100,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 10,
+        "order": 9,
         "anchor": "chat-list",
         "title": "Salons de discussion",
         "body": (
@@ -123,7 +112,7 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 11,
+        "order": 10,
         "anchor": "account-replay",
         "title": "C’est tout !",
         "body": (
@@ -142,7 +131,7 @@ STAFF_STEPS = [
         "anchor": "",
         "title": "Guide administration",
         "body": (
-            "Ce parcours présente les outils staff : module Planning, "
+            "Ce parcours présente les outils staff : module Coulisses, "
             "musiciens, atelier et liens d’administration en bas de page. "
             "Rejouable depuis Mon compte → Réglages."
         ),
@@ -155,7 +144,7 @@ STAFF_STEPS = [
         "anchor": "module-staff",
         "title": "Groupe Staff",
         "body": (
-            "Dans Planning / Répertoire, le groupe Staff regroupe "
+            "Dans Coulisses, le groupe Staff regroupe "
             "l’admin des dates, les musiciens, l’atelier et les setlists."
         ),
         "page_path": "/planning/admin/",

@@ -81,15 +81,25 @@
       display: none;
       font-family: var(--font-d); font-style: normal; font-weight: 900;
       font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase;
-      color: #fff; line-height: 1.15;
+      color: #fff; line-height: 1.15; white-space: nowrap;
     }
     .nav-logo-text .nav-logo-joy { color: var(--accent); }
-    @media (min-width: 769px) {
-      .nav-logo-img { width: 48px; height: 48px; }
-      .nav-logo-text { display: block; font-size: 1.15rem; }
+    .nav-logo-rest { display: none; }
+    /* Compact brand (J.O.Y) once there's room beside the logo */
+    @media (min-width: 400px) {
+      .nav-logo-text { display: block; }
     }
-    .nav-links { display: flex; gap: 0; list-style: none; }
-    .nav-links a { display: block; padding: .75rem 1rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); }
+    /* Full name only when horizontal nav fits (avoids half-screen clash) */
+    @media (min-width: 1100px) {
+      .nav-logo-img { width: 48px; height: 48px; }
+      .nav-logo-text { font-size: 1.15rem; }
+      .nav-logo-rest { display: inline; }
+    }
+    .nav-links { display: flex; gap: 0; list-style: none; flex-shrink: 0; }
+    .nav-links a { display: block; padding: .75rem .7rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); white-space: nowrap; }
+    @media (min-width: 1200px) {
+      .nav-links a { padding: .75rem 1rem; }
+    }
     .nav-links a:hover, .nav-links a.active { color: #fff; }
     .nav-links a.active { border-bottom: 2px solid var(--accent); }
     .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
@@ -251,8 +261,8 @@
     .fb-badge-done { background:rgba(42,107,60,.12); color:var(--ok); border-color:rgba(42,107,60,.28); }
     .fb-badge-vote { background:rgba(var(--accent-rgb),.08); color:var(--accent-h); border-color:rgba(var(--accent-rgb),.22); }
 
-    /* RESPONSIVE NAV */
-    @media (max-width: 768px) {
+    /* RESPONSIVE NAV — burger until ~half desktop so brand + links never overlap */
+    @media (max-width: 1099px) {
       .nav-inner { height: 56px; gap: .5rem; }
       .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
       .nav-links.open { display: flex; }
@@ -267,7 +277,7 @@
   <div class="nav-inner">
     <a class="nav-logo" href="{% url 'home' %}" aria-label="J.O.Y — Jazz Orchestra Yonnais">
       <img class="nav-logo-img" src="{% static 'users/icons/logo-joy.webp' %}" alt="" width="48" height="48" decoding="async">
-      <span class="nav-logo-text"><span class="nav-logo-joy">J.O.Y</span> Jazz Orchestra Yonnais</span>
+      <span class="nav-logo-text"><span class="nav-logo-joy">J.O.Y</span><span class="nav-logo-rest"> Jazz Orchestra Yonnais</span></span>
     </a>
     <button class="nav-burger" aria-label="Menu" @click="open = !open" :aria-expanded="open.toString()">
       <span :style="open ? 'transform:rotate(45deg) translate(5px,5px)' : ''"></span>
@@ -280,8 +290,7 @@
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
       {% if show_musician_nav %}
-      <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-planning" {% if request.resolver_match and request.resolver_match.namespace == 'planning' %}class="active"{% endif %}>Planning</a></li>
-      <li><a href="{% url 'repertoire:list' %}" data-tour="nav-repertoire" {% if request.resolver_match and request.resolver_match.namespace == 'repertoire' %}class="active"{% endif %}>Répertoire</a></li>
+      <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-coulisses" {% if request.resolver_match.namespace == 'planning' or request.resolver_match.namespace == 'repertoire' or request.resolver_match.namespace == 'repetitions' %}class="active"{% endif %}>Coulisses</a></li>
       <li><a href="{% url 'chat:list' %}" data-tour="nav-chat" {% if request.resolver_match and request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Chat</a></li>
       {% endif %}
       {% if request.user.is_authenticated %}
