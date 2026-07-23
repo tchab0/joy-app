@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Notifications musiciens — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .admin-toolbar { display:flex; gap:1rem; align-items:flex-start; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; }
+  .admin-filters { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .filter-link {
+    display:inline-flex; align-items:center; min-height:44px; padding:.55rem .9rem;
+    border:1px solid var(--border); border-radius:var(--r); text-decoration:none; color:var(--text);
+    background:var(--surface);
+  }
+  .filter-link.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .notif-list { display:flex; flex-direction:column; gap:1rem; }
+  .notif-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+    padding:1.15rem 1.25rem; color:var(--text);
+  }
+  .notif-card__top {
+    display:flex; flex-wrap:wrap; gap:.5rem .85rem; align-items:center;
+    margin-bottom:.5rem;
+  }
+  .notif-card__meta { color:var(--muted); font-size:.9rem; }
+  .status-badge {
+    display:inline-flex; align-items:center; padding:.25rem .55rem; border-radius:var(--r);
+    font-size:.8rem; border:1px solid var(--border); background:var(--bg); color:var(--text);
+  }
+  .status-badge.is-unread {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    color: var(--accent);
+  }
+  .status-badge.is-unanswered {
+    border-color: color-mix(in srgb, var(--gold-text) 45%, var(--border));
+    color: var(--gold-text);
+  }
+  .status-badge.is-ok { color: var(--ok); }
+  .notif-card h2 {
+    font-family:var(--font-d); font-size:1.15rem; margin:0 0 .35rem; color:var(--text);
+  }
+  .notif-card__body {
+    white-space:pre-wrap; margin:0 0 .25rem; font-size:.95rem;
+  }
+  .notif-card__link {
+    display:inline-block; margin-top:.5rem; color:var(--accent); word-break:break-all;
+  }
+  .notif-card__actions {
+    display:flex; flex-wrap:wrap; gap:.5rem; justify-content:flex-end;
+    margin-top:.85rem; padding-top:.85rem; border-top:1px solid var(--border);
+  }
+  .notif-card__actions .btn {
+    min-height:44px; padding:.55rem 1rem; font-size:.88rem;
+  }
+  .btn-danger {
+    background:transparent; color:#b43c3c; border:1.5px solid #b43c3c;
+  }
+  .btn-danger:hover { background:#b43c3c; color:#fff; }
+  .empty-state {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+    padding:2rem; color:var(--muted);
+  }
+  .count-pill {
+    display:inline-flex; align-items:center; min-height:44px; padding:.55rem .9rem;
+    border:1px solid var(--border); border-radius:var(--r);
+    background:var(--bg); color:var(--text); font-size:.9rem;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div class="admin-toolbar">
+      <div>
+        <h1 class="section-title">Notifications musiciens</h1>
+        {% page_lead "core.admin_notifications" %}
+          « Non lue » = pas ouverte côté musicien. « Non répondue » = invitation / sondage / relance sans action.
+        {% endpage_lead %}
+      </div>
+      <span class="count-pill">{{ total }} affichée{{ total|pluralize }}</span>
+    </div>
+
+    <div class="admin-filters" style="margin-bottom:1.5rem">
+      <a href="{% url 'admin_notifications' %}?filtre=en-attente"
+         class="filter-link {% if filtre_actif == 'en-attente' %}active{% endif %}">
+        En attente ({{ count_pending }})
+      </a>
+      <a href="{% url 'admin_notifications' %}?filtre=non-lues"
+         class="filter-link {% if filtre_actif == 'non-lues' %}active{% endif %}">
+        Non lues ({{ count_unread }})
+      </a>
+      <a href="{% url 'admin_notifications' %}?filtre=non-repondues"
+         class="filter-link {% if filtre_actif == 'non-repondues' %}active{% endif %}">
+        Non répondues ({{ count_unanswered }})
+      </a>
+      <a href="{% url 'admin_notifications' %}?filtre=toutes"
+         class="filter-link {% if filtre_actif == 'toutes' %}active{% endif %}">
+        Toutes
+      </a>
+    </div>
+
+    {% if notifications %}
+      <div class="notif-list">
+        {% for item in notifications %}
+          <article class="notif-card">
+            <div class="notif-card__top">
+              {% if item.is_unread %}
+                <span class="status-badge is-unread">Non lue</span>
+              {% else %}
+                <span class="status-badge is-ok">Lue</span>
+              {% endif %}
+              {% if item.requires_response %}
+                {% if item.is_unanswered %}
+                  <span class="status-badge is-unanswered">Non répondue</span>
+                {% else %}
+                  <span class="status-badge is-ok">Répondue</span>
+                {% endif %}
+              {% endif %}
+              <span class="notif-card__meta">{{ item.created_at|date:"d/m/Y H:i" }}</span>
+              <span class="notif-card__meta">
+                {{ item.user.get_full_name|default:item.user.username }}
+                {% if item.user.email %} · {{ item.user.email }}{% endif %}
+              </span>
+            </div>
+            <h2>{{ item.title }}</h2>
+            <p class="notif-card__body">{{ item.body }}</p>
+            {% if item.url %}
+              <a class="notif-card__link" href="{{ item.url }}">{{ item.url }}</a>
+            {% endif %}
+            <div class="notif-card__actions">
+              <form method="post" action="{% url 'admin_notification_delete' item.pk %}"
+                    onsubmit="return confirm('Supprimer cette notification pour {{ item.user.get_full_name|default:item.user.username|escapejs }} ?')">
+                {% csrf_token %}
+                <input type="hidden" name="filtre" value="{{ filtre_actif }}">
+                <button type="submit" class="btn btn-danger">Supprimer</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        {% if filtre_actif == 'non-lues' %}
+          Aucune notification non lue.
+        {% elif filtre_actif == 'non-repondues' %}
+          Aucune notification non répondue.
+        {% elif filtre_actif == 'toutes' %}
+          Aucune notification pour les musiciens.
+        {% else %}
+          Rien en attente (tout lu et répondu).
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

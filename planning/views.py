@@ -1158,6 +1158,26 @@ class LaunchPollView(PlanningStaffRequiredMixin, View):
         return redirect("planning:poll_detail", pk=pk)
 
 
+class ResendPollNotificationsView(PlanningStaffRequiredMixin, View):
+    """Renvoie les notifications push/e-mail d’un sondage déjà ouvert."""
+
+    def post(self, request, pk):
+        from planning.services import notify_availability_poll
+
+        proposal = get_object_or_404(DateProposal, pk=pk)
+        if not proposal.is_open:
+            messages.error(request, "Le sondage n’est pas ouvert.")
+            return redirect("planning:poll_detail", pk=pk)
+        sent = notify_availability_poll(proposal)
+        messages.success(
+            request,
+            f"Notifications renvoyées ({sent} destinataire"
+            f"{'s' if sent != 1 else ''} joint"
+            f"{'s' if sent != 1 else ''} par push ou e-mail).",
+        )
+        return redirect("planning:poll_detail", pk=pk)
+
+
 def _parse_local_dt(value: str):
     """Parse datetime-local (naive) or ISO into aware datetime."""
     if not value:

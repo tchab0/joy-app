@@ -16,6 +16,31 @@ urlpatterns = [
     path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),
     path("securite/totp/desactiver/", views.totp_disable, name="account_totp_disable"),
     path("adherent/", views.member_area, name="account_member_area"),
+    path(
+        "notifications/",
+        views.account_notifications,
+        name="account_notifications",
+    ),
+    path(
+        "notifications/tout-lu/",
+        views.account_notifications_mark_all_read,
+        name="account_notifications_mark_all_read",
+    ),
+    path(
+        "notifications/<int:pk>/lu/",
+        views.account_notification_mark_read,
+        name="account_notification_mark_read",
+    ),
+    path(
+        "notifications/<int:pk>/repondu/",
+        views.account_notification_mark_responded,
+        name="account_notification_mark_responded",
+    ),
+    path(
+        "notifications/<int:pk>/ouvrir/",
+        views.account_notification_open,
+        name="account_notification_open",
+    ),
     path("push/vapid-key/", views_push.push_vapid_public_key, name="push_vapid_key"),
     path("push/subscribe/", views_push.push_subscription, name="push_subscribe"),
     path("push/status/", views_push.push_status, name="push_status"),

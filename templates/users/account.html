@@ -27,6 +27,7 @@
       <h2 class="account-heading">Réglages</h2>
       <div class="account-actions" data-tour="account-replay">
         <a class="btn btn-outline" href="{% url 'account_security' %}">Sécurité &amp; 2FA</a>
+        <a class="btn btn-outline" href="{% url 'account_notifications' %}">Mes notifications{% if unread_notifications %} ({{ unread_notifications }}){% endif %}</a>
         {% if can_planning %}
         <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Notifications chat</a>
         {% endif %}

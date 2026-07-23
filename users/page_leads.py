@@ -27,6 +27,7 @@ PAGE_LEAD_LABELS: dict[str, str] = {
     "core.goodies": "Goodies",
     "core.proposer_media": "Proposer un média",
     "core.admin_contact": "Staff — messages contact",
+    "core.admin_notifications": "Staff — notifications musiciens",
     "users.security": "Sécurité",
     "users.member_area": "Espace adhérent",
     "feedback.admin": "Staff — retours utilisateurs",

@@ -65,6 +65,21 @@
   </section>
   {% endif %}
 
+  {% if is_planning_staff and proposal.is_open %}
+  <section class="pl-section pl-accept__staff">
+    <h2>Notifications</h2>
+    <p class="pl-row__meta" style="margin-bottom:1rem">
+      Renvoie le push / e-mail aux musiciens du salon (et aux participants déjà inscrits).
+    </p>
+    <form method="post" action="{% url 'planning:resend_poll_notifications' proposal.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+        Renvoyer les notifications
+      </button>
+    </form>
+  </section>
+  {% endif %}
+
   {% include "planning/_poll_vote_section.html" %}
 
   {% if proposal.is_open and options_data %}

@@ -280,6 +280,16 @@ def account_home(request: HttpRequest) -> HttpResponse:
 
     from users.tour_service import build_tour_config
 
+    unread_notifications = 0
+    try:
+        from users.models import UserNotification
+
+        unread_notifications = UserNotification.objects.filter(
+            user=request.user, read_at__isnull=True
+        ).count()
+    except Exception:
+        unread_notifications = 0
+
     roles = get_user_roles(request.user)
     tour_cfg = build_tour_config(request)
     context = {
@@ -288,6 +298,7 @@ def account_home(request: HttpRequest) -> HttpResponse:
         "can_members": user_can_access_member_area(request.user),
         "staff_notify_form": staff_notify_form,
         "dismissed_leads": dismissed_page_leads_for_account(request.user),
+        "unread_notifications": unread_notifications,
         "can_replay_musician_tour": bool(
             tour_cfg and tour_cfg.get("can_replay", {}).get("musician")
         ),
@@ -421,3 +432,79 @@ def member_area(request: HttpRequest) -> HttpResponse:
         messages.error(request, "Espace réservé aux adhérents.")
         return redirect("account_home")
     return render(request, "users/member_area.html")
+
+
+@login_required
+def account_notifications(request: HttpRequest) -> HttpResponse:
+    """Inbox des notifications de l’utilisateur connecté."""
+    from users.models import UserNotification
+
+    qs = UserNotification.objects.filter(user=request.user)
+    unread = qs.filter(read_at__isnull=True)
+    unanswered = qs.filter(requires_response=True, responded_at__isnull=True)
+    return render(
+        request,
+        "users/notifications.html",
+        {
+            "notifications": qs[:100],
+            "unread_count": unread.count(),
+            "unanswered_count": unanswered.count(),
+        },
+    )
+
+
+@login_required
+@require_POST
+def account_notification_mark_read(request: HttpRequest, pk: int) -> HttpResponse:
+    from users.models import UserNotification
+
+    notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    notif.mark_read()
+    messages.success(request, "Notification marquée comme lue.")
+    return redirect("account_notifications")
+
+
+@login_required
+@require_POST
+def account_notification_mark_responded(request: HttpRequest, pk: int) -> HttpResponse:
+    from users.models import UserNotification
+
+    notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    if notif.mark_responded():
+        messages.success(request, "Notification marquée comme répondue.")
+    else:
+        messages.info(request, "Cette notification n’attend pas de réponse.")
+    return redirect("account_notifications")
+
+
+@login_required
+@require_POST
+def account_notifications_mark_all_read(request: HttpRequest) -> HttpResponse:
+    from django.utils import timezone
+
+    from users.models import UserNotification
+
+    n = UserNotification.objects.filter(
+        user=request.user, read_at__isnull=True
+    ).update(read_at=timezone.now())
+    if n:
+        messages.success(
+            request,
+            f"{n} notification{'s' if n != 1 else ''} marquée{'s' if n != 1 else ''} comme lue{'s' if n != 1 else ''}.",
+        )
+    else:
+        messages.info(request, "Aucune notification non lue.")
+    return redirect("account_notifications")
+
+
+@login_required
+def account_notification_open(request: HttpRequest, pk: int) -> HttpResponse:
+    """Marque comme lue puis redirige vers le lien de la notification."""
+    from users.models import UserNotification
+
+    notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    notif.mark_read()
+    target = (notif.url or "").strip()
+    if target.startswith("/") and not target.startswith("//"):
+        return redirect(target)
+    return redirect("account_notifications")

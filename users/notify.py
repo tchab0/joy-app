@@ -1,4 +1,4 @@
-"""Notifications métier : Web Push en priorité, e-mail en secours."""
+"""Notifications métier : inbox in-app + Web Push en priorité, e-mail en secours."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ from collections.abc import Iterable
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import OperationalError, ProgrammingError
+from django.db.models import Q
+from django.utils import timezone
 
 from users.webpush import send_web_push, vapid_configured
 
@@ -19,9 +22,16 @@ def notify_users(
     title: str,
     body: str,
     url: str = "",
+    requires_response: bool = False,
+    related_type: str = "",
+    related_id: int | None = None,
 ) -> int:
     """
-    Notifie chaque utilisateur : push si abonnement actif, sinon e-mail.
+    Notifie chaque utilisateur : enregistre une notification in-app, puis
+    push si abonnement actif, sinon e-mail.
+
+    ``requires_response`` : invitation / sondage / relance (statut « non répondu »
+    distinct de « non lu »).
 
     Retourne le nombre d’utilisateurs notifiés (push ou e-mail).
     Les échecs sont logués, jamais levés.
@@ -34,9 +44,11 @@ def notify_users(
     site = getattr(settings, "SITE_URL", "https://jazz-orchestra-yonnais.fr").rstrip(
         "/"
     )
-    absolute_url = url
-    if url and url.startswith("/"):
-        absolute_url = f"{site}{url}"
+    # Chemin relatif pour l’inbox ; URL absolue pour push / e-mail.
+    relative_url = url or ""
+    absolute_url = relative_url
+    if relative_url.startswith("/"):
+        absolute_url = f"{site}{relative_url}"
 
     sent = 0
     seen: set[int] = set()
@@ -48,11 +60,100 @@ def notify_users(
             continue
         seen.add(uid)
         try:
+            _persist_inbox(
+                user,
+                title=title,
+                body=body,
+                url=relative_url,
+                requires_response=requires_response,
+                related_type=related_type,
+                related_id=related_id,
+            )
             if _notify_one(user, title=title, body=body, url=absolute_url):
                 sent += 1
         except Exception:
             logger.exception("Échec notif user_id=%s", uid)
     return sent
+
+
+def mark_notifications_responded(
+    user,
+    *,
+    related_type: str = "",
+    related_id: int | None = None,
+    related_any: list[tuple[str, int]] | None = None,
+) -> int:
+    """
+    Marque comme répondues les notifications actionnables liées à un objet.
+
+    ``related_any`` : liste de couples (type, id) en plus / à la place.
+    """
+    try:
+        from users.models import UserNotification
+    except Exception:
+        return 0
+
+    pairs: list[tuple[str, int]] = []
+    if related_type and related_id:
+        pairs.append((related_type, int(related_id)))
+    if related_any:
+        for t, i in related_any:
+            if t and i:
+                pairs.append((t, int(i)))
+    if not pairs:
+        return 0
+
+    q = Q()
+    for t, i in pairs:
+        q |= Q(related_type=t, related_id=i)
+
+    try:
+        return (
+            UserNotification.objects.filter(
+                user=user,
+                requires_response=True,
+                responded_at__isnull=True,
+            )
+            .filter(q)
+            .update(responded_at=timezone.now())
+        )
+    except (ProgrammingError, OperationalError):
+        logger.warning(
+            "mark_notifications_responded indisponible (migration ?) user_id=%s",
+            getattr(user, "pk", None),
+        )
+        return 0
+
+
+def _persist_inbox(
+    user,
+    *,
+    title: str,
+    body: str,
+    url: str,
+    requires_response: bool = False,
+    related_type: str = "",
+    related_id: int | None = None,
+) -> None:
+    """Crée la notification in-app ; tolère un schéma pas encore migré."""
+    try:
+        from users.models import UserNotification
+
+        UserNotification.objects.create(
+            user=user,
+            title=title[:200],
+            body=body,
+            url=(url or "")[:500],
+            requires_response=bool(requires_response),
+            related_type=(related_type or "")[:20],
+            related_id=related_id,
+        )
+    except (ProgrammingError, OperationalError):
+        logger.warning(
+            "Inbox notifications indisponible (migration manquante ?) — "
+            "user_id=%s",
+            getattr(user, "pk", None),
+        )
 
 
 def _notify_one(user, *, title: str, body: str, url: str) -> bool:

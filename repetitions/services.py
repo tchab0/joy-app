@@ -299,6 +299,9 @@ def notify_substitute_for_absence(
         title="JOY — Remplacement répé",
         body=body,
         url=url,
+        requires_response=True,
+        related_type="participation",
+        related_id=participation.pk,
     )
 
 

@@ -71,6 +71,11 @@ urlpatterns = [
         name="launch_poll",
     ),
     path(
+        "admin/polls/<int:pk>/renvoyer-notifications/",
+        views.ResendPollNotificationsView.as_view(),
+        name="resend_poll_notifications",
+    ),
+    path(
         "admin/polls/<int:pk>/lock/",
         views.LockPollView.as_view(),
         name="lock_poll",

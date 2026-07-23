@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import AuthChallenge, ProductTour, ProductTourStep, PushSubscription, User
+from .models import (
+    AuthChallenge,
+    ProductTour,
+    ProductTourStep,
+    PushSubscription,
+    User,
+    UserNotification,
+)
 from .roles import sync_user_groups
 
 
@@ -60,6 +67,32 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
     @admin.display(description="Endpoint")
     def endpoint_short(self, obj):
         return (obj.endpoint or "")[:64]
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "user",
+        "created_at",
+        "read_at",
+        "requires_response",
+        "responded_at",
+        "is_unread_display",
+        "is_unanswered_display",
+    )
+    list_filter = ("requires_response", "created_at", "read_at", "responded_at")
+    search_fields = ("title", "body", "user__username", "user__email")
+    raw_id_fields = ("user",)
+    readonly_fields = ("created_at",)
+
+    @admin.display(description="Non lue", boolean=True)
+    def is_unread_display(self, obj):
+        return obj.is_unread
+
+    @admin.display(description="Non répondue", boolean=True)
+    def is_unanswered_display(self, obj):
+        return obj.is_unanswered
 
 
 @admin.register(User)

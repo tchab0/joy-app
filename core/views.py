@@ -7,6 +7,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
 from django.db.models import Count, Exists, OuterRef
+from django.urls import reverse
 import logging
 import threading
 
@@ -463,6 +464,58 @@ def admin_contact_delete(request, pk):
     if request.method == "POST":
         ContactMessage.objects.filter(pk=pk).delete()
     return redirect("admin_contact")
+
+
+@staff_member_required
+def admin_notifications(request):
+    """Notifications aux musiciens : non lues et/ou non répondues."""
+    from django.db.models import Q
+
+    from users.models import UserNotification
+
+    filtre = request.GET.get("filtre", "en-attente")
+    base = UserNotification.objects.filter(user__is_musician=True).select_related(
+        "user"
+    )
+    unread_q = Q(read_at__isnull=True)
+    unanswered_q = Q(requires_response=True, responded_at__isnull=True)
+
+    if filtre == "non-lues":
+        qs = base.filter(unread_q)
+    elif filtre == "non-repondues":
+        qs = base.filter(unanswered_q)
+    elif filtre == "toutes":
+        qs = base
+    else:
+        filtre = "en-attente"
+        qs = base.filter(unread_q | unanswered_q)
+
+    qs = qs.order_by("-created_at")
+    return render(
+        request,
+        "core/admin_notifications.html",
+        {
+            "notifications": qs[:200],
+            "total": qs.count(),
+            "filtre_actif": filtre,
+            "count_unread": base.filter(unread_q).count(),
+            "count_unanswered": base.filter(unanswered_q).count(),
+            "count_pending": base.filter(unread_q | unanswered_q).count(),
+        },
+    )
+
+
+@staff_member_required
+def admin_notification_delete(request, pk):
+    from users.models import UserNotification
+
+    if request.method == "POST":
+        UserNotification.objects.filter(pk=pk).delete()
+        messages.success(request, "Notification supprimée.")
+    next_filtre = request.POST.get("filtre") or request.GET.get("filtre") or ""
+    if next_filtre:
+        return redirect(f"{reverse('admin_notifications')}?filtre={next_filtre}")
+    return redirect("admin_notifications")
 
 
 def media_vote(request, pk):

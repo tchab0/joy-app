@@ -217,5 +217,94 @@ class PushSubscription(models.Model):
         return f"PushSubscription({self.user_id}, {self.endpoint[:48]}…)"
 
 
+class UserNotification(models.Model):
+    """Notification in-app (historique + non-lu / non-répondu), en plus du push / e-mail."""
+
+    class RelatedType(models.TextChoices):
+        EVENT = "event", "Événement"
+        PARTICIPATION = "participation", "Participation"
+        PROPOSAL = "proposal", "Sondage"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        verbose_name="Destinataire",
+    )
+    title = models.CharField("Titre", max_length=200)
+    body = models.TextField("Message")
+    url = models.CharField(
+        "Lien",
+        max_length=500,
+        blank=True,
+        help_text="Chemin relatif ou URL absolue (ex. /planning/).",
+    )
+    created_at = models.DateTimeField("Créée le", auto_now_add=True, db_index=True)
+    read_at = models.DateTimeField("Lue le", null=True, blank=True, db_index=True)
+    requires_response = models.BooleanField(
+        "Attend une réponse",
+        default=False,
+        db_index=True,
+        help_text="Invitation, sondage, relance… — distinct de la lecture.",
+    )
+    responded_at = models.DateTimeField(
+        "Répondue le",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    related_type = models.CharField(
+        "Objet lié",
+        max_length=20,
+        blank=True,
+        choices=RelatedType.choices,
+        help_text="Pour marquer « répondue » quand le musicien agit.",
+    )
+    related_id = models.PositiveIntegerField(
+        "ID objet lié",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "notification"
+        verbose_name_plural = "notifications"
+        indexes = [
+            models.Index(fields=["user", "read_at", "-created_at"]),
+            models.Index(
+                fields=["requires_response", "responded_at", "-created_at"]
+            ),
+            models.Index(fields=["related_type", "related_id", "user"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.title} → {self.user_id}"
+
+    @property
+    def is_unread(self) -> bool:
+        return self.read_at is None
+
+    @property
+    def is_unanswered(self) -> bool:
+        return self.requires_response and self.responded_at is None
+
+    def mark_read(self) -> bool:
+        """Marque comme lue. Retourne True si un changement a été fait."""
+        if self.read_at is not None:
+            return False
+        self.read_at = timezone.now()
+        self.save(update_fields=["read_at"])
+        return True
+
+    def mark_responded(self) -> bool:
+        """Marque comme répondue. Retourne True si un changement a été fait."""
+        if not self.requires_response or self.responded_at is not None:
+            return False
+        self.responded_at = timezone.now()
+        self.save(update_fields=["responded_at"])
+        return True
+
+
 # Guides coach marks (éditables en admin) — importés pour découverte Django.
 from .tour_models import ProductTour, ProductTourStep  # noqa: E402, F401

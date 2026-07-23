@@ -325,6 +325,20 @@ def set_participation_response(
         notify_staff_presence_invalidated(
             participation, old_code=old_code, new_code=new_code
         )
+    try:
+        from users.notify import mark_notifications_responded
+
+        mark_notifications_responded(
+            participation.user,
+            related_any=[
+                ("participation", participation.pk),
+                ("event", participation.event_id),
+            ],
+        )
+    except Exception:
+        logger.exception(
+            "Échec mark responded participation_id=%s", participation.pk
+        )
     return participation
 
 
@@ -350,6 +364,9 @@ def notify_maybe_remind(participation: EventParticipation) -> int:
             title="JOY — Relance disponibilité",
             body=body,
             url=url,
+            requires_response=True,
+            related_type="participation",
+            related_id=participation.pk,
         )
     except Exception:
         logger.exception(
@@ -674,6 +691,9 @@ def notify_event_invite(event, users) -> int:
         title="JOY — Invitation",
         body=body,
         url="/chat/",
+        requires_response=True,
+        related_type="event",
+        related_id=event.pk,
     )
 
 
@@ -835,11 +855,59 @@ def propose_event(
     return event, proposal
 
 
+def poll_notification_recipients(proposal: DateProposal) -> list:
+    """
+    Musiciens concernés par un sondage : membres actifs du salon
+    + participations événement (sans exclure le lanceur).
+    """
+    event = proposal.linked_event
+    if event is None:
+        return []
+    from chat.models import ChatMembership
+    from chat.services import ensure_event_room
+
+    room = ensure_event_room(event)
+    member_ids = ChatMembership.objects.filter(
+        room=room,
+        left_at__isnull=True,
+        user__is_musician=True,
+        user__is_active=True,
+    ).values_list("user_id", flat=True)
+    recipients = list(User.objects.filter(pk__in=member_ids))
+    part_users = list(
+        User.objects.filter(
+            event_participations__event=event,
+            is_musician=True,
+            is_active=True,
+        ).distinct()
+    )
+    by_id = {u.pk: u for u in recipients + part_users}
+    return list(by_id.values())
+
+
+def notify_availability_poll(proposal: DateProposal) -> int:
+    """Envoie (ou renvoie) les notifications de sondage aux destinataires."""
+    users = poll_notification_recipients(proposal)
+    poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
+    return notify_users(
+        users,
+        title="JOY — Sondage disponibilité",
+        body=(
+            f"Sondage dispo : « {proposal.title} ». "
+            f"Répondez dans le planning / salon."
+        ),
+        url=poll_path,
+        requires_response=True,
+        related_type="proposal",
+        related_id=proposal.pk,
+    )
+
+
 @transaction.atomic
 def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProposal:
     """
     Autorise / lance le sondage : statut OPEN, message mis en évidence dans
-    le salon, alerte (push ou e-mail) aux musiciens déjà invités au salon.
+    le salon, alerte (push ou e-mail) aux musiciens du salon / roster.
     """
     if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
         raise ValueError("Sondage déjà lancé")
@@ -862,7 +930,7 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
     poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
 
     if event is not None:
-        from chat.models import ChatMembership, ChatMessage
+        from chat.models import ChatMessage
         from chat.services import ensure_event_room, post_message
 
         room = ensure_event_room(event)
@@ -879,33 +947,7 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
             kind=ChatMessage.Kind.POLL_LAUNCH,
             related_proposal=proposal,
         )
-
-        member_ids = ChatMembership.objects.filter(
-            room=room,
-            left_at__isnull=True,
-            user__is_musician=True,
-            user__is_active=True,
-        ).values_list("user_id", flat=True)
-        recipients = list(User.objects.filter(pk__in=member_ids))
-        part_users = list(
-            User.objects.filter(
-                event_participations__event=event,
-                is_musician=True,
-                is_active=True,
-            ).distinct()
-        )
-        by_id = {u.pk: u for u in recipients + part_users}
-        if launched_by:
-            by_id.pop(launched_by.pk, None)
-        notify_users(
-            by_id.values(),
-            title="JOY — Sondage disponibilité",
-            body=(
-                f"Sondage dispo : « {proposal.title} ». "
-                f"Répondez dans le planning / salon."
-            ),
-            url=poll_path,
-        )
+        notify_availability_poll(proposal)
 
     return proposal
 
@@ -1402,6 +1444,20 @@ def cast_date_vote(option: DateOption, user, choice: str) -> DateVote:
         user=user,
         defaults={"choice": choice},
     )
+    try:
+        from users.notify import mark_notifications_responded
+
+        mark_notifications_responded(
+            user,
+            related_type="proposal",
+            related_id=proposal.pk,
+        )
+    except Exception:
+        logger.exception(
+            "Échec mark responded proposal_id=%s user_id=%s",
+            proposal.pk,
+            getattr(user, "pk", None),
+        )
     return vote
 
 

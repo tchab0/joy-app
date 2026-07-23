@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Mes notifications — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .notif-page { max-width: 720px; }
+  .notif-toolbar {
+    display:flex; flex-wrap:wrap; gap:.75rem; align-items:center;
+    justify-content:space-between; margin-bottom:1.25rem;
+  }
+  .notif-toolbar .btn { min-height:44px; }
+  .notif-counts { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .notif-list { display:flex; flex-direction:column; gap:.85rem; }
+  .notif-item {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+    padding:1rem 1.1rem; color:var(--text);
+  }
+  .notif-item.is-unread {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .notif-item.is-unanswered {
+    border-color: color-mix(in srgb, var(--gold-text) 40%, var(--border));
+  }
+  .notif-item__meta { color:var(--muted); font-size:.88rem; margin-bottom:.35rem; }
+  .notif-item h2 {
+    font-family:var(--font-d); font-size:1.1rem; margin:0 0 .35rem; color:var(--text);
+  }
+  .notif-item__body { margin:0; white-space:pre-wrap; font-size:.95rem; }
+  .notif-item__actions {
+    display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.85rem;
+  }
+  .notif-item__actions .btn { min-height:44px; padding:.5rem .9rem; font-size:.88rem; }
+  .empty-state {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+    padding:1.5rem; color:var(--muted);
+  }
+  .badge-stat {
+    display:inline-flex; align-items:center; min-height:44px; padding:.45rem .8rem;
+    border-radius:var(--r); background:var(--bg); border:1px solid var(--border);
+    color:var(--text); font-size:.9rem;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container notif-page">
+    <h1 class="section-title">Mes notifications</h1>
+    <div class="notif-toolbar">
+      <div class="notif-counts">
+        <span class="badge-stat">{{ unread_count }} non lue{{ unread_count|pluralize }}</span>
+        <span class="badge-stat">{{ unanswered_count }} non répondue{{ unanswered_count|pluralize }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+        {% if unread_count %}
+        <form method="post" action="{% url 'account_notifications_mark_all_read' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline">Tout marquer lu</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-outline" href="{% url 'account_home' %}">Mon compte</a>
+      </div>
+    </div>
+
+    {% if notifications %}
+      <div class="notif-list">
+        {% for item in notifications %}
+          <article class="notif-item {% if item.is_unread %}is-unread{% elif item.is_unanswered %}is-unanswered{% endif %}">
+            <p class="notif-item__meta">
+              {{ item.created_at|date:"d/m/Y H:i" }}
+              · {% if item.is_unread %}Non lue{% else %}Lue{% endif %}
+              {% if item.requires_response %}
+                · {% if item.is_unanswered %}Non répondue{% else %}Répondue{% endif %}
+              {% endif %}
+            </p>
+            <h2>{{ item.title }}</h2>
+            <p class="notif-item__body">{{ item.body }}</p>
+            <div class="notif-item__actions">
+              {% if item.url %}
+                <a class="btn" href="{% url 'account_notification_open' item.pk %}">Ouvrir</a>
+              {% endif %}
+              {% if item.is_unread %}
+              <form method="post" action="{% url 'account_notification_mark_read' item.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline">Marquer lue</button>
+              </form>
+              {% endif %}
+              {% if item.is_unanswered %}
+              <form method="post" action="{% url 'account_notification_mark_responded' item.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline">Marquer répondue</button>
+              </form>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">Aucune notification pour le moment.</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

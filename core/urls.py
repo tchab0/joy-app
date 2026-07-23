@@ -15,6 +15,16 @@ urlpatterns = [
     path("admin-medias/", views.admin_medias, name="admin_medias"),
     path("admin-contact/", views.admin_contact, name="admin_contact"),
     path("admin-contact/<int:pk>/supprimer/", views.admin_contact_delete, name="admin_contact_delete"),
+    path(
+        "admin-notifications/",
+        views.admin_notifications,
+        name="admin_notifications",
+    ),
+    path(
+        "admin-notifications/<int:pk>/supprimer/",
+        views.admin_notification_delete,
+        name="admin_notification_delete",
+    ),
     path("admin-medias/<int:pk>/action/", views.admin_media_action, name="admin_media_action"),
     path("admin-medias/<int:pk>/editer/", views.admin_media_edit, name="admin_media_edit"),
     path('admin-concerts/', views.admin_concerts, name='admin_concerts'),
