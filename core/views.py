@@ -6,7 +6,6 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
-from django.views.decorators.cache import cache_page
 from django.db.models import Count, Exists, OuterRef
 import logging
 import threading
@@ -14,6 +13,7 @@ import threading
 from events.models import Event, Venue, EventType
 from events.forms import EventForm, VenueForm
 from events.weather import attach_weather
+from .cache_utils import cache_page_anonymous
 from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage
 from .forms import MediaSoumissionForm, ContactForm, PrestationForm
 from .forms import EXTENSIONS_AUTORISEES
@@ -63,7 +63,7 @@ def _public_events_qs():
     )
 
 
-@cache_page(settings.CACHE_TTL_HOME)
+@cache_page_anonymous(settings.CACHE_TTL_HOME)
 def home(request):
     qs = _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")[:3]
     prochains = []
@@ -96,7 +96,7 @@ def _add_bbox(qs):
     return result
 
 
-@cache_page(settings.CACHE_TTL_CONCERTS)
+@cache_page_anonymous(settings.CACHE_TTL_CONCERTS)
 def concerts(request):
     prochains = _add_bbox(
         _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")
@@ -117,7 +117,7 @@ def concerts(request):
     )
 
 
-@cache_page(settings.CACHE_TTL_CONCERTS)
+@cache_page_anonymous(settings.CACHE_TTL_CONCERTS)
 def concert_detail(request, slug):
     event = get_object_or_404(
         _public_events_qs(),
@@ -142,13 +142,13 @@ def concert_detail(request, slug):
     )
 
 
-@cache_page(settings.CACHE_TTL_GOODIES)
+@cache_page_anonymous(settings.CACHE_TTL_GOODIES)
 def goodies(request):
     lien = ExternalLink.objects.filter(slug="boutique-goodies", actif=True).first()
     return render(request, "core/goodies.html", {"lien": lien})
 
 
-@cache_page(settings.CACHE_TTL_ADHESION)
+@cache_page_anonymous(settings.CACHE_TTL_ADHESION)
 def mentions_legales(request):
     return render(
         request,
@@ -560,12 +560,12 @@ def admin_media_edit(request, pk):
     })
 
 
-@cache_page(settings.CACHE_TTL_DON)
+@cache_page_anonymous(settings.CACHE_TTL_DON)
 def don(request):
     return render(request, "core/don.html")
 
 
-@cache_page(settings.CACHE_TTL_ADHESION)
+@cache_page_anonymous(settings.CACHE_TTL_ADHESION)
 def adhesion(request):
     lien = ExternalLink.objects.filter(slug="adhesion-helloasso", actif=True).first()
     return render(request, "core/adhesion.html", {"lien": lien})

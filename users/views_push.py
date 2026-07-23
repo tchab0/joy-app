@@ -36,7 +36,7 @@ def web_manifest(request: HttpRequest) -> HttpResponse:
         "name": "Jazz Orchestra Yonnais",
         "short_name": "JOY",
         "description": "Planning, chat et alertes de l’orchestre",
-        "start_url": "/compte/",
+        "start_url": "/planning/",
         "scope": "/",
         "display": "standalone",
         "background_color": "#f5f2ec",

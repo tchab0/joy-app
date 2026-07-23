@@ -48,6 +48,8 @@ def _safe_next(request: HttpRequest) -> str:
     nxt = request.POST.get("next") or request.GET.get("next") or ""
     if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
+    if user_can_access_planning(request.user):
+        return reverse("planning:dashboard")
     return reverse("account_home")
 
 

@@ -94,7 +94,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 
 LOGIN_URL = "/compte/connexion/"
-LOGIN_REDIRECT_URL = "/compte/"
+LOGIN_REDIRECT_URL = "/planning/"
 LOGOUT_REDIRECT_URL = "/"
 
 # Auth OTP (canal téléphone via backend configurable)

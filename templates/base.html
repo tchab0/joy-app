@@ -288,7 +288,9 @@
       <li><a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' %}class="active"{% endif %}>Accueil</a></li>
       <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
+      {% if not show_musician_nav %}
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
+      {% endif %}
       {% if show_musician_nav %}
       <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-coulisses" {% if request.resolver_match.namespace == 'planning' or request.resolver_match.namespace == 'repertoire' or request.resolver_match.namespace == 'repetitions' %}class="active"{% endif %}>Coulisses</a></li>
       <li><a href="{% url 'chat:list' %}" data-tour="nav-chat" {% if request.resolver_match and request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Chat</a></li>
