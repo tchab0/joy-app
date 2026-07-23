@@ -16,6 +16,17 @@
     text-align: center;
     animation: hero-in .6s ease forwards;
   }
+  .hero-title {
+    font-family: var(--font-d);
+    font-style: italic;
+    font-size: clamp(2.25rem, 6vw, 4.5rem);
+    line-height: 1.1;
+    margin: 0 0 .65rem;
+    color: #fff;
+  }
+  .hero-title span {
+    color: var(--accent);
+  }
   .hero-tag {
     font-size: .75rem;
     letter-spacing: .15em;
@@ -270,6 +281,7 @@
 
 <section class="hero">
   <div class="container">
+    <h1 class="hero-title"><span>J.O.Y</span><br>Jazz Orchestra Yonnais</h1>
     <p class="hero-tag">Big Band · La Roche-sur-Yon</p>
     <div class="hero-photo">
       <img src="{% static 'core/Joy-Cyel-home.jpg' %}"
@@ -279,9 +291,9 @@
            loading="eager"
            decoding="async">
     </div>
-    <h1 class="hero-sub">
+    <p class="hero-sub">
       Un Big Band associatif qui fait vibrer la Vendée au rythme du jazz et du swing.
-    </h1>
+    </p>
     <div class="hero-video" data-yt-embed="https://www.youtube-nocookie.com/embed/49LYaGwuXZc?rel=0">
       <button type="button" class="hero-video__facade" aria-label="Lire la vidéo Jazz Orchestra Yonnais">
         <img
