@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% load page_lead %}
+{% load page_lead static %}
 
 {% block title %}Planning {{ range_label }} — JOY{% endblock %}
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 {% endblock %}
 
 {% block content %}
@@ -92,6 +93,7 @@
                   <p class="pl-cal-tip__title">{{ event.titre }}</p>
                   <p class="pl-cal-tip__line">{{ s.date_label }} · {{ s.time_label }}</p>
                   {% if s.lieu %}<p class="pl-cal-tip__line">{{ s.lieu }}</p>{% endif %}
+                  {% if not s.is_poll_option %}
                   <p class="pl-cal-tip__line">
                     Présents : {{ s.n_presents }}
                     <span>({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)</span>
@@ -104,6 +106,21 @@
                     Peut-être : {{ s.n_maybe }}
                     {% for mb in s.maybe_detail %}{% if not forloop.first %}, {% endif %}{{ mb.name }}{% if mb.remind_at %} (relance {{ mb.remind_at|date:"d/m" }}){% endif %}{% endfor %}
                   </p>
+                  {% endif %}
+                  {% endif %}
+                  {% if s.is_poll_option or s.has_open_poll %}
+                  <p class="pl-cal-tip__line">
+                    {% if s.poll_answered %}
+                      Sondage de dates — réponse enregistrée
+                    {% elif s.my_poll_vote_label %}
+                      Sondage de dates — {{ s.my_poll_vote_label }}
+                    {% else %}
+                      Sondage de dates — à répondre
+                    {% endif %}
+                  </p>
+                  {% if s.poll_vote_counts_label %}
+                  <p class="pl-cal-tip__line">{{ s.poll_vote_counts_label }}</p>
+                  {% endif %}
                   {% endif %}
                 </div>
                 {% endwith %}
@@ -128,7 +145,7 @@
             {% with s=event.cal_summary %}
             <article class="pl-day-events__card{% if s.is_confirmed %} is-confirmed{% endif %}{% if s.is_proposal %} is-proposal{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
                      x-show="eventVisible('{{ s.layer|default:'other' }}')">
-              <a class="pl-day-events__item" href="{% if s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
+              <a class="pl-day-events__item" href="{% if s.is_poll_option %}{% url 'planning:poll_detail' s.poll_id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
                 <strong>{{ event.titre }}</strong>
                 <span class="pl-day-events__type">
                   {{ s.kind_label }}{% if s.type_nom and s.type_nom != s.kind_label %} · {{ s.type_nom }}{% endif %}
@@ -143,6 +160,46 @@
                   <dt>Lieu</dt>
                   <dd>{% if s.lieu %}{{ s.lieu }}{% else %}—{% endif %}</dd>
                 </div>
+                {% if s.is_poll_option %}
+                <div>
+                  <dt>Statut</dt>
+                  <dd>
+                    {% if s.poll_answered %}
+                      {% if s.my_poll_vote_label %}Votre réponse : {{ s.my_poll_vote_label }}{% else %}Réponse enregistrée{% endif %}
+                    {% elif s.my_poll_vote_label %}
+                      Votre réponse : {{ s.my_poll_vote_label }} — sondage à compléter
+                    {% else %}
+                      Sondage ouvert — votez pour cette date
+                    {% endif %}
+                  </dd>
+                </div>
+                {% if s.poll_vote_counts_label %}
+                <div>
+                  <dt>Votes</dt>
+                  <dd>{{ s.poll_vote_counts_label }}</dd>
+                </div>
+                {% endif %}
+                {% else %}
+                {% if s.has_open_poll %}
+                <div>
+                  <dt>Sondage</dt>
+                  <dd>
+                    {% if s.poll_answered %}
+                      {% if s.my_poll_vote_label %}Votre réponse : {{ s.my_poll_vote_label }}{% else %}Réponse enregistrée{% endif %}
+                    {% elif s.my_poll_vote_label %}
+                      Votre réponse : {{ s.my_poll_vote_label }} — sondage à compléter
+                    {% else %}
+                      Sondage ouvert — votez pour cette date
+                    {% endif %}
+                  </dd>
+                </div>
+                {% if s.poll_vote_counts_label %}
+                <div>
+                  <dt>Votes</dt>
+                  <dd>{{ s.poll_vote_counts_label }}</dd>
+                </div>
+                {% endif %}
+                {% endif %}
                 {% if event.weather %}
                 <div>
                   <dt>Météo</dt>
@@ -214,7 +271,9 @@
                     {% endif %}
                   </dd>
                 </div>
+                {% endif %}
               </dl>
+              {% if not s.is_poll_option %}
               {% if event.cal_chat %}
               <a class="pl-day-events__salon" href="{% url 'chat:room' event.cal_chat.room_id %}">
                 <span>Salon « {{ event.titre }} »</span>
@@ -233,6 +292,68 @@
                 <span>Setlist</span>
                 <span>Créer</span>
               </a>
+              {% endif %}
+              {% if s.has_open_poll %}
+              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+                {% if s.poll_answered %}
+                <span>Votre vote est enregistré</span>
+                <span>Voir / modifier</span>
+                {% elif s.my_poll_vote_label %}
+                <span>Réponse : {{ s.my_poll_vote_label }}</span>
+                <span>Compléter</span>
+                {% else %}
+                <span>Répondre au sondage</span>
+                <span>Voter</span>
+                {% endif %}
+              </a>
+              {% if is_planning_staff and s.can_confirm_event and s.option_id %}
+              <form class="pl-day-events__confirm" method="post"
+                    action="{% url 'planning:lock_poll' s.poll_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="option_id" value="{{ s.option_id }}">
+                <input type="hidden" name="next"
+                       value="{% url 'planning:dashboard' %}?year={{ calendar_year }}&day={{ day.iso }}">
+                <button type="submit" class="pl-btn pl-btn--primary" style="width:100%;min-height:44px">
+                  Confirmer cette date
+                </button>
+              </form>
+              {% elif is_planning_staff and s.poll_id %}
+              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+                <span>Sondage ouvert</span>
+                <span>Confirmer l’événement</span>
+              </a>
+              {% endif %}
+              {% endif %}
+              {% else %}
+              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+                {% if s.poll_answered %}
+                <span>Votre vote est enregistré</span>
+                <span>Voir / modifier</span>
+                {% elif s.my_poll_vote_label %}
+                <span>Réponse : {{ s.my_poll_vote_label }}</span>
+                <span>Modifier</span>
+                {% else %}
+                <span>Répondre au sondage</span>
+                <span>Voter</span>
+                {% endif %}
+              </a>
+              {% if is_planning_staff and s.can_confirm_event and s.option_id %}
+              <form class="pl-day-events__confirm" method="post"
+                    action="{% url 'planning:lock_poll' s.poll_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="option_id" value="{{ s.option_id }}">
+                <input type="hidden" name="next"
+                       value="{% url 'planning:dashboard' %}?year={{ calendar_year }}&day={{ day.iso }}">
+                <button type="submit" class="pl-btn pl-btn--primary" style="width:100%;min-height:44px">
+                  Confirmer cette date
+                </button>
+              </form>
+              {% elif is_planning_staff %}
+              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+                <span>Sondage ouvert</span>
+                <span>Confirmer l’événement</span>
+              </a>
+              {% endif %}
               {% endif %}
             </article>
             {% endwith %}
@@ -322,12 +443,7 @@
           </div>
         </div>
         {% include "planning/_venue_parent_fields.html" with id_prefix="ev" show_parent=is_planning_staff %}
-        {% if is_planning_staff %}
-        <div>
-          <label for="ev_organisme">Organisme organisateur</label>
-          <input type="text" name="organisme" id="ev_organisme" placeholder="ex. Mairie, festival…">
-        </div>
-        {% endif %}
+        {% include "planning/_organisme_field.html" with id_prefix="ev" %}
         <div>
           <label for="ev_desc">Description</label>
           <textarea name="description" id="ev_desc" rows="2"></textarea>
@@ -350,11 +466,20 @@
             </div>
           </div>
         </div>
-        {% endif %}
+        <label class="pl-check" for="ev_launch_poll">
+          <input type="checkbox" name="launch_poll" id="ev_launch_poll" value="1">
+          <span>Autoriser et envoyer le sondage de disponibilité maintenant</span>
+        </label>
+        <p class="pl-row__meta" style="margin:0">
+          Un salon réservé au staff sera créé.
+          Sans case cochée, le sondage reste en brouillon jusqu’à lancement manuel.
+        </p>
+        {% else %}
         <p class="pl-row__meta" style="margin:0">
           Un salon réservé au staff sera créé. Le sondage de disponibilité
           devra être lancé par un membre du staff.
         </p>
+        {% endif %}
         <button type="submit" class="pl-btn pl-btn--primary">Proposer l’événement</button>
       </form>
     </div>
@@ -554,4 +679,10 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
   };
 }
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'planning/venue_map.js' %}"></script>
+<script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endblock %}

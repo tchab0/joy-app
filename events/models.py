@@ -18,6 +18,23 @@ class Venue(models.Model):
     def __str__(self):
         return f"{self.nom} — {self.ville}"
 
+    @property
+    def has_coords(self) -> bool:
+        return self.latitude is not None and self.longitude is not None
+
+
+class Organisme(models.Model):
+    """Organisateur mémorisé (mairie, festival, association…) pour saisie typeahead."""
+
+    nom = models.CharField(max_length=200, unique=True)
+
+    class Meta:
+        verbose_name = "Organisme"
+        ordering = ["nom"]
+
+    def __str__(self):
+        return self.nom
+
 
 class EventType(models.Model):
     nom = models.CharField(max_length=100)

@@ -10,6 +10,10 @@
     {% if item.option.label %}
     <p class="pl-row__meta" style="margin:0 0 .75rem">{{ item.option.label }}</p>
     {% endif %}
+    {% if not proposal.is_draft %}
+    <p class="pl-option__counts"
+       x-text="countsLabel({{ item.option.pk }})">{{ item.counts_label }}</p>
+    {% endif %}
     {% if proposal.is_open %}
     <div class="pl-row__actions pl-accept__actions">
       <button type="button" class="pl-btn pl-btn--yes"

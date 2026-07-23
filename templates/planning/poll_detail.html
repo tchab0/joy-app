@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ proposal.title }} — Sondage JOY{% endblock %}
 
@@ -6,6 +7,9 @@
 {% include "planning/_styles.html" %}
 {% if room %}
 {% include "chat/_room_styles.html" %}
+{% endif %}
+{% if needs_event_create %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 {% endif %}
 {% endblock %}
 
@@ -17,6 +21,11 @@
        choices: {
          {% for item in options_data %}
          {{ item.option.pk }}: '{{ item.my_vote|default:'' }}'{% if not forloop.last %},{% endif %}
+         {% endfor %}
+       },
+       counts: {
+         {% for item in options_data %}
+         {{ item.option.pk }}: {{ item.counts_json }}{% if not forloop.last %},{% endif %}
          {% endfor %}
        },
        urls: {
@@ -58,6 +67,76 @@
 
   {% include "planning/_poll_vote_section.html" %}
 
+  {% if proposal.is_open and options_data %}
+  <p class="pl-row__meta" style="margin:.5rem 0 0"
+     x-show="allAnswered()" x-cloak>
+    Votre réponse est enregistrée — vous pouvez encore la modifier.
+  </p>
+  {% endif %}
+
+  {% if is_planning_staff and proposal.is_open and options_data %}
+  <section class="pl-section pl-accept__staff pl-section--pending"
+           aria-label="Confirmer l’événement"
+           {% if needs_event_create %}x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '' }"{% endif %}>
+    <h2 style="margin-top:0;color:var(--accent)">Confirmer l’événement</h2>
+    <p class="pl-row__meta" style="margin-bottom:1rem">
+      {% if event %}
+      Après le sondage, retenez une date : l’événement passe en
+      <strong style="color:var(--ok)">confirmé</strong>
+      et le sondage est clôturé.
+      {% else %}
+      Ce sondage n’a pas encore d’événement. Choisissez la date, le type et le lieu
+      pour créer l’événement en
+      <strong style="color:var(--ok)">confirmé</strong>
+      et clôturer le sondage.
+      {% endif %}
+    </p>
+    {% if needs_event_create %}
+    <form class="pl-form pl-confirm-poll" method="post" action="{% url 'planning:lock_poll' proposal.pk %}">
+      {% csrf_token %}
+      {% with opts=proposal.options.all %}
+      {% if opts|length == 1 %}
+      <input type="hidden" name="option_id" value="{{ opts.0.pk }}">
+      <p class="pl-row__meta" style="margin:0 0 .75rem">
+        Date retenue :
+        <strong style="color:var(--text)">
+          {{ opts.0.starts_at|date:"l j F Y · H:i" }}{% if opts.0.label %} — {{ opts.0.label }}{% endif %}
+        </strong>
+      </p>
+      {% else %}
+      <label for="poll_lock_option">Date à confirmer</label>
+      <select name="option_id" id="poll_lock_option" required>
+        <option value="">Choisir la date…</option>
+        {% for opt in opts %}
+        <option value="{{ opt.pk }}">
+          {{ opt.starts_at|date:"D d/m/Y H:i" }}{% if opt.label %} — {{ opt.label }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      {% endwith %}
+      <div>
+        <label for="poll_type">Type</label>
+        <select name="type_id" id="poll_type" required
+                @change="typeLabel = $event.target.selectedOptions[0]?.text || ''">
+          <option value="">Choisir…</option>
+          {% for t in event_types %}
+          <option value="{{ t.pk }}">{{ t.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% include "planning/_venue_parent_fields.html" with id_prefix="poll" show_parent=True %}
+      {% include "planning/_organisme_field.html" with id_prefix="poll" %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;width:100%">
+        Confirmer l’événement
+      </button>
+    </form>
+    {% else %}
+    {% include "planning/_confirm_poll_form.html" with proposal=proposal options=proposal.options.all id_prefix="poll" %}
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if room %}
   {% include "chat/_room_embed.html" %}
   {% endif %}
@@ -68,49 +147,13 @@
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
-<script>
-function pollVotes(cfg) {
-  cfg = cfg || {};
-  return {
-    open: !!cfg.open,
-    csrf: cfg.csrf || '',
-    choices: Object.assign({}, cfg.choices || {}),
-    urls: cfg.urls || {},
-    busy: {},
-    toast: '',
-    onToast(msg) {
-      this.toast = msg;
-      clearTimeout(this._toastTimer);
-      this._toastTimer = setTimeout(() => { this.toast = ''; }, 2200);
-    },
-    choiceOf(id) { return this.choices[id] || ''; },
-    isBusy(id) { return !!this.busy[id]; },
-    async vote(optionId, c) {
-      if (!this.open) return;
-      const url = this.urls[optionId];
-      if (!url) return;
-      this.busy[optionId] = true;
-      try {
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'X-CSRFToken': this.csrf,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ choice: c })
-        });
-        const d = await r.json();
-        if (d.ok) {
-          this.choices[optionId] = d.choice;
-          this.onToast('Réponse enregistrée');
-        } else {
-          this.onToast(d.error || 'Erreur');
-        }
-      } finally {
-        this.busy[optionId] = false;
-      }
-    }
-  };
-}
-</script>
+{% include "planning/_poll_votes_js.html" %}
+{% endblock %}
+
+{% block extra_js %}
+{% if needs_event_create %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'planning/venue_map.js' %}"></script>
+<script src="{% static 'planning/organisme_typeahead.js' %}"></script>
+{% endif %}
 {% endblock %}

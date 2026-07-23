@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from chat.models import ChatRoom
 from chat.services import post_message
-from events.models import Event, EventType, Venue
+from events.models import Event, EventType, Organisme, Venue
 from planning.models import (
     DateProposal,
     EquipmentItem,
@@ -204,6 +204,56 @@ class DashboardTests(PlanningBaseTestCase):
             EventParticipation.objects.filter(event=event).exists()
         )
 
+    def test_new_venue_saves_map_coordinates(self):
+        self.client.login(username="staff1", password="pass12345")
+        day = (timezone.localdate() + timedelta(days=22)).isoformat()
+        r = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "titre": "Concert avec carte",
+                "date": day,
+                "time": "20:00",
+                "venue_mode": "new",
+                "venue_nom": "Théâtre municipal",
+                "venue_ville": "La Roche-sur-Yon",
+                "venue_adresse": "Place du Théâtre",
+                "venue_latitude": "46.670123",
+                "venue_longitude": "-1.426789",
+                "type_id": self.event_type.pk,
+                "organisme": "Ville de La Roche-sur-Yon",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        venue = Venue.objects.get(nom="Théâtre municipal")
+        self.assertEqual(str(venue.latitude), "46.670123")
+        self.assertEqual(str(venue.longitude), "-1.426789")
+        event = Event.objects.get(titre="Concert avec carte")
+        self.assertEqual(event.organisme, "Ville de La Roche-sur-Yon")
+        self.assertTrue(
+            Organisme.objects.filter(nom="Ville de La Roche-sur-Yon").exists()
+        )
+
+    def test_existing_venue_can_update_coordinates(self):
+        self.client.login(username="staff1", password="pass12345")
+        day = (timezone.localdate() + timedelta(days=23)).isoformat()
+        r = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "titre": "Maj coords",
+                "date": day,
+                "time": "21:00",
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "venue_latitude": "46.671000",
+                "venue_longitude": "-1.427000",
+                "type_id": self.event_type.pk,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.venue.refresh_from_db()
+        self.assertEqual(str(self.venue.latitude), "46.671000")
+        self.assertEqual(str(self.venue.longitude), "-1.427000")
+
 
 class RespondTests(PlanningBaseTestCase):
     def test_respond_yes(self):
@@ -368,7 +418,8 @@ class PollTests(PlanningBaseTestCase):
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, DateProposal.Status.OPEN)
 
-        self.client.login(username="musi", password="pass12345")
+        # Poll sans événement lié : accès staff uniquement (CreatePollView).
+        self.client.login(username="staff1", password="pass12345")
         r = self.client.post(
             reverse("planning:vote_option", args=[option.pk]),
             data='{"choice":"yes"}',
@@ -393,12 +444,37 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
         self.assertIsNotNone(proposal.linked_event)
         event = proposal.linked_event
+        self.assertEqual(event.statut, Event.Statut.CONFIRME)
         # Verrouillage ne convoque plus automatiquement.
         self.assertFalse(
             EventParticipation.objects.filter(
                 event=event, user=self.musician
             ).exists()
         )
+
+    def test_poll_detail_shows_confirm_form_for_standalone_poll(self):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="sondage test",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=7),
+            label="Matinale",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Confirmer l’événement")
+        self.assertContains(r, "n’a pas encore d’événement")
+        self.assertContains(r, 'name="type_id"')
+        self.assertContains(r, 'name="venue_id"')
 
     def test_lock_linked_event_validates_date(self):
         """Sondage lié à un événement : option_id seul, pas de 2e Event."""
@@ -465,6 +541,86 @@ class PollTests(PlanningBaseTestCase):
         html = r.content.decode()
         self.assertEqual(html.count("@click=\"vote("), 6)  # 3 choices × 2 sections
         self.assertIn('aria-label="Dates proposées (bas de page)"', html)
+        self.assertContains(r, "Oui 0 · Non 0 · Peut-être 0")
+        self.assertContains(r, "pl-option__counts")
+
+    def test_poll_detail_shows_vote_counts_for_musician(self):
+        from planning.models import DateOption, DateVote
+        from planning.services import cast_date_vote, launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="Totaux visibles",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        option = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=11),
+            label="Date A",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        cast_date_vote(option, self.musician, DateVote.Choice.YES)
+        cast_date_vote(option, self.staff, DateVote.Choice.MAYBE)
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Oui 1 · Non 0 · Peut-être 1")
+
+    def test_poll_detail_shows_confirm_cta_for_staff(self):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        self.event.statut = Event.Statut.TENTATIVE
+        self.event.save(update_fields=["statut"])
+        proposal = DateProposal.objects.create(
+            title="À confirmer",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=14),
+            label="Samedi",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Confirmer l’événement")
+        self.assertContains(r, reverse("planning:lock_poll", args=[proposal.pk]))
+        # Musicien : pas le CTA staff
+        self.client.login(username="musi", password="pass12345")
+        r2 = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r2.status_code, 200)
+        self.assertNotContains(r2, "Après le sondage, retenez une date")
+
+    def test_roster_shows_confirm_cta_for_open_poll(self):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        self.event.statut = Event.Statut.TENTATIVE
+        self.event.save(update_fields=["statut"])
+        proposal = DateProposal.objects.create(
+            title="Roster confirm",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=15),
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Sondage ouvert — confirmer")
+        self.assertContains(r, "Confirmer l’événement")
 
     def test_launch_poll_redirects_to_poll_detail(self):
         from planning.models import DateOption
@@ -483,6 +639,276 @@ class PollTests(PlanningBaseTestCase):
         r = self.client.post(reverse("planning:launch_poll", args=[proposal.pk]))
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.url, reverse("planning:poll_detail", args=[proposal.pk]))
+
+
+class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
+    """Sondages lancés → propositions calendrier + CTA pending global."""
+
+    def _make_open_poll(self, *day_offsets, title="Dispo mars"):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title=title,
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        options = []
+        for i, days in enumerate(day_offsets):
+            options.append(
+                DateOption.objects.create(
+                    proposal=proposal,
+                    starts_at=timezone.now() + timedelta(days=days),
+                    label=f"Option {i + 1}",
+                    sort_order=i,
+                )
+            )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        proposal.refresh_from_db()
+        return proposal, options
+
+    def test_launched_poll_options_appear_as_calendar_proposals(self):
+        from datetime import datetime as dt_cls, time as time_cls
+
+        from planning.services import open_poll_calendar_markers_for_user
+
+        # Dates distinctes de l’événement lié (répétition confirmée).
+        proposal, options = self._make_open_poll(40, 47, title="Choix date bal")
+        opt_day = timezone.localtime(options[0].starts_at).date()
+
+        tz = timezone.get_current_timezone()
+        range_start = timezone.make_aware(
+            dt_cls.combine(opt_day.replace(day=1), time_cls.min), tz
+        )
+        range_end = timezone.now() + timedelta(days=120)
+
+        markers = open_poll_calendar_markers_for_user(
+            self.musician, range_start=range_start, range_end=range_end
+        )
+        self.assertEqual(len(markers), 2)
+        self.assertTrue(all(m.cal_summary["is_proposal"] for m in markers))
+        self.assertTrue(all(m.cal_summary["is_poll_option"] for m in markers))
+        self.assertEqual({m.proposal_id for m in markers}, {proposal.pk})
+
+        self.client.login(username="musi", password="pass12345")
+        today = timezone.localdate()
+        if opt_day.month >= today.month:
+            window_year = opt_day.year
+        else:
+            window_year = opt_day.year - 1
+        r = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "has-proposal")
+        self.assertContains(r, "Choix date bal")
+        self.assertContains(r, "Proposition")
+
+        # Musicien non invité : pas de marqueurs.
+        other = User.objects.create_user(
+            username="other_musi", password="pass12345", is_musician=True
+        )
+        markers_other = open_poll_calendar_markers_for_user(
+            other, range_start=range_start, range_end=range_end
+        )
+        self.assertEqual(markers_other, [])
+
+    def test_pending_polls_for_invited_musician_until_fully_voted(self):
+        from planning.models import DateVote
+        from planning.services import cast_date_vote, pending_polls_for_user
+
+        proposal, options = self._make_open_poll(15, 22, title="Sondage pending")
+        pending = pending_polls_for_user(self.musician)
+        self.assertEqual([p.pk for p in pending], [proposal.pk])
+
+        # Musicien non concerné
+        other = User.objects.create_user(
+            username="stranger", password="pass12345", is_musician=True
+        )
+        self.assertEqual(pending_polls_for_user(other), [])
+
+        # Vote partiel → encore pending
+        cast_date_vote(options[0], self.musician, DateVote.Choice.YES)
+        self.assertEqual(
+            [p.pk for p in pending_polls_for_user(self.musician)], [proposal.pk]
+        )
+
+        # Vote complet → plus pending
+        cast_date_vote(options[1], self.musician, DateVote.Choice.NO)
+        self.assertEqual(pending_polls_for_user(self.musician), [])
+
+        # Calendrier / mes dates : banner global avec boutons de vote
+        self.client.login(username="musi", password="pass12345")
+        proposal2, options2 = self._make_open_poll(30, 33, title="Encore un sondage")
+        r = self.client.get(reverse("planning:my_board"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "pl-poll-banner")
+        self.assertContains(r, "Encore un sondage")
+        self.assertContains(r, "Sondage")
+        self.assertContains(r, "@click=\"vote(")
+        self.assertContains(r, reverse("planning:vote_option", args=[options2[0].pk]))
+
+        r2 = self.client.get(reverse("planning:dashboard"))
+        self.assertEqual(r2.status_code, 200)
+        self.assertContains(r2, "pl-poll-banner")
+        self.assertContains(r2, "Encore un sondage")
+        self.assertContains(r2, "Oui")
+        self.assertContains(r2, "Peut-être")
+        self.assertContains(r2, "Non")
+
+        # Page sondage : pas de banner (vote déjà sur la page)
+        r3 = self.client.get(reverse("planning:poll_detail", args=[proposal2.pk]))
+        self.assertEqual(r3.status_code, 200)
+        self.assertNotContains(r3, "pl-poll-banner")
+
+    def test_calendar_shows_recorded_vote_on_poll_marker(self):
+        from datetime import datetime as dt_cls, time as time_cls
+
+        from planning.models import DateVote
+        from planning.services import cast_date_vote, open_poll_calendar_markers_for_user
+
+        proposal, options = self._make_open_poll(40, title="Vote visible cal")
+        cast_date_vote(options[0], self.musician, DateVote.Choice.YES)
+        opt_day = timezone.localtime(options[0].starts_at).date()
+        tz = timezone.get_current_timezone()
+        markers = open_poll_calendar_markers_for_user(
+            self.musician,
+            range_start=timezone.make_aware(
+                dt_cls.combine(opt_day.replace(day=1), time_cls.min), tz
+            ),
+            range_end=timezone.now() + timedelta(days=120),
+        )
+        self.assertEqual(len(markers), 1)
+        self.assertEqual(markers[0].cal_summary["my_poll_vote"], "yes")
+        self.assertEqual(markers[0].cal_summary["my_poll_vote_label"], "Oui")
+        self.assertTrue(markers[0].cal_summary["poll_answered"])
+        self.assertEqual(
+            markers[0].cal_summary["poll_vote_counts"],
+            {"yes": 1, "no": 0, "maybe": 0},
+        )
+        self.assertEqual(
+            markers[0].cal_summary["poll_vote_counts_label"],
+            "Oui 1 · Non 0 · Peut-être 0",
+        )
+
+        self.client.login(username="musi", password="pass12345")
+        today = timezone.localdate()
+        window_year = opt_day.year if opt_day.month >= today.month else opt_day.year - 1
+        r = self.client.get(
+            reverse("planning:dashboard"),
+            {"year": window_year, "day": opt_day.isoformat()},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Votre réponse : Oui")
+        self.assertContains(r, "Votre vote est enregistré")
+        self.assertContains(r, "Oui 1 · Non 0 · Peut-être 0")
+        self.assertNotContains(r, "Sondage ouvert — votez pour cette date")
+
+    def test_same_day_tentative_event_shows_poll_vote_status(self):
+        """Événement tentative même jour : marqueur omis, carte Event enrichie."""
+        from planning.models import DateOption, DateVote
+        from planning.services import (
+            attach_calendar_summaries,
+            attach_open_poll_info_to_events,
+            cast_date_vote,
+            launch_availability_poll,
+        )
+
+        concert_type = EventType.objects.create(nom="Concert")
+        starts = timezone.now() + timedelta(days=35)
+        event = Event.objects.create(
+            titre="Bal d’été",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=starts,
+            statut=Event.Statut.TENTATIVE,
+            public=False,
+        )
+        EventParticipation.objects.create(
+            event=event,
+            user=self.musician,
+            status=self.statuses["invited"],
+        )
+        proposal = DateProposal.objects.create(
+            title="Bal d’été",
+            status=DateProposal.Status.DRAFT,
+            linked_event=event,
+            created_by=self.staff,
+        )
+        option = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=starts,
+            label="Matinale",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        cast_date_vote(option, self.musician, DateVote.Choice.MAYBE)
+
+        attach_calendar_summaries([event])
+        attach_open_poll_info_to_events([event], self.musician)
+        summary = event.cal_summary
+        self.assertTrue(summary["has_open_poll"])
+        self.assertEqual(summary["my_poll_vote"], "maybe")
+        self.assertEqual(summary["my_poll_vote_label"], "Peut-être")
+        self.assertTrue(summary["poll_answered"])
+        self.assertEqual(summary["poll_vote_counts"], {"yes": 0, "no": 0, "maybe": 1})
+        self.assertEqual(summary["poll_vote_counts_label"], "Oui 0 · Non 0 · Peut-être 1")
+
+        self.client.login(username="musi", password="pass12345")
+        day = timezone.localtime(starts).date()
+        today = timezone.localdate()
+        window_year = day.year if day.month >= today.month else day.year - 1
+        r = self.client.get(
+            reverse("planning:dashboard"),
+            {"year": window_year, "day": day.isoformat()},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Votre réponse : Peut-être")
+        self.assertContains(r, "Votre vote est enregistré")
+        self.assertContains(r, "Oui 0 · Non 0 · Peut-être 1")
+
+
+class StaffProposeLaunchPollTests(PlanningBaseTestCase):
+    def test_staff_can_launch_poll_from_propose_form(self):
+        concert_type = EventType.objects.create(nom="Concert")
+        day = (timezone.localdate() + timedelta(days=20)).isoformat()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:propose_event"),
+            {
+                "titre": "Nouveau bal",
+                "date": day,
+                "time": "20:00",
+                "type_id": concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "launch_poll": "1",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        event = Event.objects.get(titre="Nouveau bal")
+        proposal = DateProposal.objects.get(linked_event=event)
+        self.assertEqual(proposal.status, DateProposal.Status.OPEN)
+        self.assertIsNotNone(proposal.launched_at)
+        self.assertEqual(proposal.launched_by_id, self.staff.pk)
+
+    def test_staff_propose_without_launch_keeps_draft(self):
+        concert_type = EventType.objects.create(nom="Concert")
+        day = (timezone.localdate() + timedelta(days=21)).isoformat()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:propose_event"),
+            {
+                "titre": "Brouillon sondage",
+                "date": day,
+                "time": "19:00",
+                "type_id": concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        event = Event.objects.get(titre="Brouillon sondage")
+        proposal = DateProposal.objects.get(linked_event=event)
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
 
 
 class RosterStatusTests(PlanningBaseTestCase):
@@ -556,6 +982,7 @@ class PublicationTests(PlanningBaseTestCase):
         self.assertFalse(
             EventParticipation.objects.filter(event=self.event.parent).exists()
         )
+        self.assertTrue(Organisme.objects.filter(nom="Festival JOY").exists())
 
     def test_publication_can_link_existing_parent(self):
         parent = Event.objects.create(
@@ -1035,6 +1462,9 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertContains(r, 'aria-label="2 non lus"')
 
         detail = self.client.get(reverse("planning:event_detail", args=[self.event.pk]))
+        # Répétition : détail planning redirige vers l’app répétitions.
+        if detail.status_code == 302:
+            detail = self.client.get(detail["Location"])
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, f"Salon « {self.event.titre} »")
         self.assertContains(detail, 'aria-label="2 non lus"')

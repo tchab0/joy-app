@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Effectif — {{ event.titre }}{% endblock %}
 
@@ -48,6 +49,18 @@
   </section>
   {% endif %}
 
+  {% if open_proposal %}
+  <section class="pl-section pl-section--panel pl-section--pending">
+    <h2 style="margin-top:0;color:var(--accent)">Sondage ouvert — confirmer</h2>
+    <p class="pl-row__meta pl-roster-lead">
+      Consultez les votes sur
+      <a href="{% url 'planning:poll_detail' open_proposal.pk %}" style="color:var(--accent)">la page du sondage</a>,
+      puis retenez une date pour passer l’événement en confirmé.
+    </p>
+    {% include "planning/_confirm_poll_form.html" with proposal=open_proposal options=open_proposal.options.all id_prefix="roster" %}
+  </section>
+  {% endif %}
+
   <section class="pl-section">
     <h2>Publication sur le site</h2>
     <p class="pl-row__meta pl-roster-lead">
@@ -64,9 +77,7 @@
           x-data="{ parentMode: '{% if event.parent_id %}existing{% else %}none{% endif %}' }">
       {% csrf_token %}
       <div>
-        <label for="pub_organisme">Organisme organisateur</label>
-        <input type="text" name="organisme" id="pub_organisme" value="{{ event.organisme }}"
-               placeholder="ex. Mairie, festival…">
+        {% include "planning/_organisme_field.html" with id_prefix="pub" organisme_value=event.organisme %}
       </div>
       <div>
         <label>Événement parent <span class="pl-row__meta">(optionnel)</span></label>
@@ -364,4 +375,8 @@
   sync();
 })();
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endblock %}

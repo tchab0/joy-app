@@ -1,11 +1,17 @@
 from django.contrib import admin
-from .models import Venue, EventType, Event
+from .models import Venue, EventType, Event, Organisme
 
 
 @admin.register(Venue)
 class VenueAdmin(admin.ModelAdmin):
     list_display  = ("nom", "ville")
     search_fields = ("nom", "ville")
+
+
+@admin.register(Organisme)
+class OrganismeAdmin(admin.ModelAdmin):
+    list_display = ("nom",)
+    search_fields = ("nom",)
 
 
 @admin.register(EventType)

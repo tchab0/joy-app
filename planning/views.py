@@ -4,6 +4,7 @@ import calendar
 import json
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -17,7 +18,7 @@ from django.utils.dateparse import parse_datetime
 from django.views import View
 from django.views.generic import TemplateView
 
-from events.models import Event, EventType, Venue
+from events.models import Event, EventType, Organisme, Venue
 from events.weather import attach_weather
 from planning.models import (
     DateOption,
@@ -33,14 +34,17 @@ from planning.services import (
     attach_calendar_chat_links,
     attach_calendar_setlists,
     attach_calendar_summaries,
+    attach_open_poll_info_to_events,
     attach_roster_substitutes,
     cast_date_vote,
     chat_link_for_event,
     draft_proposal_for_event,
+    open_proposal_for_event,
     eligible_substitutes_for,
     ensure_default_equipment,
     ensure_participation_statuses,
     EQUIPMENT_CATEGORIES,
+    format_poll_vote_counts,
     get_or_create_equipment_item,
     get_or_create_profile,
     get_participation_for,
@@ -49,6 +53,7 @@ from planning.services import (
     invite_titulaires_to_event,
     launch_availability_poll,
     lock_date_proposal,
+    open_poll_calendar_markers_for_user,
     parse_invite_choice,
     propose_event,
     propose_substitute,
@@ -81,24 +86,75 @@ def _resolve_parent_event(parent_id, *, exclude_pk=None):
         return None
 
 
+def _parse_venue_coords(post) -> tuple[Decimal | None, Decimal | None]:
+    """Latitude / longitude optionnelles depuis le formulaire (carte OSM)."""
+    lat_raw = (post.get("venue_latitude") or "").strip()
+    lng_raw = (post.get("venue_longitude") or "").strip()
+    if not lat_raw or not lng_raw:
+        return None, None
+    try:
+        lat = Decimal(lat_raw)
+        lng = Decimal(lng_raw)
+    except (InvalidOperation, ValueError):
+        return None, None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None, None
+    return lat, lng
+
+
+def _apply_venue_coords(venue: Venue, lat, lng) -> Venue:
+    """Met à jour les coordonnées du lieu si fournies."""
+    if lat is None or lng is None:
+        return venue
+    if venue.latitude == lat and venue.longitude == lng:
+        return venue
+    venue.latitude = lat
+    venue.longitude = lng
+    venue.save(update_fields=["latitude", "longitude"])
+    return venue
+
+
 def _resolve_or_create_venue(post) -> Venue:
-    """Lieu existant (venue_id) ou nouveau (venue_nom + venue_ville)."""
+    """Lieu existant (venue_id) ou nouveau (venue_nom + venue_ville + carte)."""
     mode = (post.get("venue_mode") or "existing").strip()
+    lat, lng = _parse_venue_coords(post)
     if mode == "new":
         nom = (post.get("venue_nom") or "").strip()
         ville = (post.get("venue_ville") or "").strip()
         adresse = (post.get("venue_adresse") or "").strip()
-        if not nom or not ville:
-            raise ValueError("Nom et ville du nouveau lieu sont requis.")
-        return Venue.objects.create(nom=nom, ville=ville, adresse=adresse)
+        if not ville:
+            raise ValueError("La ville du lieu est obligatoire.")
+        if not nom:
+            raise ValueError("Le nom du lieu est obligatoire.")
+        return Venue.objects.create(
+            nom=nom,
+            ville=ville,
+            adresse=adresse,
+            latitude=lat,
+            longitude=lng,
+        )
 
     venue_id = post.get("venue_id")
     if not venue_id:
         raise ValueError("Lieu requis.")
     try:
-        return Venue.objects.get(pk=int(venue_id))
+        venue = Venue.objects.get(pk=int(venue_id))
     except (Venue.DoesNotExist, TypeError, ValueError) as exc:
         raise ValueError("Lieu invalide.") from exc
+    return _apply_venue_coords(venue, lat, lng)
+
+
+def _remember_organisme(name: str) -> str:
+    """Mémorise un organisme saisi (typeahead) et renvoie le nom normalisé."""
+    nom = (name or "").strip()[:200]
+    if not nom:
+        return ""
+    Organisme.objects.get_or_create(nom=nom)
+    return nom
+
+
+def _organismes_qs():
+    return Organisme.objects.all().order_by("nom")
 
 
 def _resolve_or_create_parent_event(
@@ -277,12 +333,6 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
         pending = [p for p in my_parts if p.status.code in ("invited", "maybe")]
         upcoming = list(my_parts)
 
-        open_polls = (
-            DateProposal.objects.filter(status=DateProposal.Status.OPEN)
-            .prefetch_related("options")
-            .order_by("-created_at")[:10]
-        )
-
         sub_offers = (
             SubstituteRequest.objects.filter(
                 candidate=user,
@@ -310,7 +360,6 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
             {
                 "pending": pending,
                 "upcoming": upcoming,
-                "open_polls": open_polls,
                 "sub_offers": sub_offers,
                 "my_gear": my_gear,
             }
@@ -351,12 +400,19 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
             .order_by("date_debut", "titre")
         )
         attach_calendar_summaries(events)
+        attach_open_poll_info_to_events(events, user)
         attach_calendar_chat_links(events, user)
         attach_calendar_setlists(events)
         attach_weather(events, concerts_only=True)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
             events_by_day[timezone.localtime(event.date_debut).date()].append(event)
+
+        # Options des sondages OPEN → propositions calendrier (sans Event).
+        for marker in open_poll_calendar_markers_for_user(
+            user, range_start=range_start, range_end=range_end
+        ):
+            events_by_day[timezone.localtime(marker.date_debut).date()].append(marker)
 
         is_staff = user.is_staff or user.is_superuser
         can_propose = user_can_propose_event(user)
@@ -382,6 +438,7 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
                 "event_types": (
                     EventType.objects.all().order_by("nom") if need_form_data else []
                 ),
+                "organismes": _organismes_qs() if need_form_data else [],
                 "parent_events": _parent_events_qs() if is_staff else [],
             }
         )
@@ -425,6 +482,7 @@ class ProposeEventView(CanProposeEventMixin, View):
             {
                 "venues": Venue.objects.all().order_by("ville", "nom"),
                 "event_types": EventType.objects.all().order_by("nom"),
+                "organismes": _organismes_qs(),
                 "preset_date": (request.GET.get("date") or "").strip(),
             },
         )
@@ -471,14 +529,14 @@ class ProposeEventView(CanProposeEventMixin, View):
 
         public = False
 
-        event, _proposal = propose_event(
+        event, proposal = propose_event(
             proposer=request.user,
             titre=titre,
             event_type=event_type,
             venue=venue,
             date_debut=starts,
             description=(request.POST.get("description") or "").strip(),
-            organisme=(request.POST.get("organisme") or "").strip(),
+            organisme=_remember_organisme(request.POST.get("organisme") or ""),
             parent=parent,
             public=public,
             contact_nom=(request.POST.get("contact_nom") or "").strip(),
@@ -486,12 +544,33 @@ class ProposeEventView(CanProposeEventMixin, View):
             contact_email=(request.POST.get("contact_email") or "").strip(),
         )
 
-        if request.user.is_staff or request.user.is_superuser:
-            messages.success(
-                request,
-                f"Événement « {event.titre} » créé — salon staff ouvert. "
-                f"Invitez des musiciens puis lancez le sondage de disponibilité.",
-            )
+        is_staff_user = request.user.is_staff or request.user.is_superuser
+        launch_now = is_staff_user and str(
+            request.POST.get("launch_poll") or ""
+        ).strip().lower() in ("1", "on", "true", "yes")
+        if launch_now:
+            try:
+                launch_availability_poll(proposal, launched_by=request.user)
+            except ValueError as exc:
+                messages.warning(
+                    request,
+                    f"Événement créé, mais le sondage n’a pas pu être lancé : {exc}",
+                )
+                return redirect("planning:event_roster", pk=event.pk)
+
+        if is_staff_user:
+            if launch_now:
+                messages.success(
+                    request,
+                    f"Événement « {event.titre} » créé — sondage de disponibilité "
+                    f"lancé. Invitez les musiciens concernés.",
+                )
+            else:
+                messages.success(
+                    request,
+                    f"Événement « {event.titre} » créé — salon staff ouvert. "
+                    f"Invitez des musiciens puis lancez le sondage de disponibilité.",
+                )
             return redirect("planning:event_roster", pk=event.pk)
 
         messages.success(
@@ -661,6 +740,7 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                     "option": opt,
                     "counts": counts,
                     "counts_json": json.dumps(counts),
+                    "counts_label": format_poll_vote_counts(counts),
                     "my_vote": my_vote.choice if my_vote else None,
                 }
             )
@@ -671,8 +751,20 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "event": event,
                 "options_data": options_data,
                 "is_planning_staff": is_staff,
+                "hide_pending_polls_banner": True,
             }
         )
+        # Formulaire de confirmation (création d’événement) pour sondage autonome.
+        if is_staff and proposal.is_open and event is None:
+            context.update(
+                {
+                    "venues": Venue.objects.all().order_by("ville", "nom"),
+                    "event_types": EventType.objects.all().order_by("nom"),
+                    "organismes": _organismes_qs(),
+                    "parent_events": _parent_events_qs(),
+                    "needs_event_create": True,
+                }
+            )
 
         # Salon embarqué si événement lié et accès (membre ou staff).
         if event:
@@ -963,7 +1055,9 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
                 "musicians": musicians,
                 "invite_musicians": invite_musicians_for_form(musicians),
                 "parent_events": _parent_events_qs(exclude_pk=event.pk),
+                "organismes": _organismes_qs(),
                 "draft_proposal": draft_proposal_for_event(event),
+                "open_proposal": open_proposal_for_event(event),
             }
         )
         return context
@@ -977,7 +1071,7 @@ class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
             Event.objects.select_related("venue", "type"), pk=pk
         )
         event.public = request.POST.get("public") == "on"
-        event.organisme = (request.POST.get("organisme") or "").strip()
+        event.organisme = _remember_organisme(request.POST.get("organisme") or "")
         try:
             event.parent = _resolve_or_create_parent_event(
                 request.POST,
@@ -1017,14 +1111,13 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
             created_by=request.user,
             status=DateProposal.Status.DRAFT,
         )
-        i = 0
-        while True:
+        options_created = 0
+        for i in range(20):
             starts = request.POST.get(f"option_starts_{i}")
             if not starts:
-                break
+                continue
             dt = _parse_local_dt(starts)
             if dt is None:
-                i += 1
                 continue
             ends_raw = request.POST.get(f"option_ends_{i}") or ""
             ends = _parse_local_dt(ends_raw) if ends_raw else None
@@ -1033,10 +1126,10 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
                 starts_at=dt,
                 ends_at=ends,
                 label=(request.POST.get(f"option_label_{i}") or "").strip(),
-                sort_order=i,
+                sort_order=options_created,
             )
-            i += 1
-        if i == 0 or not proposal.options.exists():
+            options_created += 1
+        if options_created == 0:
             proposal.delete()
             messages.error(request, "Ajoutez au moins une option de date.")
             return redirect("planning:admin")
@@ -1083,8 +1176,20 @@ def _parse_local_dt(value: str):
 class LockPollView(PlanningStaffRequiredMixin, View):
     def post(self, request, pk):
         proposal = get_object_or_404(DateProposal, pk=pk)
+        if not proposal.is_open:
+            messages.error(request, "Ce sondage n’est plus ouvert.")
+            return redirect("planning:poll_detail", pk=pk)
         option_id = request.POST.get("option_id")
+        if not option_id:
+            messages.error(request, "Choisissez une date à confirmer.")
+            return redirect("planning:poll_detail", pk=pk)
         option = get_object_or_404(DateOption, pk=option_id, proposal=proposal)
+
+        def _done(default_name: str, **kwargs):
+            next_url = (request.POST.get("next") or "").strip()
+            if next_url.startswith("/") and not next_url.startswith("//"):
+                return redirect(next_url)
+            return redirect(default_name, **kwargs)
 
         # Sondage déjà lié à un événement : valider la date sans créer d’événement.
         if proposal.linked_event_id:
@@ -1099,7 +1204,7 @@ class LockPollView(PlanningStaffRequiredMixin, View):
                 f"Date validée — « {event.titre} » confirmé "
                 f"({option.starts_at.strftime('%d/%m/%Y %H:%M')}).",
             )
-            return redirect("planning:poll_detail", pk=pk)
+            return _done("planning:poll_detail", pk=pk)
 
         type_id = request.POST.get("type_id")
         if not type_id:
@@ -1120,7 +1225,7 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
 
         public = False
-        organisme = (request.POST.get("organisme") or "").strip()
+        organisme = _remember_organisme(request.POST.get("organisme") or "")
         contact_nom = (request.POST.get("contact_nom") or "").strip()
         contact_telephone = (request.POST.get("contact_telephone") or "").strip()
         contact_email = (request.POST.get("contact_email") or "").strip()
@@ -1131,7 +1236,7 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             date_debut=option.starts_at,
             date_fin=option.ends_at,
             description=proposal.description,
-            statut=Event.Statut.TENTATIVE,
+            statut=Event.Statut.CONFIRME,
             public=public,
             parent=parent,
             organisme=organisme,
@@ -1143,10 +1248,11 @@ class LockPollView(PlanningStaffRequiredMixin, View):
         lock_date_proposal(proposal, option, event=event)
         messages.success(
             request,
-            f"Date verrouillée — événement « {event.titre} » créé. "
+            f"Événement « {event.titre} » confirmé "
+            f"({option.starts_at.strftime('%d/%m/%Y %H:%M')}). "
             f"Invitez les musiciens depuis le roster ou le salon.",
         )
-        return redirect("planning:event_roster", pk=event.pk)
+        return _done("planning:event_roster", pk=event.pk)
 
 
 class InviteMusicianView(PlanningStaffRequiredMixin, View):

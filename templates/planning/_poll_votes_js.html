@@ -1,0 +1,78 @@
+<script>
+function pollVotes(cfg) {
+  cfg = cfg || {};
+  return {
+    open: !!cfg.open,
+    csrf: cfg.csrf || '',
+    choices: Object.assign({}, cfg.choices || {}),
+    counts: Object.assign({}, cfg.counts || {}),
+    urls: cfg.urls || {},
+    busy: {},
+    toast: '',
+    complete: false,
+    onToast(msg) {
+      this.toast = msg;
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => { this.toast = ''; }, 2200);
+    },
+    choiceOf(id) { return this.choices[id] || ''; },
+    isBusy(id) { return !!this.busy[id]; },
+    countsOf(id) {
+      const c = this.counts[id] || {};
+      return {
+        yes: Number(c.yes) || 0,
+        no: Number(c.no) || 0,
+        maybe: Number(c.maybe) || 0
+      };
+    },
+    countsLabel(id) {
+      const c = this.countsOf(id);
+      return 'Oui ' + c.yes + ' · Non ' + c.no + ' · Peut-être ' + c.maybe;
+    },
+    allAnswered() {
+      const ids = Object.keys(this.urls);
+      return ids.length > 0 && ids.every((id) => !!this.choices[id]);
+    },
+    async vote(optionId, c) {
+      if (!this.open) return;
+      const url = this.urls[optionId];
+      if (!url) return;
+      this.busy[optionId] = true;
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.csrf,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ choice: c })
+        });
+        const d = await r.json();
+        if (d.ok) {
+          this.choices[optionId] = d.choice;
+          if (d.counts) {
+            this.counts[optionId] = {
+              yes: Number(d.counts.yes) || 0,
+              no: Number(d.counts.no) || 0,
+              maybe: Number(d.counts.maybe) || 0
+            };
+          }
+          this.onToast('Réponse enregistrée');
+          if (this.allAnswered() && !this.complete) {
+            this.complete = true;
+            if (typeof cfg.onComplete === 'function') {
+              cfg.onComplete.call(this);
+            } else {
+              this.$dispatch('poll-complete');
+            }
+          }
+        } else {
+          this.onToast(d.error || 'Erreur');
+        }
+      } finally {
+        this.busy[optionId] = false;
+      }
+    }
+  };
+}
+</script>
