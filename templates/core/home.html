@@ -227,6 +227,55 @@
     margin-top: .5rem;
   }
 
+  .concerts-home {
+    scroll-margin-top: 4.5rem;
+  }
+
+  .home-scroll-cue {
+    position: fixed;
+    z-index: 40;
+    left: 50%;
+    bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 44px;
+    padding: .65rem 1.15rem;
+    border-radius: var(--r);
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-b);
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .28);
+    transition: opacity var(--trans), transform var(--trans), background var(--trans), visibility var(--trans);
+  }
+  .home-scroll-cue:hover,
+  .home-scroll-cue:focus-visible {
+    background: var(--accent-h);
+    color: #fff;
+  }
+  .home-scroll-cue:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+  .home-scroll-cue svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    animation: scroll-cue-bounce 1.4s ease-in-out infinite;
+  }
+  .home-scroll-cue.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(.5rem);
+  }
+
   @keyframes hero-in {
     from { opacity: 0; transform: translateY(16px); }
     to   { opacity: 1; transform: none; }
@@ -235,6 +284,17 @@
   @keyframes event-in {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: none; }
+  }
+
+  @keyframes scroll-cue-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .home-scroll-cue svg {
+      animation: none;
+    }
   }
 
   @media (max-width: 768px) {
@@ -273,6 +333,17 @@
       display: flex;
       justify-content: center;
     }
+    .home-scroll-cue {
+      left: 1rem;
+      right: 1rem;
+      width: auto;
+      max-width: none;
+      transform: none;
+      justify-content: center;
+    }
+    .home-scroll-cue.is-hidden {
+      transform: translateY(.5rem);
+    }
   }
 </style>
 {% endblock %}
@@ -310,7 +381,7 @@
   </div>
 </section>
 
-<section class="concerts-home section">
+<section class="concerts-home section" id="prochains-concerts">
   <div class="container">
     <h2 class="section-title">Prochains concerts</h2>
     {% if prochains %}
@@ -375,6 +446,15 @@
   </div>
 </section>
 
+{% if prochains %}
+<a href="#prochains-concerts" class="home-scroll-cue" id="home-scroll-cue">
+  <span>Prochains concerts</span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+</a>
+{% endif %}
+
 <hr class="divider">
 
 <section class="about section">
@@ -405,26 +485,42 @@
 <script>
 (function () {
   var wrap = document.querySelector(".hero-video[data-yt-embed]");
-  if (!wrap) return;
-  var btn = wrap.querySelector(".hero-video__facade");
-  if (!btn) return;
-  btn.addEventListener("click", function () {
-    var embed = wrap.getAttribute("data-yt-embed");
-    if (!embed || wrap.classList.contains("is-playing")) return;
-    wrap.classList.add("is-playing");
-    var sep = embed.indexOf("?") >= 0 ? "&" : "?";
-    var iframe = document.createElement("iframe");
-    iframe.src = embed + sep + "autoplay=1&playsinline=1";
-    iframe.title = "Jazz Orchestra Yonnais sur YouTube";
-    iframe.setAttribute(
-      "allow",
-      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    );
-    iframe.allowFullscreen = true;
-    iframe.loading = "eager";
-    iframe.referrerPolicy = "strict-origin-when-cross-origin";
-    wrap.replaceChildren(iframe);
-  });
+  if (wrap) {
+    var btn = wrap.querySelector(".hero-video__facade");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        var embed = wrap.getAttribute("data-yt-embed");
+        if (!embed || wrap.classList.contains("is-playing")) return;
+        wrap.classList.add("is-playing");
+        var sep = embed.indexOf("?") >= 0 ? "&" : "?";
+        var iframe = document.createElement("iframe");
+        iframe.src = embed + sep + "autoplay=1&playsinline=1";
+        iframe.title = "Jazz Orchestra Yonnais sur YouTube";
+        iframe.setAttribute(
+          "allow",
+          "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        );
+        iframe.allowFullscreen = true;
+        iframe.loading = "eager";
+        iframe.referrerPolicy = "strict-origin-when-cross-origin";
+        wrap.replaceChildren(iframe);
+      });
+    }
+  }
+
+  var cue = document.getElementById("home-scroll-cue");
+  var target = document.getElementById("prochains-concerts");
+  if (!cue || !target || !("IntersectionObserver" in window)) return;
+
+  var observer = new IntersectionObserver(
+    function (entries) {
+      entries.forEach(function (entry) {
+        cue.classList.toggle("is-hidden", entry.isIntersecting);
+      });
+    },
+    { rootMargin: "-10% 0px -35% 0px", threshold: 0.05 }
+  );
+  observer.observe(target);
 })();
 </script>
 {% endblock %}
