@@ -37,13 +37,13 @@ User = get_user_model()
 
 class PlanningBaseTestCase(TestCase):
     def setUp(self):
-        planning_services._STATUS_CACHE = None
+        planning_services._constants._STATUS_CACHE = None
         self.statuses = ensure_participation_statuses(force=True)
         self.section = OrchestraSection.objects.create(
             code="trompette", name="Trompettes", sort_order=10
         )
         self.venue = Venue.objects.create(nom="Salle Test", ville="La Roche-sur-Yon")
-        self.event_type = EventType.objects.create(nom="Répétition")
+        self.event_type = EventType.objects.create(nom="Répétition", is_rehearsal=True)
         self.musician = User.objects.create_user(
             username="musi",
             password="pass12345",
@@ -337,7 +337,7 @@ class RespondTests(PlanningBaseTestCase):
         self.participation.refresh_from_db()
         self.assertEqual(self.participation.status.code, "confirmed")
 
-    @patch("planning.services.notify_users")
+    @patch("planning.services.rsvp.notify_users")
     def test_invalidate_confirmed_without_comment_notifies_staff(self, mock_notify):
         mock_notify.return_value = 1
         set_participation_response(self.participation, "yes")
@@ -358,7 +358,7 @@ class RespondTests(PlanningBaseTestCase):
         staff_ids = {u.pk for u in mock_notify.call_args.args[0]}
         self.assertIn(self.staff.pk, staff_ids)
 
-    @patch("planning.services.notify_users")
+    @patch("planning.services.rsvp.notify_users")
     def test_invalidate_confirmed_with_comment_notifies_staff(self, mock_notify):
         mock_notify.return_value = 1
         set_participation_response(self.participation, "yes")
@@ -951,14 +951,14 @@ class RosterStatusTests(PlanningBaseTestCase):
 
 
 class PublicationTests(PlanningBaseTestCase):
-    def test_roster_publication_form_has_parent_modes(self):
+    def test_roster_organisation_form_has_parent_modes(self):
         self.client.login(username="staff1", password="pass12345")
         r = self.client.get(reverse("planning:event_roster", args=[self.event.pk]))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'name="parent_mode"')
         self.assertContains(r, 'name="parent_titre"')
-        self.assertContains(r, 'class="pl-check"')
-        self.assertContains(r, "Visible sur le site public")
+        self.assertContains(r, "CMS concerts")
+        self.assertNotContains(r, 'name="public"')
 
     def test_publication_can_create_new_parent(self):
         self.client.login(username="staff1", password="pass12345")
@@ -969,13 +969,12 @@ class PublicationTests(PlanningBaseTestCase):
                 "organisme": "Festival JOY",
                 "parent_mode": "new",
                 "parent_titre": "Saison jazz 2026",
-                "public": "on",
             },
         )
         self.assertEqual(r.status_code, 302)
         self.assertEqual(Event.objects.count(), before + 1)
         self.event.refresh_from_db()
-        self.assertTrue(self.event.public)
+        self.assertFalse(self.event.public)
         self.assertEqual(self.event.organisme, "Festival JOY")
         self.assertIsNotNone(self.event.parent_id)
         self.assertEqual(self.event.parent.titre, "Saison jazz 2026")
@@ -1014,12 +1013,27 @@ class PublicationTests(PlanningBaseTestCase):
             {
                 "parent_mode": "new",
                 "parent_titre": "  ",
-                "public": "on",
             },
         )
         self.assertEqual(r.status_code, 302)
         self.event.refresh_from_db()
         self.assertIsNone(self.event.parent_id)
+        self.assertFalse(self.event.public)
+
+    def test_public_toggle_is_on_cms_not_roster(self):
+        self.client.login(username="staff1", password="pass12345")
+        self.event.public = False
+        self.event.save(update_fields=["public"])
+        r = self.client.post(
+            reverse("planning:event_publication", args=[self.event.pk]),
+            {
+                "organisme": "",
+                "parent_mode": "none",
+                "public": "on",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.event.refresh_from_db()
         self.assertFalse(self.event.public)
 
 
@@ -1879,7 +1893,7 @@ class EventPhotosRequestTests(TestCase):
             date_debut=timezone.now() - timedelta(days=7),
             statut=Event.Statut.CONFIRME,
         )
-        with patch("planning.services.notify_users", return_value=2) as mocked:
+        with patch("planning.services.invites.notify_users", return_value=2) as mocked:
             sent = send_event_photos_requests(
                 [event], [self.member, self.adherent]
             )
@@ -1939,7 +1953,7 @@ class EventPhotosRequestTests(TestCase):
 
 
 class MaybeRemindTests(PlanningBaseTestCase):
-    @patch("planning.services.notify_users", return_value=1)
+    @patch("planning.services.rsvp.notify_users", return_value=1)
     def test_send_due_maybe_reminds(self, mock_notify):
         from planning.services import send_due_maybe_reminds
 
@@ -1961,7 +1975,7 @@ class MaybeRemindTests(PlanningBaseTestCase):
             timezone.localdate() + timedelta(days=7),
         )
 
-    @patch("planning.services.notify_users", return_value=1)
+    @patch("planning.services.rsvp.notify_users", return_value=1)
     def test_command_dry_run(self, mock_notify):
         from io import StringIO
 
@@ -1993,3 +2007,65 @@ class MaybeRemindTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Votre poste")
         self.assertContains(r, "1er trompette")
+
+    def test_event_setlist_pdf_columns_titulaire_remplacant(self):
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem
+
+        concert_type = EventType.objects.create(nom="Concert setlist PDF")
+        concert = Event.objects.create(
+            titre="Bal PDF",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=14),
+            statut=Event.Statut.CONFIRME,
+            public=True,
+        )
+        from planning.services import invite_musician_to_event
+
+        invite_musician_to_event(concert, self.musician, send_notification=False)
+        profile = self.musician.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_1
+        profile.poste_remplacant = MusicianProfile.Poste.TROMPETTE_2
+        profile.save()
+
+        piece = Piece.objects.create(title="Take the A Train", is_published=True)
+        pdf = lambda name: SimpleUploadedFile(
+            name, b"%PDF-1.4\n%", content_type="application/pdf"
+        )
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            part_tit = Part.objects.create(
+                piece=piece, poste=PartPoste.TROMPETTE_1, file=pdf("tp1.pdf")
+            )
+            part_remp = Part.objects.create(
+                piece=piece, poste=PartPoste.TROMPETTE_2, file=pdf("tp2.pdf")
+            )
+            piano = Part.objects.create(
+                piece=piece, poste=PartPoste.PIANO, file=pdf("piano.pdf")
+            )
+
+            sl = Setlist.objects.create(
+                title="Programme", event=concert, is_active=True
+            )
+            SetlistItem.objects.create(setlist=sl, piece=piece, position=1)
+
+            self.client.login(username="musi", password="pass12345")
+            url = reverse("planning:event_detail", args=[concert.pk])
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertContains(r, "Take the A Train")
+            self.assertContains(r, 'name="poste_tit"')
+            self.assertContains(r, 'name="poste_remp"')
+            self.assertContains(r, reverse("repertoire:part_pdf", args=[part_tit.pk]))
+            self.assertContains(r, reverse("repertoire:part_pdf", args=[part_remp.pk]))
+
+            r2 = self.client.get(
+                url, {"poste_tit": "piano", "poste_remp": "trompette_1"}
+            )
+            self.assertEqual(r2.status_code, 200)
+            self.assertContains(r2, reverse("repertoire:part_pdf", args=[piano.pk]))
+            self.assertContains(r2, reverse("repertoire:part_pdf", args=[part_tit.pk]))

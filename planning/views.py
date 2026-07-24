@@ -664,6 +664,8 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 .order_by("-updated_at")[:80]
             )
 
+        setlist_pdf = _setlist_pdf_context(self.request, user, participation, setlist)
+
         context.update(
             {
                 "event": event,
@@ -683,6 +685,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "is_planning_staff": is_staff,
                 "setlist": setlist,
                 "attachable_setlists": attachable_setlists,
+                **setlist_pdf,
             }
         )
         return context
@@ -693,10 +696,69 @@ def _active_setlist_for_event(event):
 
     return (
         Setlist.objects.filter(event=event, is_active=True)
-        .prefetch_related("items__piece")
+        .prefetch_related("items__piece__parts")
         .order_by("-updated_at")
         .first()
     )
+
+
+def _profile_poste_defaults(user) -> tuple[str, str]:
+    """(poste_titulaire, 1er poste_remplacant) du profil, sinon vides."""
+    try:
+        profile = user.musician_profile
+    except MusicianProfile.DoesNotExist:
+        return "", ""
+    remps = profile.postes_remplacant
+    return profile.poste_titulaire or "", (remps[0] if remps else "")
+
+
+def _setlist_pdf_context(request, user, participation, setlist) -> dict:
+    """Colonnes PDF titulaire / remplaçant + choix manuels de poste (GET)."""
+    from repertoire.models import PartPoste
+    from repertoire.views import _poste_filter_choices, _user_postes
+
+    valid = {c.value for c in PartPoste}
+    default_tit, default_remp = _profile_poste_defaults(user)
+    if participation and participation.poste:
+        if (
+            participation.role_kind == EventParticipation.RoleKind.TITULAIRE
+            and not default_tit
+        ):
+            default_tit = participation.poste
+        elif (
+            participation.role_kind == EventParticipation.RoleKind.REMPLACANT
+            and not default_remp
+        ):
+            default_remp = participation.poste
+
+    raw_tit = request.GET.get("poste_tit")
+    raw_remp = request.GET.get("poste_remp")
+    if raw_tit is None:
+        poste_tit = default_tit
+    else:
+        cleaned = raw_tit.strip()
+        poste_tit = cleaned if cleaned in valid else ""
+    if raw_remp is None:
+        poste_remp = default_remp
+    else:
+        cleaned = raw_remp.strip()
+        poste_remp = cleaned if cleaned in valid else ""
+
+    setlist_items = []
+    if setlist:
+        for item in setlist.items.all():
+            by_poste = {p.poste: p for p in item.piece.parts.all()}
+            item.part_titulaire = by_poste.get(poste_tit) if poste_tit else None
+            item.part_remplacant = by_poste.get(poste_remp) if poste_remp else None
+            setlist_items.append(item)
+
+    return {
+        "setlist_items": setlist_items,
+        "poste_tit": poste_tit,
+        "poste_remp": poste_remp,
+        "poste_choices": _poste_filter_choices(user),
+        "user_postes": _user_postes(user),
+    }
 
 
 class PollDetailView(MusicianRequiredMixin, TemplateView):
@@ -1064,13 +1126,12 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
 
 
 class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
-    """Rendre un événement public / privé et renseigner organisme + parent."""
+    """Organisme + événement parent (la visibilité publique est gérée au CMS)."""
 
     def post(self, request, pk):
         event = get_object_or_404(
             Event.objects.select_related("venue", "type"), pk=pk
         )
-        event.public = request.POST.get("public") == "on"
         event.organisme = _remember_organisme(request.POST.get("organisme") or "")
         try:
             event.parent = _resolve_or_create_parent_event(
@@ -1083,17 +1144,12 @@ class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
         except ValueError as exc:
             messages.error(request, str(exc))
             return redirect("planning:event_roster", pk=event.pk)
-        event.save(update_fields=["public", "organisme", "parent"])
-        if event.public:
-            messages.success(
-                request,
-                f"« {event.titre} » est maintenant visible sur le site public.",
-            )
-        else:
-            messages.success(
-                request,
-                f"« {event.titre} » n’apparaît plus sur le site public.",
-            )
+        event.save(update_fields=["organisme", "parent"])
+        messages.success(
+            request,
+            f"Organisation de « {event.titre} » enregistrée. "
+            "Pour la visibilité publique, utilisez le CMS concerts.",
+        )
         return redirect("planning:event_roster", pk=event.pk)
 
 

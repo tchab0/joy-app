@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
 {% endblock %}
 
 {% block content %}
@@ -69,13 +70,61 @@
   <section id="setlist" class="pl-section" style="margin-top:1.25rem">
     <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
     {% if setlist.notes %}<p class="pl-row__meta" style="margin-bottom:.5rem">{{ setlist.notes }}</p>{% endif %}
-    <ol style="margin:0;padding-left:1.25rem">
-      {% for item in setlist.items.all %}
-      <li style="margin-bottom:.45rem;min-height:44px">
-        <a href="{% url 'repertoire:detail' item.piece.slug %}" style="color:var(--accent);font-weight:600;text-decoration:none">
-          {{ item.piece.title }}
-        </a>
-        {% if item.note %}<span class="pl-row__meta"> — {{ item.note }}</span>{% endif %}
+
+    <form class="rep-filter pl-setlist-postes" method="get" action="#setlist" data-tour="setlist-postes">
+      <div class="pl-setlist-postes__field">
+        <label for="poste_tit">Titulaire</label>
+        <select id="poste_tit" name="poste_tit" onchange="this.form.submit()">
+          <option value="" {% if not poste_tit %}selected{% endif %}>—</option>
+          {% for value, label in poste_choices %}
+          <option value="{{ value }}" {% if poste_tit == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="pl-setlist-postes__field">
+        <label for="poste_remp">Remplaçant</label>
+        <select id="poste_remp" name="poste_remp" onchange="this.form.submit()">
+          <option value="" {% if not poste_remp %}selected{% endif %}>—</option>
+          {% for value, label in poste_choices %}
+          <option value="{{ value }}" {% if poste_remp == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+
+    <ol class="pl-setlist">
+      {% for item in setlist_items %}
+      <li class="pl-setlist__item">
+        <div class="pl-setlist__main">
+          <a class="pl-setlist__title" href="{% url 'repertoire:detail' item.piece.slug %}{% if poste_tit %}?poste={{ poste_tit }}{% elif poste_remp %}?poste={{ poste_remp }}{% endif %}">
+            {{ item.piece.title }}
+          </a>
+          {% if item.note %}<p class="pl-row__meta">{{ item.note }}</p>{% endif %}
+        </div>
+        <div class="pl-setlist__cols" role="group" aria-label="Partitions">
+          <div class="pl-setlist__col">
+            <span class="pl-setlist__col-label">Tit.</span>
+            {% if item.part_titulaire %}
+            <div class="pl-setlist__actions">
+              {% include "repertoire/_pdf_preview_icon.html" with part=item.part_titulaire title="Aperçu titulaire" %}
+              <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' item.part_titulaire.pk %}">PDF</a>
+            </div>
+            {% else %}
+            <span class="pl-setlist__missing">{% if poste_tit %}—{% else %}Choisir{% endif %}</span>
+            {% endif %}
+          </div>
+          <div class="pl-setlist__col">
+            <span class="pl-setlist__col-label">Remp.</span>
+            {% if item.part_remplacant %}
+            <div class="pl-setlist__actions">
+              {% include "repertoire/_pdf_preview_icon.html" with part=item.part_remplacant title="Aperçu remplaçant" %}
+              <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' item.part_remplacant.pk %}">PDF</a>
+            </div>
+            {% else %}
+            <span class="pl-setlist__missing">{% if poste_remp %}—{% else %}Choisir{% endif %}</span>
+            {% endif %}
+          </div>
+        </div>
       </li>
       {% empty %}
       <li class="pl-empty">Setlist vide.</li>
