@@ -15,7 +15,7 @@
 <div class="pl pl--wide">
   {% include "planning/_module_nav.html" with active="atelier" %}
   {% if piece %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'repertoire:detail' piece.slug %}">Voir fiche</a>
   </div>
   {% endif %}

@@ -46,7 +46,7 @@
   </header>
 
   {% if not creating and event %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'repetitions:detail' event.pk %}">Fiche musicien</a>
   </div>
   {% endif %}

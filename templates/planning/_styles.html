@@ -27,11 +27,17 @@
     border-radius: var(--r);
     border-top: 2px solid rgba(var(--accent-rgb), .4);
   }
+  .pl-nav__group--staff {
+    background: rgba(var(--staff-rgb), .07);
+    border-color: rgba(var(--staff-rgb), .2);
+    border-top-color: rgba(var(--staff-rgb), .55);
+  }
   .pl-nav__label {
     display: block;
     font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
     color: var(--gold-text); line-height: 1.2;
   }
+  .pl-nav__group--staff .pl-nav__label { color: var(--staff); }
   .pl-nav__links { display: flex; flex-wrap: wrap; gap: .15rem .2rem; align-items: center; }
   .pl-nav a {
     font-size: .7rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
@@ -41,6 +47,10 @@
   }
   .pl-nav a:hover, .pl-nav a.is-active {
     color: var(--accent); background: rgba(var(--accent-rgb), .08);
+  }
+  .pl-nav__group--staff a:hover,
+  .pl-nav__group--staff a.is-active {
+    color: var(--staff); background: rgba(var(--staff-rgb), .14);
   }
   @media (min-width: 720px) {
     .pl-nav {
@@ -76,6 +86,26 @@
     }
   }
   .pl-nav-context a:hover { color: var(--accent); background: rgba(var(--accent-rgb), .08); }
+  .pl-nav-context--staff {
+    margin-bottom: .85rem;
+    padding: .35rem .5rem .5rem;
+    border: 1px solid rgba(var(--staff-rgb), .2);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+    border-bottom: 1px solid rgba(var(--staff-rgb), .2);
+  }
+  .pl-nav-context--staff a { color: var(--staff); }
+  .pl-nav-context--staff a:hover {
+    color: var(--staff); background: rgba(var(--staff-rgb), .14);
+  }
+  /* Panneaux / actions staff (Coulisses) — teinte slate, distincte du cream musicien */
+  .pl-staff {
+    padding: .75rem .85rem;
+    border: 1px solid rgba(var(--staff-rgb), .2);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+    color: var(--text);
+  }
   .pl-head__row {
     display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
     gap: .75rem 1rem;
@@ -216,6 +246,16 @@
   .pl-btn:hover { border-color: var(--text); }
   .pl-btn:active { transform: scale(.97); }
   .pl-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pl-btn.pl-btn--staff {
+    border-color: rgba(var(--staff-rgb), .4);
+    color: var(--staff);
+    background: rgba(var(--staff-rgb), .08);
+  }
+  .pl-btn.pl-btn--staff:hover {
+    border-color: var(--staff);
+    color: var(--staff);
+    background: rgba(var(--staff-rgb), .16);
+  }
   .pl-btn--yes { border-color: var(--ok); color: var(--ok); }
   .pl-btn--yes.is-active, .pl-btn--yes:hover { background: var(--ok); color: #fff; }
   .pl-btn--maybe { border-color: var(--gold); color: var(--gold-text); }
@@ -397,6 +437,9 @@
   .pl--roster .pl-nav-context {
     margin: -.1rem 0 .4rem;
     padding-bottom: .35rem;
+  }
+  .pl--roster .pl-nav-context--staff {
+    padding: .3rem .45rem .4rem;
   }
   .pl--roster .pl-head { margin-bottom: .75rem; }
   .pl--roster .pl-head h1 {
@@ -963,10 +1006,14 @@
   .pl-missing__invite {
     display: flex; flex-direction: column; gap: .4rem;
     width: 100%;
+    padding: .55rem .6rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
   }
   .pl-missing__invite select {
     width: 100%; min-height: 44px; padding: .55rem .65rem;
-    border: 1px solid var(--border); border-radius: var(--r);
+    border: 1px solid rgba(var(--staff-rgb), .28); border-radius: var(--r);
     font: inherit; color: var(--text); background: var(--surface);
   }
   .pl-missing__invite .pl-btn {
@@ -996,8 +1043,21 @@
     font-size: .9rem;
   }
   .pl-day-events__salon:hover { background: rgba(var(--accent-rgb), .14); }
+  .pl-day-events__salon--staff {
+    border-color: rgba(var(--staff-rgb), .35);
+    background: rgba(var(--staff-rgb), .08);
+    color: var(--staff);
+  }
+  .pl-day-events__salon--staff:hover {
+    background: rgba(var(--staff-rgb), .16);
+    color: var(--staff);
+  }
   .pl-day-events__confirm {
     margin-top: .65rem;
+    padding: .65rem .7rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
   }
 
   /* Page acceptation / sondage — mobile first */
@@ -1048,12 +1108,19 @@
   }
   .pl-accept__response { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
   .pl-accept__staff {
-    margin-top: 2rem; padding: 1rem; border: 1px solid var(--border);
-    border-radius: var(--r); background: var(--surface);
+    margin-top: 2rem; padding: 1rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+    color: var(--text);
+  }
+  .pl-accept__staff.pl-section--pending {
+    background: rgba(var(--staff-rgb), .1);
+    border-color: rgba(var(--staff-rgb), .28);
   }
   .pl-accept__staff summary {
     cursor: pointer; font-weight: 600; min-height: 44px;
-    display: flex; align-items: center; color: var(--text);
+    display: flex; align-items: center; color: var(--staff);
   }
   .pl-accept__staff[open] summary { margin-bottom: .75rem; }
   .pl-chat-link {

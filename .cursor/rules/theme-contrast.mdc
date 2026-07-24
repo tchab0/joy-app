@@ -17,12 +17,13 @@ Toute nouvelle page ou style doit **réutiliser le thème défini dans `template
 | `--gold` | Décoratif (bordures, étoiles) — **pas** comme couleur de texte |
 | `--gold-text` (`#8a6a1a`) | Texte sur fond cream/or clair |
 | `--ok` | Succès / traité |
+| `--staff` / `--staff-rgb` | Blocs / actions staff dans les Coulisses (slate) |
 | `--font-d` / `--font-b` | Titres (Playfair) / corps (Work Sans) |
 | `--r` | Rayons (pas de pills `999px` hors exception justifiée) |
 
 ## Contraste (lisibilité)
 
-- Texte sur fond clair (`--bg`, `--surface`) → `--text`, `--muted`, `--accent`, `--gold-text` ou `--ok`.
+- Texte sur fond clair (`--bg`, `--surface`) → `--text`, `--muted`, `--accent`, `--gold-text`, `--ok` ou `--staff`.
 - **Jamais** `var(--gold)` ni blanc semi-transparent sur fond cream.
 - Surfaces sombres (nav, footer, hero) → texte blanc / blanc atténué **explicite** ; remonter l’opacité si illisible (&lt; ~.5).
 - Tout overlay / modale sur fond clair doit forcer `color: var(--text)` (ne pas hériter du footer/nav).

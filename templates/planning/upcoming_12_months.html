@@ -283,12 +283,12 @@
               </a>
               {% endif %}
               {% if event.cal_setlist %}
-              <a class="pl-day-events__salon" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' event.cal_setlist.id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}#setlist{% endif %}">
+              <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' event.cal_setlist.id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}#setlist{% endif %}">
                 <span>Setlist — {{ event.cal_setlist.title }}</span>
                 <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
               </a>
               {% elif is_planning_staff and not s.is_rehearsal %}
-              <a class="pl-day-events__salon" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
+              <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
                 <span>Setlist</span>
                 <span>Créer</span>
               </a>
@@ -318,7 +318,7 @@
                 </button>
               </form>
               {% elif is_planning_staff and s.poll_id %}
-              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+              <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'planning:poll_detail' s.poll_id %}">
                 <span>Sondage ouvert</span>
                 <span>Confirmer l’événement</span>
               </a>
@@ -349,7 +349,7 @@
                 </button>
               </form>
               {% elif is_planning_staff %}
-              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
+              <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'planning:poll_detail' s.poll_id %}">
                 <span>Sondage ouvert</span>
                 <span>Confirmer l’événement</span>
               </a>
@@ -368,7 +368,7 @@
                 </button>
                 {% endif %}
                 {% if is_planning_staff %}
-                <a class="pl-btn" :href="rehearsalUrl('{{ day.iso }}')">Répétition</a>
+                <a class="pl-btn pl-btn--staff" :href="rehearsalUrl('{{ day.iso }}')">Répétition</a>
                 {% endif %}
               </div>
             </div>
@@ -398,7 +398,7 @@
         </button>
         {% endif %}
         {% if is_planning_staff %}
-        <a class="pl-btn" :href="rehearsalUrl(formDate)">Répétition</a>
+        <a class="pl-btn pl-btn--staff" :href="rehearsalUrl(formDate)">Répétition</a>
         {% endif %}
       </div>
     </div>

@@ -11,7 +11,7 @@
 <div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   {% include "planning/_module_nav.html" with active="calendrier" %}
   {% if is_planning_staff %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'planning:event_roster' event.pk %}">Effectif staff</a>
     {% if setlist %}
     <a href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}">Setlist</a>
@@ -63,7 +63,7 @@
   {% endif %}
 
   {% if setlist %}
-  <a class="pl-day-events__salon" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' setlist.pk %}{% else %}#setlist{% endif %}">
+  <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' setlist.pk %}{% else %}#setlist{% endif %}">
     <span>Setlist — {{ setlist.title }}</span>
     <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
   </a>
@@ -131,14 +131,14 @@
       {% endfor %}
     </ol>
     {% if is_planning_staff %}
-    <p style="margin-top:.85rem">
-      <a class="pl-btn" href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}" style="min-height:44px">Modifier la setlist</a>
+    <p class="pl-staff" style="margin-top:.85rem">
+      <a class="pl-btn pl-btn--staff" href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}" style="min-height:44px">Modifier la setlist</a>
     </p>
     {% endif %}
   </section>
   {% elif is_planning_staff %}
-  <section class="pl-section" style="margin-top:1.25rem">
-    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
+  <section class="pl-section pl-staff" style="margin-top:1.25rem">
+    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem;color:var(--staff)">Setlist</h2>
     <p class="pl-row__meta" style="margin-bottom:.75rem">Aucune setlist liée à cet événement.</p>
     <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem">
       <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}" style="min-height:44px">Créer une setlist</a>
@@ -153,7 +153,7 @@
         <option value="{{ s.pk }}">{{ s.title }}{% if s.event %} — {{ s.event.titre }}{% endif %}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="pl-btn" style="min-height:44px;width:100%">Lier à cet événement</button>
+      <button type="submit" class="pl-btn pl-btn--staff" style="min-height:44px;width:100%">Lier à cet événement</button>
     </form>
     {% endif %}
   </section>

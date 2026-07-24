@@ -10,14 +10,14 @@
 {% block content %}
 <div class="pl">
   {% include "planning/_module_nav.html" with active="repertoire" %}
-  {% if is_planning_staff %}
-  <div class="pl-nav-context">
-    <a href="{% url 'repertoire:staff_piece_edit' piece.slug %}">Éditer</a>
-  </div>
-  {% endif %}
 
   <header class="pl-head">
-    <h1>{{ piece.title }}</h1>
+    <div class="pl-head__row">
+      <h1>{{ piece.title }}</h1>
+      {% if is_planning_staff %}
+      <a class="pl-btn pl-btn--staff" href="{% url 'repertoire:staff_piece_edit' piece.slug %}" style="min-height:44px;display:inline-flex;align-items:center">Éditer</a>
+      {% endif %}
+    </div>
   </header>
 
   <form class="rep-filter" method="get" action="">

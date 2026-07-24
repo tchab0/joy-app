@@ -10,7 +10,7 @@
 {% block content %}
 <div class="pl pl--roster">
   {% include "planning/_module_nav.html" with active="admin" %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'planning:event_detail' event.pk %}">Vue musicien</a>
   </div>
 
@@ -62,16 +62,19 @@
   {% endif %}
 
   <section class="pl-section">
-    <h2>Publication sur le site</h2>
+    <h2>Organisation</h2>
     <p class="pl-row__meta pl-roster-lead">
       {% if event.public %}
-        Actuellement <strong style="color:var(--ok)">visible</strong> sur l’accueil et la page Concerts.
+        Visibilité site :
+        <strong style="color:var(--ok)">public</strong>
+        (accueil et page Concerts).
       {% else %}
-        Actuellement <strong>privé</strong> (invisible sur le site public).
+        Visibilité site : <strong>privé</strong>.
       {% endif %}
-      Vérifiez le lieu exact (adresse) dans
-      <a href="{% url 'admin_concert_edit' event.pk %}" style="color:var(--accent)">l’édition du concert</a>
-      avant de publier.
+      La publication (case « Visible sur le site public », affiche, billets)
+      se gère uniquement dans le
+      <a href="{% url 'admin_concert_edit' event.pk %}" style="color:var(--accent)">CMS concerts</a>.
+      Ici : organisme et événement parent pour le planning.
     </p>
     <form class="pl-form" method="post" action="{% url 'planning:event_publication' event.pk %}"
           x-data="{ parentMode: '{% if event.parent_id %}existing{% else %}none{% endif %}' }">
@@ -112,12 +115,8 @@
         </div>
       </div>
       <div class="pl-form__actions pl-form__actions--inline">
-        <label class="pl-check">
-          <input type="checkbox" name="public" {% if event.public %}checked{% endif %}>
-          Visible sur le site public
-        </label>
         <button type="submit" class="pl-btn pl-btn--primary">
-          Enregistrer la publication
+          Enregistrer l’organisation
         </button>
       </div>
     </form>

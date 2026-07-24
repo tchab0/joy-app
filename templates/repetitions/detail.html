@@ -72,11 +72,16 @@
   }
 
   .rep-staff-block {
-    margin-top: 1.25rem; padding-top: 1rem;
-    border-top: 1px solid var(--border); color: var(--text);
+    margin-top: 1.25rem;
+    padding: .85rem .9rem 1rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+    color: var(--text);
   }
   .rep-staff-block h2 {
     font-family: var(--font-d); font-size: 1.15rem; margin: 0 0 .75rem;
+    color: var(--staff);
   }
   .rep-absent-row {
     display: flex; flex-direction: column; gap: .5rem;
@@ -95,7 +100,7 @@
 <div class="pl rep-detail" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   {% include "planning/_module_nav.html" with active="repes" %}
   {% if is_planning_staff %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'repetitions:staff_edit' event.pk %}">Éditer (staff)</a>
   </div>
   {% endif %}

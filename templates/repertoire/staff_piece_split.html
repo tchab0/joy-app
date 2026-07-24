@@ -15,7 +15,7 @@
 
 <div class="pl pl--wide" x-data="pdfSplitEditor()" x-cloak>
   {% include "planning/_module_nav.html" with active="atelier" %}
-  <div class="pl-nav-context">
+  <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'repertoire:staff_piece_edit' piece.slug %}">← Fiche atelier</a>
   </div>
 
@@ -130,13 +130,9 @@
         </div>
 
         <div class="rep-split__sel" x-show="activePoste">
-          <p>
+          <p class="rep-split__sel-summary">
             <strong x-text="posteLabel(activePoste)"></strong>
-            <span class="rep-muted" x-show="selStart">
-              — pages
-              <span x-text="selStart"></span>
-              <span x-show="selEnd && selEnd !== selStart">–<span x-text="selEnd"></span></span>
-            </span>
+            <span class="rep-muted" x-text="selectionSummary"></span>
           </p>
           <div class="rep-form-actions">
             <button type="button" class="pl-btn pl-btn--primary"
@@ -245,6 +241,13 @@
           return 'Touchez la dernière page (ou re-validez si une seule page).';
         }
         return 'Vérifiez la plage puis validez.';
+      },
+      get selectionSummary() {
+        if (!this.selStart) return '· touchez les pages';
+        if (!this.selEnd || this.selEnd === this.selStart) {
+          return '· page ' + this.selStart;
+        }
+        return '· pages ' + this.selStart + '–' + this.selEnd;
       },
 
       posteLabel(v) {
