@@ -87,26 +87,35 @@ class MediaItem(models.Model):
     def fichier_actif(self):
         return self.fichier
 
-    def chemin_compresse(self):
-        """Chemin absolu du fichier compressé sidecar, ou None."""
+    def chemin_compresse_destination(self):
+        """Chemin unique réservé à la version compressée de ce média."""
         if not self.fichier:
             return None
 
-        stem = Path(self.fichier.name).stem
-        dest_dir = Path(self._media_root()) / "medias" / "compresses"
+        source = Path(self.fichier.name)
+        if source.parent == Path("medias/compresses"):
+            return Path(self.fichier.path)
 
-        if self.type == "photo":
-            cand = dest_dir / f"{stem}.webp"
-        elif self.type == "video":
-            cand = dest_dir / f"{stem}.mp4"
-        elif self.type == "audio":
-            cand = dest_dir / f"{stem}.m4a"
-        elif self.type == "pdf":
-            cand = dest_dir / f"{stem}.pdf"
-        else:
+        if not self.pk:
             return None
 
-        return cand if cand.exists() else None
+        extensions = {
+            "photo": ".webp",
+            "video": ".mp4",
+            "audio": ".m4a",
+            "pdf": ".pdf",
+        }
+        extension = extensions.get(self.type)
+        if not extension:
+            return None
+
+        dest_dir = Path(self._media_root()) / "medias" / "compresses"
+        return dest_dir / f"{self.pk}_{source.stem}{extension}"
+
+    def chemin_compresse(self):
+        """Chemin absolu du fichier compressé sidecar, ou None."""
+        destination = self.chemin_compresse_destination()
+        return destination if destination and destination.exists() else None
 
     def chemin_compresse_relatif(self):
         abs_path = self.chemin_compresse()

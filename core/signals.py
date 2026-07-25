@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
@@ -33,6 +35,14 @@ def _delete_compresse_sidecar(instance):
         return
 
     path = compressé
+    if instance.fichier and Path(instance.fichier.path).resolve() == path.resolve():
+        # Le FileField est déjà basculé sur le compressé : le nettoyage
+        # référencé ci-dessus est responsable de ce fichier partagé.
+        return
+
+    rel_path = path.relative_to(Path(instance._media_root())).as_posix()
+    if MediaItem.objects.filter(fichier=rel_path).exclude(pk=instance.pk).exists():
+        return
 
     def _delete():
         if path.exists():
