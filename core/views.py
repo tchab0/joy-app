@@ -6,7 +6,6 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
-from django.views.decorators.cache import cache_page
 from django.db.models import Count, Exists, OuterRef
 import logging
 import threading
@@ -28,7 +27,6 @@ PAGE_LABELS = {
 }
 
 
-@cache_page(settings.CACHE_TTL_HOME)
 def home(request):
     qs = Event.objects.filter(public=True, date_debut__gte=timezone.now()).order_by("date_debut")[:3]
     prochains = []
@@ -54,14 +52,12 @@ def _add_bbox(qs):
     return result
 
 
-@cache_page(settings.CACHE_TTL_CONCERTS)
 def concerts(request):
     prochains = _add_bbox(Event.objects.filter(public=True, date_debut__gte=timezone.now()).order_by("date_debut"))
     passes = Event.objects.filter(public=True, date_debut__lt=timezone.now()).order_by("-date_debut")[:10]
     return render(request, "core/concerts.html", {"prochains": prochains, "passes": passes})
 
 
-@cache_page(settings.CACHE_TTL_GOODIES)
 def goodies(request):
     lien = ExternalLink.objects.filter(slug="boutique-goodies", actif=True).first()
     return render(request, "core/goodies.html", {"lien": lien})
@@ -285,12 +281,10 @@ def admin_media_action(request, pk):
     return JsonResponse({"ok": True, "statut": media.statut})
 
 
-@cache_page(settings.CACHE_TTL_DON)
 def don(request):
     return render(request, "core/don.html")
 
 
-@cache_page(settings.CACHE_TTL_ADHESION)
 def adhesion(request):
     lien = ExternalLink.objects.filter(slug="adhesion-helloasso", actif=True).first()
     return render(request, "core/adhesion.html", {"lien": lien})
