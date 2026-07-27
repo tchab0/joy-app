@@ -30,7 +30,7 @@ class ProductTourStepInline(admin.TabularInline):
 
 @admin.register(ProductTour)
 class ProductTourAdmin(admin.ModelAdmin):
-    list_display = ("title", "audience", "version", "is_active", "steps_count")
+    list_display = ("title", "audience", "version", "is_active", "steps_count", "open_editor")
     list_filter = ("audience", "is_active")
     search_fields = ("title",)
     inlines = [ProductTourStepInline]
@@ -40,11 +40,14 @@ class ProductTourAdmin(admin.ModelAdmin):
             {
                 "fields": ("audience", "title", "version", "is_active"),
                 "description": (
-                    "Modifiez le texte et l’ordre des étapes ci-dessous. "
-                    "Ancres disponibles : nav-coulisses, nav-chat, "
-                    "nav-account, module-calendrier, module-mes-dates, module-staff, "
-                    "rsvp-actions, repertoire-filter, chat-list, staff-admin, "
-                    "staff-musiciens, staff-atelier, footer-admin, account-replay. "
+                    "Préférez l’éditeur graphique via /compte/guides/ "
+                    "ou le hub Administration. "
+                    "Sinon modifiez les étapes ci-dessous. "
+                    "Ancres : nav-coulisses, nav-account, module-calendrier, "
+                    "module-mes-dates, module-repertoire, module-chat, "
+                    "module-staff, rsvp-actions, repertoire-filter, chat-list, "
+                    "staff-admin, staff-musiciens, staff-repes, staff-atelier, "
+                    "staff-setlists, footer-admin, admin-hub, account-replay. "
                     "Incrémentez la version pour re-proposer le guide."
                 ),
             },
@@ -54,6 +57,14 @@ class ProductTourAdmin(admin.ModelAdmin):
     @admin.display(description="Étapes")
     def steps_count(self, obj):
         return obj.steps.count()
+
+    @admin.display(description="Éditeur")
+    def open_editor(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+
+        url = reverse("admin_tours") + f"?audience={obj.audience}"
+        return format_html('<a href="{}">Ouvrir la timeline</a>', url)
 
 
 @admin.register(PushSubscription)

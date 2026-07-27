@@ -11,16 +11,21 @@
   }
   .pl-sub { color: var(--muted); font-size: .95rem; max-width: 36rem; }
   /* Module nav — Planning / Répertoire / Staff as distinct clusters */
+  /* Mobile: une seule ligne glissante (pas de wrap) */
   .pl-nav {
-    display: flex; flex-direction: row; flex-wrap: wrap; align-items: stretch;
+    display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch;
     gap: .5rem; margin-bottom: .65rem;
     padding-bottom: .5rem; border-bottom: 1px solid var(--border);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
     /* Reset site chrome <nav> styles if they ever leak again */
     position: static; z-index: auto; background: transparent;
   }
   .pl-nav__group {
     display: flex; flex-direction: column; gap: .2rem;
-    min-width: 0; flex: 0 1 auto;
+    flex: 0 0 auto;
     padding: .35rem .5rem .4rem;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -36,13 +41,17 @@
     display: block;
     font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
     color: var(--gold-text); line-height: 1.2;
+    white-space: nowrap;
   }
   .pl-nav__group--staff .pl-nav__label { color: var(--staff); }
-  .pl-nav__links { display: flex; flex-wrap: wrap; gap: .15rem .2rem; align-items: center; }
+  .pl-nav__links {
+    display: flex; flex-wrap: nowrap; gap: .15rem .2rem; align-items: center;
+  }
   .pl-nav a {
     font-size: .7rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
     color: var(--muted); text-decoration: none; padding: .3rem .45rem; min-height: 36px;
-    display: inline-flex; align-items: center;
+    display: inline-flex; align-items: center; flex-shrink: 0;
+    white-space: nowrap;
     border-radius: var(--r); transition: color var(--trans), background var(--trans);
   }
   .pl-nav a:hover, .pl-nav a.is-active {
@@ -54,15 +63,17 @@
   }
   @media (min-width: 720px) {
     .pl-nav {
+      flex-wrap: wrap; overflow-x: visible;
       gap: .65rem .85rem; margin-bottom: 1.5rem; padding-bottom: 1rem;
     }
     .pl-nav__group {
+      flex: 0 1 auto; min-width: 0;
       padding: .45rem .7rem .5rem;
     }
     .pl-nav__label {
       font-size: .65rem; margin-bottom: .1rem;
     }
-    .pl-nav__links { gap: .35rem; }
+    .pl-nav__links { flex-wrap: wrap; gap: .35rem; }
     .pl-nav a {
       font-size: .8rem; letter-spacing: .04em; padding: .45rem .7rem; min-height: 44px;
     }

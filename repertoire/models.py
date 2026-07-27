@@ -160,13 +160,23 @@ class Piece(models.Model):
 
 
 class PartPoste(models.TextChoices):
-    """Postes planning + conducteur / autre pour les partitions."""
+    """Postes planning + conducteur / autre pour les partitions.
 
+    L’ordre de déclaration = ordre d’affichage des partitions d’un morceau :
+    conducteur → chant → sax → clarinette → trompettes → trombones → rythmique.
+    """
+
+    CONDUCTEUR = "conducteur", "Conducteur"
+    CHANT = MusicianProfile.Poste.CHANT.value, MusicianProfile.Poste.CHANT.label
     ALTO_1 = MusicianProfile.Poste.ALTO_1.value, MusicianProfile.Poste.ALTO_1.label
     ALTO_2 = MusicianProfile.Poste.ALTO_2.value, MusicianProfile.Poste.ALTO_2.label
     TENOR_1 = MusicianProfile.Poste.TENOR_1.value, MusicianProfile.Poste.TENOR_1.label
     TENOR_2 = MusicianProfile.Poste.TENOR_2.value, MusicianProfile.Poste.TENOR_2.label
     BARYTON = MusicianProfile.Poste.BARYTON.value, MusicianProfile.Poste.BARYTON.label
+    CLARINETTE = (
+        MusicianProfile.Poste.CLARINETTE.value,
+        MusicianProfile.Poste.CLARINETTE.label,
+    )
     TROMPETTE_1 = (
         MusicianProfile.Poste.TROMPETTE_1.value,
         MusicianProfile.Poste.TROMPETTE_1.label,
@@ -203,17 +213,23 @@ class PartPoste(models.TextChoices):
     GUITARE = MusicianProfile.Poste.GUITARE.value, MusicianProfile.Poste.GUITARE.label
     BASSE = MusicianProfile.Poste.BASSE.value, MusicianProfile.Poste.BASSE.label
     BATTERIE = MusicianProfile.Poste.BATTERIE.value, MusicianProfile.Poste.BATTERIE.label
-    CLARINETTE = (
-        MusicianProfile.Poste.CLARINETTE.value,
-        MusicianProfile.Poste.CLARINETTE.label,
-    )
-    CHANT = MusicianProfile.Poste.CHANT.value, MusicianProfile.Poste.CHANT.label
     PERCUSSION = (
         MusicianProfile.Poste.PERCUSSION.value,
         MusicianProfile.Poste.PERCUSSION.label,
     )
-    CONDUCTEUR = "conducteur", "Conducteur"
     AUTRE = "autre", "Autre"
+
+
+# Ordre d’affichage des partitions (aligné sur PartPoste).
+PART_DISPLAY_ORDER: tuple[str, ...] = tuple(c.value for c in PartPoste)
+PART_SORT_ORDER: dict[str, int] = {
+    code: index for index, code in enumerate(PART_DISPLAY_ORDER)
+}
+
+
+def part_sort_order(poste: str) -> int:
+    """Index d’affichage d’un poste de partition (inconnu → fin de liste)."""
+    return PART_SORT_ORDER.get(poste, 999)
 
 
 # Chaises standard (5 sax / 4 tp / 4 tb / rythmique) — hors optionnels
@@ -268,6 +284,13 @@ class Part(models.Model):
                 name="unique_part_per_piece_poste",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.sort_order = part_sort_order(self.poste)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"sort_order"}
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.piece.title} — {self.get_poste_display()}"

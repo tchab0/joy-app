@@ -48,10 +48,11 @@ class ChatMembershipAdmin(admin.ModelAdmin):
 
 @admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ("id", "room", "author", "created_at", "deleted_at")
+    list_display = ("id", "room", "author", "reply_to", "created_at", "edited_at", "deleted_at")
     list_filter = ("room__kind",)
     search_fields = ("body", "author__username")
-    autocomplete_fields = ("author", "room")
+    autocomplete_fields = ("author", "room", "reply_to")
+    readonly_fields = ("created_at", "edited_at")
     inlines = [ChatAttachmentInline]
 
 

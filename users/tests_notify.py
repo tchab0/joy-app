@@ -175,3 +175,85 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertRedirects(r, reverse("account_notifications"))
         notif.refresh_from_db()
         self.assertIsNotNone(notif.read_at)
+
+    def test_coulisses_planning_shows_unread_before_calendar(self):
+        notify_users(
+            [self.musician],
+            title="Invite Coulisses",
+            body="Merci de répondre",
+            url="/planning/",
+        )
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("planning:dashboard"))
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.context["show_coulisses_unread_banner"])
+        self.assertEqual(r.context["unread_inbox_count"], 1)
+        self.assertContains(r, "Invite Coulisses")
+        self.assertContains(r, "notification non lue")
+        # Bannière avant le titre Planning du calendrier.
+        self.assertLess(
+            r.content.find(b"Invite Coulisses"),
+            r.content.find(b"<h1>Planning</h1>"),
+        )
+
+    def test_coulisses_chat_unread_grouped_as_messages(self):
+        notify_users(
+            [self.musician],
+            title="JOY — Salon orchestre",
+            body="Alice vous a cité : hello",
+            url="/chat/1/",
+            related_type="chat_msg",
+            related_id=10,
+        )
+        notify_users(
+            [self.musician],
+            title="JOY — Salon orchestre",
+            body="Bob vous a cité : world",
+            url="/chat/1/",
+            related_type="chat_msg",
+            related_id=11,
+        )
+        notify_users(
+            [self.musician],
+            title="JOY — Répétition",
+            body="Alice vous a cité : ping",
+            url="/chat/2/",
+            related_type="chat_msg",
+            related_id=12,
+        )
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("planning:dashboard"))
+        self.assertEqual(r.status_code, 200)
+        banner = r.context["unread_inbox_banner"]
+        self.assertEqual(banner["chat_total"], 3)
+        self.assertEqual(len(banner["chat_groups"]), 2)
+        self.assertContains(r, "messages non lus")
+        self.assertContains(r, "Salon orchestre")
+        self.assertContains(r, "Répétition")
+        self.assertContains(r, "Bob vous a cité")
+        self.assertNotContains(r, "Alice vous a cité : hello")
+
+    def test_home_hides_coulisses_unread_banner(self):
+        notify_users(
+            [self.musician],
+            title="Hors Coulisses",
+            body="Ne pas afficher sur l’accueil",
+            url="/planning/",
+        )
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("home"))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.context["show_coulisses_unread_banner"])
+        self.assertNotContains(r, "Hors Coulisses")
+
+    def test_mark_read_honors_next_back_to_planning(self):
+        notify_users([self.musician], title="RSVP", body="Réponds", url="/planning/")
+        notif = UserNotification.objects.get(user=self.musician)
+        self.client.force_login(self.musician)
+        r = self.client.post(
+            reverse("account_notification_mark_read", args=[notif.pk]),
+            {"next": reverse("planning:dashboard")},
+        )
+        self.assertRedirects(r, reverse("planning:dashboard"))
+        notif.refresh_from_db()
+        self.assertIsNotNone(notif.read_at)

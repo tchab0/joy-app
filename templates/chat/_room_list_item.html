@@ -1,0 +1,18 @@
+<li>
+  <a href="{% url 'chat:room' item.room.pk %}">
+    <div>
+      <div class="chat-kind{% if item.room.kind == 'staff' %} chat-kind--staff{% endif %}">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'staff' %}Staff{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
+      <p class="chat-list__title">{{ item.room.title }}</p>
+      {% if item.last_message %}
+      <p class="chat-list__meta">
+        {{ item.last_message.author.get_full_name|default:item.last_message.author.username|default:"—" }}
+        · {{ item.last_message.created_at|date:"d/m H:i" }}
+        {% if item.last_message.body %} — {{ item.last_message.body|truncatechars:70 }}{% else %} — pièce jointe{% endif %}
+      </p>
+      {% else %}
+      <p class="chat-list__meta">Aucun message pour l’instant</p>
+      {% endif %}
+    </div>
+    {% if item.unread %}<span class="chat-badge" aria-label="{{ item.unread }} non lus">{{ item.unread }}</span>{% endif %}
+  </a>
+</li>

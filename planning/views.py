@@ -14,7 +14,7 @@ from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -34,6 +34,7 @@ from planning.services import (
     attach_calendar_chat_links,
     attach_calendar_setlists,
     attach_calendar_summaries,
+    attach_calendar_roadmaps,
     attach_open_poll_info_to_events,
     attach_roster_substitutes,
     cast_date_vote,
@@ -48,19 +49,26 @@ from planning.services import (
     get_or_create_equipment_item,
     get_or_create_profile,
     get_participation_for,
+    get_or_create_roadmap,
+    get_roadmap,
     invite_musician_to_event,
     invite_musicians_for_form,
     invite_titulaires_to_event,
     launch_availability_poll,
     lock_date_proposal,
+    notify_roadmap,
     open_poll_calendar_markers_for_user,
     parse_invite_choice,
     propose_event,
     propose_substitute,
     respond_substitute_request,
     roster_by_stage,
+    suggest_defaults,
+    sync_known_fields,
     user_can_access_poll,
+    user_can_view_roadmap,
     set_participation_response,
+    user_can_edit_poll_deadline,
     vote_counts_for_option,
 )
 from users.roles import (
@@ -396,13 +404,20 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         )
         events = list(
             Event.objects.filter(date_debut__gte=range_start, date_debut__lte=range_end)
-            .select_related("type", "venue", "chat_room")
+            .select_related("type", "venue", "chat_room", "proposed_by")
+            .prefetch_related(
+                Prefetch(
+                    "from_proposals",
+                    queryset=DateProposal.objects.select_related("created_by"),
+                )
+            )
             .order_by("date_debut", "titre")
         )
         attach_calendar_summaries(events)
         attach_open_poll_info_to_events(events, user)
         attach_calendar_chat_links(events, user)
         attach_calendar_setlists(events)
+        attach_calendar_roadmaps(events)
         attach_weather(events, concerts_only=True)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
@@ -502,6 +517,11 @@ class ProposeEventView(CanProposeEventMixin, View):
         if not titre or not type_id or not day_raw:
             return _fail("Titre, date et type sont requis.")
 
+        deadline_raw = (request.POST.get("deadline") or "").strip()
+        deadline = parse_date(deadline_raw) if deadline_raw else None
+        if deadline is None:
+            return _fail("Indiquez une date limite de réponse.")
+
         try:
             day = date.fromisoformat(day_raw)
         except ValueError:
@@ -542,6 +562,7 @@ class ProposeEventView(CanProposeEventMixin, View):
             contact_nom=(request.POST.get("contact_nom") or "").strip(),
             contact_telephone=(request.POST.get("contact_telephone") or "").strip(),
             contact_email=(request.POST.get("contact_email") or "").strip(),
+            deadline=deadline,
         )
 
         is_staff_user = request.user.is_staff or request.user.is_superuser
@@ -665,6 +686,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             )
 
         setlist_pdf = _setlist_pdf_context(self.request, user, participation, setlist)
+        roadmap = get_roadmap(event)
 
         context.update(
             {
@@ -685,6 +707,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "is_planning_staff": is_staff,
                 "setlist": setlist,
                 "attachable_setlists": attachable_setlists,
+                "roadmap": roadmap,
                 **setlist_pdf,
             }
         )
@@ -772,6 +795,7 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "linked_event__venue",
                 "linked_event__type",
                 "linked_event__chat_room",
+                "created_by",
             ).prefetch_related(
                 Prefetch(
                     "options",
@@ -784,12 +808,13 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
         )
         user = self.request.user
         is_staff = user.is_staff or user.is_superuser
-        # Brouillon : visible staff uniquement (pas encore autorisé).
-        if proposal.is_draft and not is_staff:
+        is_author = proposal.created_by_id == user.pk
+        # Brouillon : visible staff ou auteur (pas encore autorisé aux autres).
+        if proposal.is_draft and not (is_staff or is_author):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied("Sondage pas encore lancé par le staff.")
-        if not user_can_access_poll(user, proposal):
+        if not (is_staff or is_author or user_can_access_poll(user, proposal)):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied("Vous n’êtes pas concerné par ce sondage.")
@@ -813,6 +838,7 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "event": event,
                 "options_data": options_data,
                 "is_planning_staff": is_staff,
+                "can_edit_deadline": user_can_edit_poll_deadline(user, proposal),
                 "hide_pending_polls_banner": True,
             }
         )
@@ -1160,12 +1186,18 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
             messages.error(request, "Titre requis.")
             return redirect("planning:admin")
         description = (request.POST.get("description") or "").strip()
+        deadline_raw = (request.POST.get("deadline") or "").strip()
+        deadline = parse_date(deadline_raw) if deadline_raw else None
+        if deadline is None:
+            messages.error(request, "Indiquez une date limite de réponse.")
+            return redirect("planning:admin")
         # Brouillon : le staff doit lancer explicitement le sondage.
         proposal = DateProposal.objects.create(
             title=title,
             description=description,
             created_by=request.user,
             status=DateProposal.Status.DRAFT,
+            deadline=deadline,
         )
         options_created = 0
         for i in range(20):
@@ -1194,6 +1226,39 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
             "Sondage créé en brouillon — lancez-le pour notifier les musiciens.",
         )
         return redirect("planning:poll_detail", pk=proposal.pk)
+
+
+class UpdatePollDeadlineView(MusicianRequiredMixin, View):
+    """Auteur (ou staff) : modifier la date limite de réponse."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(DateProposal, pk=pk)
+        if not user_can_edit_poll_deadline(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Seul l’auteur ou le staff peut modifier la deadline.")
+        if proposal.status in (
+            DateProposal.Status.LOCKED,
+            DateProposal.Status.CANCELLED,
+        ):
+            messages.error(request, "Ce sondage est clos — deadline non modifiable.")
+            return redirect("planning:poll_detail", pk=pk)
+        deadline_raw = (request.POST.get("deadline") or "").strip()
+        deadline = parse_date(deadline_raw) if deadline_raw else None
+        if deadline is None:
+            messages.error(request, "Indiquez une date limite de réponse.")
+            return redirect("planning:poll_detail", pk=pk)
+        proposal.deadline = deadline
+        # Nouvelle échéance → un nouveau rappel J−7 pourra partir.
+        proposal.deadline_reminder_sent_at = None
+        proposal.save(
+            update_fields=["deadline", "deadline_reminder_sent_at", "updated_at"]
+        )
+        messages.success(
+            request,
+            f"Date limite mise à jour : {deadline.strftime('%d/%m/%Y')}.",
+        )
+        return redirect("planning:poll_detail", pk=pk)
 
 
 class LaunchPollView(PlanningStaffRequiredMixin, View):
@@ -1562,3 +1627,135 @@ class AdminMusicianRemoveView(PlanningStaffRequiredMixin, View):
             f"{user} n’est plus marqué comme musicien.",
         )
         return redirect("planning:admin_musicians")
+
+
+class EventRoadmapView(MusicianRequiredMixin, TemplateView):
+    """Lecture de la feuille de route (participants + staff)."""
+
+    template_name = "planning/event_roadmap.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        event = get_object_or_404(
+            Event.objects.select_related("type", "venue"),
+            pk=kwargs["pk"],
+        )
+        if event.is_rehearsal:
+            return redirect("repetitions:detail", pk=event.pk)
+        participation = get_participation_for(event, request.user)
+        if not user_can_view_roadmap(request.user, event, participation):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Feuille de route réservée aux participants.")
+        self.event = event
+        self.participation = participation
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        from core.page_cms import markdown_to_html
+
+        context = super().get_context_data(**kwargs)
+        event = self.event
+        user = self.request.user
+        is_staff = user.is_staff or user.is_superuser
+        roadmap = get_roadmap(event)
+        md = {}
+        if roadmap:
+            md = {
+                "venue_extra": markdown_to_html(roadmap.venue_extra),
+                "parking": markdown_to_html(roadmap.parking_info),
+                "material": markdown_to_html(roadmap.material_notes),
+                "closing": markdown_to_html(roadmap.closing_note),
+                "dress": markdown_to_html(roadmap.dress_code),
+            }
+        context.update(
+            {
+                "event": event,
+                "roadmap": roadmap,
+                "roadmap_md": md,
+                "participation": self.participation,
+                "is_planning_staff": is_staff,
+            }
+        )
+        return context
+
+
+class EventRoadmapEditView(PlanningStaffRequiredMixin, View):
+    """Édition staff : préremplie + suggestions des feuilles précédentes."""
+
+    template_name = "planning/event_roadmap_edit.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        event = get_object_or_404(
+            Event.objects.select_related("type", "venue"),
+            pk=kwargs["pk"],
+        )
+        if event.is_rehearsal:
+            return redirect("repetitions:detail", pk=event.pk)
+        self.event = event
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request, pk):
+        roadmap = get_or_create_roadmap(self.event, user=request.user)
+        sync_known_fields(roadmap)
+        from planning.forms import EventRoadmapForm
+
+        form = EventRoadmapForm(instance=roadmap)
+        return self._render(request, form, roadmap)
+
+    def post(self, request, pk):
+        roadmap = get_or_create_roadmap(self.event, user=request.user)
+        from planning.forms import EventRoadmapForm
+
+        form = EventRoadmapForm(request.POST, instance=roadmap)
+        if form.is_valid():
+            saved = form.save(commit=False)
+            saved.updated_by = request.user
+            saved.save()
+            messages.success(request, "Feuille de route enregistrée.")
+            if request.POST.get("notify"):
+                n = notify_roadmap(self.event, actor=request.user)
+                messages.success(
+                    request,
+                    f"Notification envoyée à {n} participant"
+                    f"{'s' if n != 1 else ''}.",
+                )
+            return redirect("planning:event_roadmap", pk=self.event.pk)
+        return self._render(request, form, roadmap)
+
+    def _render(self, request, form, roadmap):
+        from django.shortcuts import render
+
+        suggestions = suggest_defaults(self.event)
+        return render(
+            request,
+            self.template_name,
+            {
+                "event": self.event,
+                "roadmap": roadmap,
+                "form": form,
+                "suggestions": suggestions,
+                "is_planning_staff": True,
+            },
+        )
+
+
+class EventRoadmapNotifyView(PlanningStaffRequiredMixin, View):
+    """Envoie la notification feuille de route aux participants."""
+
+    def post(self, request, pk):
+        event = get_object_or_404(
+            Event.objects.select_related("type"),
+            pk=pk,
+        )
+        if event.is_rehearsal:
+            return redirect("repetitions:detail", pk=event.pk)
+        roadmap = get_roadmap(event)
+        if roadmap is None:
+            messages.error(request, "Créez d’abord la feuille de route.")
+            return redirect("planning:event_roadmap_edit", pk=event.pk)
+        n = notify_roadmap(event, actor=request.user)
+        messages.success(
+            request,
+            f"Notification envoyée à {n} participant{'s' if n != 1 else ''}.",
+        )
+        return redirect("planning:event_roadmap", pk=event.pk)

@@ -76,6 +76,93 @@ def notify_users(
     return sent
 
 
+def unread_notifications_for_user(
+    user, *, limit: int = 50
+) -> tuple[list, int]:
+    """
+    Notifications in-app non lues du destinataire (ordre plus récentes d’abord).
+
+    Retourne ``(liste tronquée, total non lu)``. Tolère un schéma pas encore
+    migré → ``([], 0)``.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return [], 0
+    try:
+        from users.models import UserNotification
+
+        qs = UserNotification.objects.filter(user=user, read_at__isnull=True)
+        total = qs.count()
+        return list(qs[:limit]), total
+    except (ProgrammingError, OperationalError):
+        logger.warning(
+            "unread_notifications_for_user indisponible (migration ?) user_id=%s",
+            getattr(user, "pk", None),
+        )
+        return [], 0
+
+
+def _is_chat_notification(item) -> bool:
+    related = (getattr(item, "related_type", None) or "").strip()
+    if related == "chat_msg":
+        return True
+    url = (getattr(item, "url", None) or "").strip()
+    return url.startswith("/chat/")
+
+
+def _chat_room_label(item) -> str:
+    """Libellé salon depuis le titre notif (ex. « JOY — Salon orchestre »)."""
+    title = (getattr(item, "title", None) or "").strip()
+    for prefix in ("JOY — ", "JOY - ", "JOY – "):
+        if title.startswith(prefix):
+            label = title[len(prefix) :].strip()
+            if label:
+                return label
+    if title and title != "JOY":
+        return title
+    return "Salon chat"
+
+
+def group_unread_inbox_for_banner(notifications: list) -> dict:
+    """
+    Compacte l’inbox pour la bannière Coulisses.
+
+    Chat → groupes par URL (lien vers chaque salon) + total + extrait du plus récent.
+    Autres → liste courte (invitations, sondages…).
+    """
+    chat_by_url: dict[str, dict] = {}
+    chat_order: list[str] = []
+    other: list = []
+    chat_total = 0
+
+    for item in notifications:
+        if _is_chat_notification(item):
+            chat_total += 1
+            url = (item.url or "").strip() or "/chat/"
+            group = chat_by_url.get(url)
+            if group is None:
+                preview = (item.body or "").strip()
+                if len(preview) > 120:
+                    preview = preview[:117].rstrip() + "…"
+                group = {
+                    "url": url,
+                    "label": _chat_room_label(item),
+                    "count": 0,
+                    "open_pk": item.pk,
+                    "preview": preview,
+                }
+                chat_by_url[url] = group
+                chat_order.append(url)
+            group["count"] += 1
+        else:
+            other.append(item)
+
+    return {
+        "chat_groups": [chat_by_url[u] for u in chat_order],
+        "chat_total": chat_total,
+        "other": other,
+    }
+
+
 def mark_notifications_responded(
     user,
     *,

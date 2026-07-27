@@ -4,6 +4,8 @@ from django.core.management.base import BaseCommand
 from chat.services import (
     ensure_event_room,
     ensure_orchestra_room,
+    ensure_staff_room,
+    seed_staff_members,
     sync_musician_to_orchestra,
     sync_participation_to_chat,
 )
@@ -15,7 +17,7 @@ User = get_user_model()
 
 class Command(BaseCommand):
     help = (
-        "Crée le salon Orchestre, synchronise les musiciens, "
+        "Crée les salons Orchestre et Staff, synchronise les musiciens/staff, "
         "et aligne salons/memberships sur les événements existants."
     )
 
@@ -25,6 +27,9 @@ class Command(BaseCommand):
         for user in User.objects.filter(is_musician=True, is_active=True):
             sync_musician_to_orchestra(user)
             n_musicians += 1
+
+        staff_room = ensure_staff_room()
+        n_staff = seed_staff_members(staff_room)
 
         n_events = 0
         for event in Event.objects.all():
@@ -39,6 +44,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Salon « {room.title} » — {n_musicians} musicien(s), "
+                f"salon « {staff_room.title} » — {n_staff} staff, "
                 f"{n_events} salon(s) événement, {n_parts} participation(s) sync."
             )
         )

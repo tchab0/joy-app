@@ -38,6 +38,11 @@ class Organisme(models.Model):
 
 class EventType(models.Model):
     nom = models.CharField(max_length=100)
+    is_rehearsal = models.BooleanField(
+        "Répétition",
+        default=False,
+        help_text="Coché = ce type est une répétition (calendrier, absences, contact masqué).",
+    )
 
     class Meta:
         verbose_name = "Type d'événement"
@@ -68,7 +73,7 @@ class Event(models.Model):
     public      = models.BooleanField(
         "Visible sur le site public",
         default=False,
-        help_text="Coché = l’événement apparaît sur l’accueil et /concerts/.",
+        help_text="Coché = l’événement apparaît sur l’accueil et /concerts/. Géré via le CMS concerts.",
     )
     parent = models.ForeignKey(
         "self",
@@ -108,6 +113,21 @@ class Event(models.Model):
         null=True,
         blank=True,
         help_text="Horodatage de la notification J+7 demandant photos/vidéos aux membres.",
+    )
+    shares_facebook = models.PositiveIntegerField(
+        "Partages Facebook",
+        default=0,
+        help_text="Clics sur le bouton de partage Facebook (site).",
+    )
+    shares_instagram = models.PositiveIntegerField(
+        "Partages Instagram",
+        default=0,
+        help_text="Clics sur le bouton de partage Instagram (site).",
+    )
+    shares_bluesky = models.PositiveIntegerField(
+        "Partages Bluesky",
+        default=0,
+        help_text="Clics sur le bouton de partage Bluesky (site).",
     )
 
     class Meta:
@@ -152,7 +172,13 @@ class Event(models.Model):
 
     @property
     def is_rehearsal(self) -> bool:
-        nom = (getattr(self.type, "nom", None) or "").strip().lower()
+        event_type = getattr(self, "type", None)
+        if event_type is None:
+            return False
+        if getattr(event_type, "is_rehearsal", False):
+            return True
+        # Fallback legacy (types créés avant le flag explicite).
+        nom = (getattr(event_type, "nom", None) or "").strip().lower()
         return "répétition" in nom or "repetition" in nom
 
     @property

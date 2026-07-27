@@ -1,0 +1,279 @@
+/* Styles partagés cartes concerts (Leaflet). */
+.event-map-wrap {
+  margin-top: .85rem;
+  width: 80%;
+  position: relative;
+  z-index: 0;
+}
+.event-map-wrap--mini {
+  width: 80%;
+  grid-column: 1 / -1;
+}
+.event-map {
+  width: 100%;
+  height: 300px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--surface);
+}
+.event-map--mini {
+  height: 260px;
+}
+.event-map.leaflet-container {
+  width: 100%;
+  height: 100%;
+  font: inherit;
+  background: var(--surface);
+}
+.event-map-pin {
+  background: transparent !important;
+  border: none !important;
+}
+.event-map__ext {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 4px 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .75rem;
+  color: #333;
+  text-decoration: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .15);
+}
+.event-map__ext:hover {
+  color: var(--accent);
+}
+/* Itinéraire mobile : choix app (défaut / Maps / Waze / Plans) */
+.event-map__go {
+  display: none;
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 1000;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r);
+  padding: .55rem 1rem;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: .85rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+}
+.event-map__go:hover,
+.event-map__go:focus-visible {
+  color: #fff;
+  filter: brightness(1.06);
+}
+/* CTA dans la barre d’actions (prochains concerts) — toujours visible */
+.event-card-actions .event-map__go,
+.actions .event-map__go {
+  display: inline-flex;
+  position: static;
+  box-shadow: none;
+  filter: none;
+  text-transform: none;
+  letter-spacing: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: inherit;
+  min-height: inherit;
+  border-radius: inherit;
+}
+@media (max-width: 720px) {
+  .event-map-wrap--go .event-map__go {
+    display: inline-flex;
+  }
+}
+
+/* Sheet choix app navigation */
+body.event-map-nav-open {
+  overflow: hidden;
+}
+.event-map-nav {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+.event-map-nav[hidden] {
+  display: none !important;
+}
+.event-map-nav__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+}
+.event-map-nav__panel {
+  position: relative;
+  width: 100%;
+  max-width: 28rem;
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .2);
+  padding: 0 0 calc(.85rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 640px) {
+  .event-map-nav {
+    align-items: center;
+    padding: 1rem;
+  }
+  .event-map-nav__panel {
+    border-radius: var(--r);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
+  }
+}
+.event-map-nav__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1.1rem;
+  background: var(--text);
+  color: #fff;
+}
+.event-map-nav__head h2 {
+  margin: 0;
+  font-family: var(--font-d);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+.event-map-nav__close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, .75);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.event-map-nav__close:hover,
+.event-map-nav__close:focus-visible {
+  color: #fff;
+}
+.event-map-nav__lead {
+  margin: .85rem 1.1rem .35rem;
+  font-size: .9rem;
+  color: var(--muted);
+}
+.event-map-nav__list {
+  list-style: none;
+  margin: 0;
+  padding: .35rem .85rem .25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+.event-map-nav__opt {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .15rem;
+  width: 100%;
+  min-height: 48px;
+  padding: .7rem .9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.event-map-nav__opt:hover,
+.event-map-nav__opt:focus-visible {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), .06);
+  color: var(--text);
+  outline: none;
+}
+.event-map-nav__opt.is-pref {
+  border-color: rgba(var(--accent-rgb), .45);
+  background: rgba(var(--accent-rgb), .08);
+}
+.event-map-nav__opt-label {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.event-map-nav__badge {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.event-map-nav__opt-hint {
+  font-size: .8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.event-map .leaflet-control-zoom {
+  border: 1.5px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
+}
+.event-map .leaflet-control-zoom a {
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 18px !important;
+  color: var(--text) !important;
+  background: #fff !important;
+}
+.event-map .leaflet-control-zoom a:hover {
+  color: var(--accent) !important;
+  background: var(--bg) !important;
+}
+.event-map .leaflet-control-attribution {
+  font-size: .65rem;
+  background: rgba(255, 255, 255, .85) !important;
+  max-width: calc(100% - 5rem);
+}
+@media (max-width: 600px) {
+  .event-card .event-map-wrap {
+    margin-left: calc(-80px - 1.5rem);
+    width: calc(100% + 80px + 1.5rem);
+  }
+  .event-card .event-map {
+    border-radius: 0;
+  }
+  .event-item .event-map-wrap--mini {
+    width: 100%;
+  }
+  .event-item .event-map--mini {
+    height: 180px;
+    margin-top: 0;
+    border-radius: 0;
+  }
+}

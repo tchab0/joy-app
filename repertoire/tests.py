@@ -19,7 +19,16 @@ from repertoire.chorus import (
     resolve_solo_selection,
     solo_pool_entries,
 )
-from repertoire.models import BIG_BAND_POSTES, Part, PartPoste, Piece, Setlist, SetlistItem
+from repertoire.models import (
+    BIG_BAND_POSTES,
+    PART_DISPLAY_ORDER,
+    Part,
+    PartPoste,
+    Piece,
+    Setlist,
+    SetlistItem,
+    part_sort_order,
+)
 from repertoire.pdf_utils import extract_pdf_pages_bytes, images_to_pdf_bytes, pdf_page_count
 
 User = get_user_model()
@@ -619,3 +628,52 @@ class MissingBigBandPartsTests(TestCase):
         self.assertContains(r, "Splanky Incomplete")
         self.assertContains(r, 'class="rep-alert-dot"')
         self.assertContains(r, "postes manquants")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PartDisplayOrderTests(TestCase):
+    def test_display_order_starts_with_conducteur_then_chant(self):
+        self.assertEqual(PART_DISPLAY_ORDER[0], PartPoste.CONDUCTEUR)
+        self.assertEqual(PART_DISPLAY_ORDER[1], PartPoste.CHANT)
+        self.assertLess(
+            part_sort_order(PartPoste.BARYTON),
+            part_sort_order(PartPoste.TROMPETTE_1),
+        )
+        self.assertLess(
+            part_sort_order(PartPoste.TROMPETTE_4),
+            part_sort_order(PartPoste.TROMBONE_1),
+        )
+        self.assertLess(
+            part_sort_order(PartPoste.TROMBONE_4),
+            part_sort_order(PartPoste.PIANO),
+        )
+
+    def test_parts_queryset_follows_family_order(self):
+        piece = Piece.objects.create(title="Ordered Parts", is_published=True)
+        pdf = lambda name: SimpleUploadedFile(
+            name, b"%PDF-1.4\n%", content_type="application/pdf"
+        )
+        for poste in (
+            PartPoste.BATTERIE,
+            PartPoste.TROMPETTE_1,
+            PartPoste.CHANT,
+            PartPoste.CONDUCTEUR,
+            PartPoste.ALTO_1,
+            PartPoste.TROMBONE_1,
+            PartPoste.PIANO,
+        ):
+            Part.objects.create(piece=piece, poste=poste, file=pdf(f"{poste}.pdf"))
+
+        ordered = list(piece.parts.values_list("poste", flat=True))
+        self.assertEqual(
+            ordered,
+            [
+                PartPoste.CONDUCTEUR,
+                PartPoste.CHANT,
+                PartPoste.ALTO_1,
+                PartPoste.TROMPETTE_1,
+                PartPoste.TROMBONE_1,
+                PartPoste.PIANO,
+                PartPoste.BATTERIE,
+            ],
+        )

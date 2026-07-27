@@ -105,6 +105,19 @@
     }
     .nav-links a:hover, .nav-links a.active { color: #fff; }
     .nav-links a.active { border-bottom: 2px solid var(--accent); }
+    /* Coulisses — lettres slate, clairement distinctes du blanc des autres liens */
+    .nav-links a[data-tour="nav-coulisses"],
+    .nav-links a[data-tour="nav-coulisses"]:visited {
+      color: #7eb4cc;
+      font-weight: 600;
+    }
+    .nav-links a[data-tour="nav-coulisses"]:hover,
+    .nav-links a[data-tour="nav-coulisses"].active {
+      color: #a8d4e8;
+    }
+    .nav-links a[data-tour="nav-coulisses"].active {
+      border-bottom-color: #7eb4cc;
+    }
     .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
     .nav-burger span { display: block; width: 22px; height: 2px; background: #fff; margin: 5px 0; transition: var(--trans); }
     .nav-burger span { transition: transform var(--trans), opacity var(--trans); }
@@ -140,6 +153,20 @@
       margin: 0 !important;
     }
     .footer-staff a:hover { color: #fff !important; }
+    .footer-staff-icon {
+      gap: .4rem;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: var(--r);
+      color: rgba(255,255,255,.7) !important;
+    }
+    .footer-staff-icon:hover {
+      color: #fff !important;
+      border-color: rgba(255,255,255,.4);
+      background: rgba(255,255,255,.06);
+    }
+    .footer-staff-icon svg {
+      width: 1rem; height: 1rem; flex-shrink: 0;
+    }
 
     /* UTILS */
     .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
@@ -295,8 +322,7 @@
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
       {% endif %}
       {% if show_musician_nav %}
-      <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-coulisses" {% if request.resolver_match.namespace == 'planning' or request.resolver_match.namespace == 'repertoire' or request.resolver_match.namespace == 'repetitions' %}class="active"{% endif %}>Coulisses</a></li>
-      <li><a href="{% url 'chat:list' %}" data-tour="nav-chat" {% if request.resolver_match and request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Chat</a></li>
+      <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-coulisses" {% if request.resolver_match.namespace == 'planning' or request.resolver_match.namespace == 'repertoire' or request.resolver_match.namespace == 'repetitions' or request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Coulisses</a></li>
       {% endif %}
       {% if request.user.is_authenticated %}
       <li><a href="{% url 'account_home' %}" data-tour="nav-account" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' or request.resolver_match.url_name == 'account_member_area' %}class="active"{% endif %}>Mon compte</a></li>
@@ -314,6 +340,12 @@
     {% endfor %}
   </div>
   {% endif %}
+  {% if show_coulisses_unread_banner %}
+  {% include "planning/_unread_notifications_banner.html" %}
+  {% endif %}
+  {% if show_musician_nav and pending_polls and not hide_pending_polls_banner %}
+  {% include "planning/_pending_polls_banner.html" %}
+  {% endif %}
   {% block content %}{% endblock %}
 </main>
 <footer>
@@ -327,16 +359,18 @@
   <div class="footer-staff" data-tour="footer-admin">
     <span class="footer-staff-label">Administration</span>
     <div class="footer-staff-links">
+      <a href="{% url 'admin_page_edit' 'accueil' %}" class="footer-staff-icon" title="Éditeur de pages" aria-label="Éditeur de pages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 20h9"/>
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+        <span>Éditeur</span>
+      </a>
+      <a href="{% url 'admin_hub' %}">Tableau de bord</a>
       <a href="{% url 'admin_feedback' %}">Retours</a>
-      <a href="{% url 'stats:dashboard' %}">Statistiques</a>
-      <a href="{% url 'admin_concerts' %}">Concerts</a>
-      <a href="{% url 'admin_venues' %}">Lieux</a>
-      <a href="{% url 'admin_medias' %}">Médias</a>
-      <a href="{% url 'admin_contact' %}">Contact</a>
-      <a href="{% url 'admin_notifications' %}">Notifs</a>
-      <a href="{% url 'planning:admin_musicians' %}">Musiciens</a>
-      <a href="{% url 'planning:admin' %}">Planning</a>
-      <a href="{% url 'repertoire:staff_list' %}">Atelier</a>
+      <a href="{% url 'admin_concerts' %}">CMS concerts</a>
+      <a href="{% url 'planning:admin' %}">Admin planning</a>
+      <a href="{% url 'repertoire:staff_list' %}">Atelier partitions</a>
       <a href="/admin/">Django admin</a>
     </div>
   </div>
@@ -359,5 +393,114 @@
   <script src="{% static 'users/tour.js' %}?v=10" defer></script>
 {% endif %}
 {% block extra_js %}{% endblock %}
+<script>
+window.joyTrackShare = function (el, network) {
+  if (!el || !network) return;
+  var root = el.closest ? el.closest(".event-share") : null;
+  var trackUrl = root && root.getAttribute("data-share-track");
+  if (!trackUrl) return;
+  try {
+    fetch(trackUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ network: network }),
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(function () {});
+  } catch (e) { /* ignore */ }
+};
+
+document.addEventListener("click", function (e) {
+  var a = e.target && e.target.closest ? e.target.closest("a[data-share-network]") : null;
+  if (!a || !a.closest(".event-share")) return;
+  window.joyTrackShare(a, a.getAttribute("data-share-network"));
+}, true);
+
+window.joyShareInstagram = async function (btn) {
+  if (!btn || btn.dataset.igBusy === "1") return false;
+  var imageUrl = btn.getAttribute("data-ig-image");
+  var pageUrl = btn.getAttribute("data-ig-url");
+  var title = btn.getAttribute("data-ig-title") || "Concert JOY";
+  var text = title + " — Jazz Orchestra Yonnais\n" + pageUrl;
+  var label = btn.textContent;
+  var tracked = false;
+  function trackOnce() {
+    if (tracked) return;
+    tracked = true;
+    window.joyTrackShare(btn, "instagram");
+  }
+  btn.dataset.igBusy = "1";
+  btn.disabled = true;
+  btn.textContent = "…";
+
+  function reset() {
+    btn.dataset.igBusy = "0";
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+
+  function toast(msg) {
+    var el = document.getElementById("joy-ig-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "joy-ig-toast";
+      el.setAttribute("role", "status");
+      el.style.cssText = "position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#1a1714;color:#fff;padding:.85rem 1.1rem;border-radius:4px;font:600 .85rem/1.35 Work Sans,system-ui,sans-serif;max-width:min(92vw,26rem);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25)";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    window.clearTimeout(el._t);
+    el._t = window.setTimeout(function () { el.remove(); }, 4500);
+  }
+
+  async function fallback() {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(pageUrl);
+      }
+    } catch (e) { /* ignore */ }
+    var a = document.createElement("a");
+    a.href = imageUrl + (imageUrl.indexOf("?") >= 0 ? "&" : "?") + "download=1";
+    a.setAttribute("download", "joy-concert.jpg");
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.open("https://www.instagram.com/", "_blank", "noopener");
+    toast("Lien copié. Publiez l’image téléchargée sur Instagram et collez le lien en légende.");
+    trackOnce();
+    window.setTimeout(reset, 800);
+  }
+
+  try {
+    var res = await fetch(imageUrl, { credentials: "same-origin" });
+    if (!res.ok) throw new Error("image");
+    var blob = await res.blob();
+    var file = new File([blob], "joy-concert.jpg", { type: blob.type || "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: title, text: text, url: pageUrl });
+      trackOnce();
+      reset();
+      return false;
+    }
+    if (typeof navigator.share === "function") {
+      await navigator.share({ title: title, text: text, url: pageUrl });
+      trackOnce();
+      reset();
+      return false;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      reset();
+      return false;
+    }
+  }
+  await fallback();
+  return false;
+};
+</script>
 </body>
 </html>

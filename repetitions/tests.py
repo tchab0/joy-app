@@ -21,7 +21,7 @@ from users.models import User
 
 class RehearsalServicesTests(TestCase):
     def setUp(self):
-        planning_services._STATUS_CACHE = None
+        planning_services._constants._STATUS_CACHE = None
         ensure_participation_statuses(force=True)
         self.venue = Venue.objects.create(nom="Salle", ville="La Roche")
         self.staff = User.objects.create_user(

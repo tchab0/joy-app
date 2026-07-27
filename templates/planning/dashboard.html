@@ -75,23 +75,6 @@
   </section>
   {% endif %}
 
-  {% if open_polls %}
-  <section class="pl-section">
-    <h2>Sondages de dates</h2>
-    {% for poll in open_polls %}
-    <div class="pl-row">
-      <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'planning:poll_detail' poll.pk %}">{{ poll.title }}</a>
-        <p class="pl-row__meta">{{ poll.options.count }} option{{ poll.options.count|pluralize }}</p>
-      </div>
-      <div class="pl-row__actions">
-        <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' poll.pk %}">Voter</a>
-      </div>
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
-
   <section class="pl-section pl-section--panel pl-section--upcoming"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
     <h2>Prochaines dates</h2>
     {% if upcoming %}

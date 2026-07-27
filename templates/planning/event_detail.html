@@ -18,6 +18,11 @@
     {% else %}
     <a href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">Créer setlist</a>
     {% endif %}
+    {% if roadmap %}
+    <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Feuille de route</a>
+    {% else %}
+    <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Créer feuille de route</a>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -59,6 +64,18 @@
     {% if chat_link.unread %}
     <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
     {% endif %}
+  </a>
+  {% endif %}
+
+  {% if roadmap and participation %}
+  <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'planning:event_roadmap_edit' event.pk %}{% else %}{% url 'planning:event_roadmap' event.pk %}{% endif %}">
+    <span>Feuille de route</span>
+    <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
+  </a>
+  {% elif is_planning_staff %}
+  <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'planning:event_roadmap_edit' event.pk %}">
+    <span>Feuille de route</span>
+    <span>{% if roadmap %}Éditer{% else %}Créer{% endif %}</span>
   </a>
   {% endif %}
 

@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+{% block title %}Éditer — {{ page.titre }} — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .pe { max-width: 760px; margin: 0 auto; padding: 1rem 1rem 3rem; color: var(--text); }
+  .pe h1 { font-family: var(--font-d); font-size: 1.6rem; margin: 0 0 .25rem; color: var(--text); }
+  .pe__back { display: inline-flex; min-height: 44px; align-items: center; color: var(--muted); text-decoration: none; font-size: .9rem; }
+  .pe__back:hover { color: var(--accent); }
+  .pe__meta {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+    padding: 1rem; margin: 1rem 0 1.25rem; display: flex; flex-direction: column; gap: .75rem;
+  }
+  .pe__meta label { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: .3rem; letter-spacing: .04em; text-transform: uppercase; }
+  .pe__meta input[type=text], .pe__meta textarea {
+    width: 100%; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--bg); color: var(--text); font-family: var(--font-b); font-size: 1rem; min-height: 44px;
+  }
+  .pe__meta textarea { min-height: 72px; resize: vertical; }
+  .pe__check { display: flex; align-items: center; gap: .5rem; min-height: 44px; font-size: .95rem; }
+  .pe__toolbar {
+    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem;
+  }
+  .pe__toolbar select {
+    flex: 1 1 160px; min-height: 44px; padding: .55rem .75rem; border: 1px solid var(--border);
+    border-radius: var(--r); background: var(--surface); color: var(--text); font-size: .95rem;
+  }
+  .pe__status { font-size: .82rem; color: var(--muted); min-height: 1.2em; }
+  .pe__status.is-ok { color: var(--ok); }
+  .pe__status.is-err { color: var(--accent); }
+
+  .pe-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+    margin-bottom: .65rem; overflow: hidden; color: var(--text);
+  }
+  .pe-card.is-hidden-block { opacity: .55; }
+  .pe-card__head {
+    display: grid; grid-template-columns: 36px 1fr auto; gap: .5rem; align-items: center;
+    padding: .65rem .75rem; cursor: grab; min-height: 52px;
+    background: rgba(var(--staff-rgb, 71,85,105), .06);
+  }
+  .pe-card__head:active { cursor: grabbing; }
+  .pe-card__handle {
+    width: 36px; height: 36px; display: grid; place-items: center;
+    color: var(--muted); font-size: 1.1rem; user-select: none;
+  }
+  .pe-card__title { font-weight: 600; font-size: .95rem; line-height: 1.3; }
+  .pe-card__type { display: block; font-size: .72rem; color: var(--muted); font-weight: 500; margin-top: .1rem; }
+  .pe-card__actions { display: flex; gap: .25rem; }
+  .pe-card__actions button {
+    min-width: 44px; min-height: 44px; border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--bg); color: var(--text); cursor: pointer; font-size: .85rem;
+  }
+  .pe-card__body {
+    padding: .85rem .9rem 1rem; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: .75rem;
+  }
+  .pe-field label { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: .3rem; }
+  .pe-field input, .pe-field textarea, .pe-field select {
+    width: 100%; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--bg); color: var(--text); font-family: var(--font-b); font-size: 1rem; min-height: 44px;
+  }
+  .pe-field textarea { min-height: 110px; resize: vertical; line-height: 1.45; }
+  .pe-field__hint { font-size: .78rem; color: var(--muted); margin-top: .25rem; }
+  .pe-preview {
+    width: 100%; max-height: 160px; object-fit: cover; border-radius: var(--r);
+    border: 1px solid var(--border); background: var(--bg);
+  }
+  .pe-media-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .pe-media-row .btn { min-height: 44px; }
+  .pe-md-bar {
+    display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .45rem;
+  }
+  .pe-md-btn {
+    min-height: 40px; padding: .4rem .7rem; border: 1px solid var(--border);
+    border-radius: var(--r); background: var(--bg); color: var(--text);
+    font-size: .8rem; font-weight: 600; cursor: pointer;
+  }
+  .pe-md-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pe-field__hint code {
+    font-size: .78em; background: var(--bg); padding: .1rem .3rem;
+    border-radius: 3px; color: var(--gold-text);
+  }
+  .pe-media-box {
+    border: 1px solid var(--border); border-radius: var(--r); padding: .75rem;
+    background: var(--bg); display: flex; flex-direction: column; gap: .65rem;
+  }
+  .pe-media-box__label {
+    font-size: .78rem; font-weight: 600; color: var(--muted);
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pe-quick { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+  .pe-quick .btn { min-height: 44px; font-size: .8rem; }
+  .pe-card__actions button:disabled { opacity: .35; cursor: not-allowed; }
+
+  .pe-modal {
+    position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45);
+    display: flex; align-items: flex-end; justify-content: center; padding: 0;
+  }
+  .pe-modal__panel {
+    background: var(--surface); color: var(--text); width: 100%; max-width: 560px;
+    max-height: 85vh; overflow: auto; border-radius: var(--r) var(--r) 0 0;
+    padding: 1rem 1rem 1.5rem; box-shadow: 0 -4px 24px rgba(0,0,0,.2);
+  }
+  .pe-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; gap: .5rem; }
+  .pe-modal__head h2 { font-family: var(--font-d); font-size: 1.25rem; margin: 0; color: var(--text); }
+  .pe-modal__grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .pe-modal__item {
+    border: 1px solid var(--border); border-radius: var(--r); padding: .4rem; background: var(--bg);
+    cursor: pointer; text-align: left; color: var(--text); min-height: 44px;
+  }
+  .pe-modal__item img { width: 100%; height: 72px; object-fit: cover; border-radius: calc(var(--r) - 2px); display: block; }
+  .pe-modal__item span { display: block; font-size: .72rem; margin-top: .3rem; color: var(--muted); line-height: 1.3; }
+  @media (min-width: 640px) {
+    .pe { padding-top: 1.5rem; }
+    .pe-modal { align-items: center; padding: 1rem; }
+    .pe-modal__panel { border-radius: var(--r); max-height: 80vh; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pe" x-data="pageEditor()" x-init="init()">
+  <a class="pe__back" href="{% url 'admin_pages' %}">← Pages</a>
+  <h1>{{ page.titre }}</h1>
+  <p style="color:var(--muted);font-size:.9rem;margin:.25rem 0 0">
+    {% url 'home' as home_url %}
+    <a href="{{ home_url }}" target="_blank" rel="noopener" style="color:var(--accent)"
+       @click.prevent="flushAndOpen('{{ home_url }}')">Voir la page publique ↗</a>
+  </p>
+
+  <form class="pe__meta" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="meta">
+    <div>
+      <label for="titre">Titre (admin / SEO)</label>
+      <input id="titre" type="text" name="titre" value="{{ page.titre }}">
+    </div>
+    <div>
+      <label for="meta_description">Meta description</label>
+      <textarea id="meta_description" name="meta_description">{{ page.meta_description }}</textarea>
+    </div>
+    <label class="pe__check">
+      <input type="checkbox" name="publie" {% if page.publie %}checked{% endif %}>
+      Page publiée
+    </label>
+    <button type="submit" class="btn btn-primary" style="align-self:flex-start;min-height:44px">Enregistrer les infos</button>
+  </form>
+
+  <div class="pe__toolbar">
+    <select x-model="newType" aria-label="Type de carte">
+      {% for val, label in block_types %}
+      <option value="{{ val }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-primary" style="min-height:44px" @click="addBlock()" :disabled="busy">+ Ajouter</button>
+  </div>
+  <div class="pe-quick">
+    <label class="btn btn-outline" style="display:inline-flex;align-items:center;cursor:pointer">
+      + Image (fichier)
+      <input type="file" accept="image/*" hidden @change="uploadNewImage($event)">
+    </label>
+    <button type="button" class="btn btn-outline" @click="addBlockOfType('image')" :disabled="busy">+ Carte image</button>
+    <button type="button" class="btn btn-outline" @click="addBlockOfType('video')" :disabled="busy">+ Carte vidéo</button>
+  </div>
+  <p class="pe__status" :class="statusClass" x-text="status"></p>
+
+  <div id="pe-sortable" x-ref="list">
+    <template x-for="(block, index) in blocks" :key="block.id">
+      <article class="pe-card" :class="{ 'is-hidden-block': !block.visible }" :data-id="block.id">
+        <div class="pe-card__head">
+          <span class="pe-card__handle" title="Glisser pour réordonner" aria-hidden="true">⋮⋮</span>
+          <div>
+            <div class="pe-card__title" x-text="block.label || block.type_label"></div>
+            <span class="pe-card__type" x-text="block.type_label + (block.visible ? '' : ' · masquée')"></span>
+          </div>
+          <div class="pe-card__actions">
+            <button type="button" @click="moveBlock(index, -1)" :disabled="index === 0" title="Monter">↑</button>
+            <button type="button" @click="moveBlock(index, 1)" :disabled="index === blocks.length - 1" title="Descendre">↓</button>
+            <button type="button" @click="block._open = !block._open" :aria-expanded="block._open" title="Éditer">✎</button>
+            <button type="button" @click="toggleVisible(block)" :title="block.visible ? 'Masquer' : 'Afficher'">👁</button>
+            <button type="button" @click="removeBlock(block)" title="Supprimer">✕</button>
+          </div>
+        </div>
+        <div class="pe-card__body" x-show="block._open" x-cloak>
+          <div class="pe-field">
+            <label>Libellé interne (non affiché sur le site)</label>
+            <input type="text" x-model="block.titre_admin" @input="queueSave(block)">
+          </div>
+
+          <template x-if="block.type === 'hero'">
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div class="pe-field"><label>Accent (ex. J.O.Y)</label><input type="text" x-model="block.contenu.title_accent" @input="queueSave(block)"></div>
+              <div class="pe-field"><label>Titre</label><input type="text" x-model="block.contenu.title" @input="queueSave(block)"></div>
+              <div class="pe-field"><label>Tagline</label><input type="text" x-model="block.contenu.tag" @input="queueSave(block)"></div>
+              <div class="pe-field"><label>Sous-titre</label><textarea x-model="block.contenu.subtitle" @input="queueSave(block)"></textarea></div>
+              <div class="pe-field"><label>URL vidéo YouTube</label><input type="url" x-model="block.contenu.video_url" @input="queueSave(block)" placeholder="https://www.youtube.com/watch?v=…"></div>
+
+              <div class="pe-media-box">
+                <span class="pe-media-box__label">Image d’en-tête</span>
+                <div class="pe-field"><label>Texte alternatif</label><input type="text" x-model="block.contenu.image_alt" @input="queueSave(block)"></div>
+                <template x-if="previewUrl(block)"><img class="pe-preview" :src="previewUrl(block)" :alt="block.contenu.image_alt || ''"></template>
+                <p class="pe-field__hint" x-show="!previewUrl(block)">Aucune image — choisissez une photo ou téléversez.</p>
+                <div class="pe-media-row">
+                  <button type="button" class="btn btn-outline" @click="openPicker(block, 'photo')">Choisir / remplacer</button>
+                  <label class="btn btn-outline" style="display:inline-flex;align-items:center;cursor:pointer">
+                    Téléverser
+                    <input type="file" accept="image/*" hidden @change="upload($event, block)">
+                  </label>
+                  <button type="button" class="btn btn-outline" x-show="hasMedia(block)" @click="clearMedia(block)">Retirer l’image</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="block.type === 'text'">
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div class="pe-field"><label>Titre</label><input type="text" x-model="block.contenu.titre" @input="queueSave(block)"></div>
+              <div class="pe-field">
+                <label>Texte (Markdown)</label>
+                <div class="pe-md-bar" role="toolbar" aria-label="Formatage">
+                  <button type="button" class="pe-md-btn" title="Gras **…**" @click.prevent="mdWrap(block, 'body', '**', '**', 'gras')">Gras</button>
+                  <button type="button" class="pe-md-btn" title="Italique *…*" @click.prevent="mdWrap(block, 'body', '*', '*', 'italique')">Italique</button>
+                  <button type="button" class="pe-md-btn" title="Lien" @click.prevent="mdLink(block, 'body')">Lien</button>
+                  <button type="button" class="pe-md-btn" title="Titre ##" @click.prevent="mdLinePrefix(block, 'body', '## ')">Titre</button>
+                  <button type="button" class="pe-md-btn" title="Liste" @click.prevent="mdLinePrefix(block, 'body', '- ')">Liste</button>
+                </div>
+                <textarea
+                  :id="'pe-body-' + block.id"
+                  x-model="block.contenu.body"
+                  @input="queueSave(block)"
+                  rows="8"
+                  placeholder="Paragraphe…
+
+**gras**, *italique*, [texte](/contact/), ## Titre, - liste"></textarea>
+                <p class="pe-field__hint">Markdown : <code>**gras**</code>, <code>*italique*</code>, <code>[texte](url)</code>, <code>## titre</code>, <code>- liste</code>. Pas de HTML.</p>
+              </div>
+              <div class="pe-field"><label>Bouton (libellé)</label><input type="text" x-model="block.contenu.cta_label" @input="queueSave(block)"></div>
+              <div class="pe-field"><label>Bouton (lien)</label><input type="text" x-model="block.contenu.cta_url" @input="queueSave(block)" placeholder="/contact/?mode=prestation"></div>
+            </div>
+          </template>
+
+          <template x-if="block.type === 'image'">
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div class="pe-media-box">
+                <span class="pe-media-box__label">Image</span>
+                <div class="pe-field"><label>Texte alternatif</label><input type="text" x-model="block.contenu.image_alt" @input="queueSave(block)"></div>
+                <div class="pe-field"><label>Légende</label><input type="text" x-model="block.contenu.caption" @input="queueSave(block)"></div>
+                <template x-if="previewUrl(block)"><img class="pe-preview" :src="previewUrl(block)" :alt="block.contenu.image_alt || ''"></template>
+                <p class="pe-field__hint" x-show="!previewUrl(block)">Ajoutez une image depuis la bibliothèque ou téléversez un fichier.</p>
+                <div class="pe-media-row">
+                  <button type="button" class="btn btn-outline" @click="openPicker(block, 'photo')">Choisir / remplacer</button>
+                  <label class="btn btn-outline" style="display:inline-flex;align-items:center;cursor:pointer">
+                    Téléverser
+                    <input type="file" accept="image/*" hidden @change="upload($event, block)">
+                  </label>
+                  <button type="button" class="btn btn-outline" x-show="hasMedia(block)" @click="clearMedia(block)">Retirer</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="block.type === 'video'">
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div class="pe-media-box">
+                <span class="pe-media-box__label">Vidéo</span>
+                <div class="pe-field"><label>Titre</label><input type="text" x-model="block.contenu.titre" @input="queueSave(block)"></div>
+                <div class="pe-field"><label>URL YouTube</label><input type="url" x-model="block.contenu.video_url" @input="queueSave(block)" placeholder="https://www.youtube.com/watch?v=…"></div>
+                <p class="pe-field__hint">Collez un lien YouTube, ou choisissez une vidéo déjà dans Médias.</p>
+                <div class="pe-media-row">
+                  <button type="button" class="btn btn-outline" @click="openPicker(block, 'video')">Choisir dans Médias</button>
+                  <button type="button" class="btn btn-outline" x-show="hasMedia(block)" @click="clearMedia(block)">Retirer</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="block.type === 'concerts'">
+            <div style="display:flex;flex-direction:column;gap:.75rem">
+              <div class="pe-field"><label>Titre de section</label><input type="text" x-model="block.contenu.titre" @input="queueSave(block)"></div>
+              <div class="pe-field"><label>Nombre de concerts affichés</label><input type="number" min="1" max="12" x-model.number="block.contenu.limit" @input="queueSave(block)"></div>
+              <p class="pe-field__hint">Liste dynamique des concerts publics à venir (CMS concerts).</p>
+            </div>
+          </template>
+
+          <div class="pe-media-row" style="margin-top:.25rem">
+            <button type="button" class="btn btn-primary" style="min-height:44px"
+                    @click.prevent="saveBlock(block, true)"
+                    :aria-busy="block._saving">
+              <span x-text="block._saving ? 'Enregistrement…' : (block._dirty ? 'Enregistrer cette carte' : 'Enregistré ✓')"></span>
+            </button>
+          </div>
+        </div>
+      </article>
+    </template>
+  </div>
+
+  <div class="pe-modal" x-show="picker.open" x-cloak @keydown.escape.window="picker.open=false">
+    <div class="pe-modal__panel" @click.outside="picker.open=false">
+      <div class="pe-modal__head">
+        <h2 x-text="picker.type === 'video' ? 'Vidéos' : 'Photos'"></h2>
+        <button type="button" class="btn btn-outline" style="min-height:44px" @click="picker.open=false">Fermer</button>
+      </div>
+      <div class="pe-field" style="margin-bottom:.75rem">
+        <label for="pe-q">Rechercher</label>
+        <input id="pe-q" type="search" x-model="picker.q" @input.debounce.300ms="loadPicker()">
+      </div>
+      <div class="pe-modal__grid">
+        <template x-for="item in picker.items" :key="item.id">
+          <button type="button" class="pe-modal__item" @click="pickMedia(item)">
+            <template x-if="item.type === 'photo' && item.url">
+              <img :src="item.url" :alt="item.titre">
+            </template>
+            <template x-if="item.type !== 'photo'">
+              <span style="display:grid;place-items:center;height:72px;background:var(--surface);border-radius:calc(var(--r) - 2px);font-size:.85rem;color:var(--muted)">Vidéo</span>
+            </template>
+            <span x-text="item.titre"></span>
+          </button>
+        </template>
+      </div>
+      <p x-show="!picker.items.length" style="color:var(--muted);margin-top:.75rem">Aucun média publié dans cette catégorie.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+{{ blocks_json|json_script:"pe-blocks-data" }}
+<script>
+function pageEditor() {
+  const csrf = '{{ csrf_token }}';
+  const urlCreate = '{% url "admin_page_block_create" page.slug %}';
+  const urlUpdateTpl = '{% url "admin_page_block_update" page.slug 999999 %}';
+  const urlDeleteTpl = '{% url "admin_page_block_delete" page.slug 999999 %}';
+  const urlReorder = '{% url "admin_page_reorder" page.slug %}';
+  const urlUpload = '{% url "admin_page_upload" page.slug %}';
+  const urlPicker = '{% url "admin_page_media_picker" %}';
+  const blockUrl = (tpl, id) => tpl.replace('999999', String(id));
+  return {
+    blocks: [],
+    newType: 'text',
+    busy: false,
+    status: 'Les modifications sont enregistrées automatiquement (ou via « Enregistrer cette carte »).',
+    statusClass: '',
+    picker: { open: false, q: '', items: [], block: null, type: 'photo' },
+    sortable: null,
+    _saveTimers: {},
+    init() {
+      const el = document.getElementById('pe-blocks-data');
+      const data = el ? JSON.parse(el.textContent) : [];
+      this.blocks = data.map(b => ({
+        ...b,
+        contenu: Object.assign({}, b.contenu || {}),
+        _open: false,
+        _dirty: false,
+        _saving: false,
+        _saveAgain: false,
+        _savePromise: null,
+      }));
+      this.$nextTick(() => this.mountSortable());
+    },
+    mountSortable() {
+      if (this.sortable) this.sortable.destroy();
+      const root = this.$refs.list;
+      if (!root || typeof Sortable === 'undefined') return;
+      this.sortable = Sortable.create(root, {
+        handle: '.pe-card__handle',
+        animation: 150,
+        draggable: '.pe-card',
+        onEnd: () => this.persistOrder(),
+      });
+    },
+    previewUrl(block) {
+      if (block.media && block.media.url) return block.media.url;
+      if (block.contenu && block.contenu.image_url) return block.contenu.image_url;
+      if (block.contenu && block.contenu.image_static) return '/static/' + block.contenu.image_static;
+      return '';
+    },
+    hasMedia(block) {
+      if (block.media_id) return true;
+      if (!block.contenu) return false;
+      if (block.type === 'video') return !!(block.contenu.video_url);
+      return !!(block.contenu.image_url || block.contenu.image_static);
+    },
+    setStatus(msg, ok) {
+      this.status = msg;
+      this.statusClass = ok === true ? 'is-ok' : (ok === false ? 'is-err' : '');
+    },
+    _bodyEl(block) {
+      return document.getElementById('pe-body-' + block.id);
+    },
+    mdWrap(block, field, before, after, placeholder) {
+      const el = this._bodyEl(block);
+      const value = block.contenu[field] || '';
+      if (!el) {
+        block.contenu[field] = value + before + (placeholder || '') + after;
+        this.queueSave(block);
+        return;
+      }
+      const start = el.selectionStart ?? value.length;
+      const end = el.selectionEnd ?? value.length;
+      const selected = value.slice(start, end) || (placeholder || '');
+      const next = value.slice(0, start) + before + selected + after + value.slice(end);
+      block.contenu[field] = next;
+      this.queueSave(block);
+      this.$nextTick(() => {
+        el.focus();
+        const pos = start + before.length;
+        el.setSelectionRange(pos, pos + selected.length);
+      });
+    },
+    mdLink(block, field) {
+      const el = this._bodyEl(block);
+      const value = block.contenu[field] || '';
+      const start = el ? (el.selectionStart ?? value.length) : value.length;
+      const end = el ? (el.selectionEnd ?? value.length) : value.length;
+      const selected = value.slice(start, end) || 'texte du lien';
+      const url = window.prompt('URL du lien (https://… ou /chemin)', 'https://');
+      if (!url) return;
+      const insert = '[' + selected + '](' + url.trim() + ')';
+      block.contenu[field] = value.slice(0, start) + insert + value.slice(end);
+      this.queueSave(block);
+      this.$nextTick(() => {
+        if (!el) return;
+        el.focus();
+        const pos = start + insert.length;
+        el.setSelectionRange(pos, pos);
+      });
+    },
+    mdLinePrefix(block, field, prefix) {
+      const el = this._bodyEl(block);
+      const value = block.contenu[field] || '';
+      if (!el) {
+        block.contenu[field] = (value ? value + '\n' : '') + prefix;
+        this.queueSave(block);
+        return;
+      }
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      let lineEnd = value.indexOf('\n', end);
+      if (lineEnd < 0) lineEnd = value.length;
+      const chunk = value.slice(lineStart, lineEnd);
+      const lines = chunk.split('\n').map(l => {
+        if (l.startsWith(prefix)) return l;
+        return prefix + l.replace(/^#+\s+/, '').replace(/^[-*]\s+/, '');
+      });
+      const next = value.slice(0, lineStart) + lines.join('\n') + value.slice(lineEnd);
+      block.contenu[field] = next;
+      this.queueSave(block);
+      this.$nextTick(() => {
+        el.focus();
+        el.setSelectionRange(lineStart, lineStart + lines.join('\n').length);
+      });
+    },
+    queueSave(block) {
+      block._dirty = true;
+      this.setStatus('Modification en cours…', null);
+      if (this._saveTimers[block.id]) clearTimeout(this._saveTimers[block.id]);
+      this._saveTimers[block.id] = setTimeout(() => {
+        delete this._saveTimers[block.id];
+        this.saveBlock(block, false);
+      }, 700);
+    },
+    async flushSaves() {
+      Object.keys(this._saveTimers).forEach(id => {
+        clearTimeout(this._saveTimers[id]);
+        delete this._saveTimers[id];
+      });
+      for (const block of this.blocks.filter(b => b._dirty || b._saving)) {
+        await this.saveBlock(block, true);
+      }
+    },
+    async flushAndOpen(url) {
+      this.setStatus('Enregistrement avant aperçu…', null);
+      await this.flushSaves();
+      window.open(url, '_blank', 'noopener');
+    },
+    async api(url, opts = {}) {
+      const headers = Object.assign({ 'X-CSRFToken': csrf }, opts.headers || {});
+      if (opts.json) {
+        headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(opts.json);
+        delete opts.json;
+      }
+      const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+      let data = {};
+      try { data = await r.json(); } catch (e) {}
+      if (!r.ok || data.ok === false) throw new Error(data.error || ('Erreur serveur (' + r.status + ')'));
+      return data;
+    },
+    async addBlock() {
+      return this.addBlockOfType(this.newType);
+    },
+    async addBlockOfType(type) {
+      this.busy = true;
+      this.newType = type;
+      try {
+        await this.flushSaves();
+        const data = await this.api(urlCreate, { method: 'POST', json: { type } });
+        const b = Object.assign(data.block, {
+          _open: true, _dirty: false, _saving: false,
+          contenu: Object.assign({}, data.block.contenu || {}),
+        });
+        this.blocks.push(b);
+        this.$nextTick(() => this.mountSortable());
+        this.setStatus('Carte ajoutée.', true);
+        return b;
+      } catch (e) {
+        this.setStatus(e.message, false);
+        return null;
+      } finally {
+        this.busy = false;
+      }
+    },
+    async moveBlock(index, delta) {
+      const next = index + delta;
+      if (next < 0 || next >= this.blocks.length) return;
+      await this.flushSaves();
+      const copy = this.blocks.slice();
+      const tmp = copy[index];
+      copy[index] = copy[next];
+      copy[next] = tmp;
+      this.blocks = copy;
+      this.$nextTick(() => { this.mountSortable(); this.persistOrder(); });
+    },
+    async saveBlock(block, immediate) {
+      if (!block || !block.id) {
+        this.setStatus('Carte invalide.', false);
+        return;
+      }
+      if (this._saveTimers[block.id]) {
+        clearTimeout(this._saveTimers[block.id]);
+        delete this._saveTimers[block.id];
+      }
+      // Si une sauvegarde est déjà en cours : enchaîner une 2ᵉ passe après
+      if (block._saving) {
+        block._saveAgain = true;
+        if (immediate) this.setStatus('Enregistrement en cours…', null);
+        return block._savePromise || Promise.resolve();
+      }
+      block._saving = true;
+      block._saveAgain = false;
+      const run = (async () => {
+        try {
+          const data = await this.api(blockUrl(urlUpdateTpl, block.id), {
+            method: 'POST',
+            json: {
+              titre_admin: block.titre_admin,
+              visible: block.visible,
+              contenu: block.contenu,
+              media_id: block.media_id == null ? null : block.media_id,
+            },
+          });
+          const keepOpen = block._open;
+          const again = block._saveAgain;
+          Object.assign(block, data.block);
+          block.contenu = Object.assign({}, data.block.contenu || {});
+          block._open = keepOpen;
+          block._dirty = !!again;
+          block._saveAgain = false;
+          this.setStatus(immediate || again ? 'Carte enregistrée — visible sur le site.' : 'Enregistré.', true);
+          return again;
+        } catch (e) {
+          block._dirty = true;
+          this.setStatus(e.message || 'Échec de l’enregistrement', false);
+          return false;
+        } finally {
+          block._saving = false;
+          block._savePromise = null;
+        }
+      })();
+      block._savePromise = run;
+      const needAgain = await run;
+      if (needAgain) {
+        return this.saveBlock(block, true);
+      }
+    },
+    async toggleVisible(block) {
+      block.visible = !block.visible;
+      block._dirty = true;
+      await this.saveBlock(block, true);
+    },
+    async clearMedia(block) {
+      block.media_id = null;
+      block.media = null;
+      if (!block.contenu) block.contenu = {};
+      if (block.type === 'video') {
+        block.contenu.video_url = '';
+      } else {
+        block.contenu.image_url = '';
+        block.contenu.image_static = '';
+      }
+      block._dirty = true;
+      await this.saveBlock(block, true);
+      this.setStatus('Média retiré.', true);
+    },
+    async removeBlock(block) {
+      if (!confirm('Supprimer cette carte ?')) return;
+      try {
+        await this.api(blockUrl(urlDeleteTpl, block.id), {
+          method: 'POST',
+          json: { action: 'delete' },
+        });
+        this.blocks = this.blocks.filter(b => b.id !== block.id);
+        this.$nextTick(() => this.mountSortable());
+        this.setStatus('Carte supprimée.', true);
+      } catch (e) {
+        this.setStatus(e.message, false);
+      }
+    },
+    async persistOrder() {
+      await this.flushSaves();
+      const ids = Array.from(this.$refs.list.querySelectorAll('.pe-card')).map(el => parseInt(el.dataset.id, 10));
+      const map = Object.fromEntries(this.blocks.map(b => [b.id, b]));
+      this.blocks = ids.map(id => map[id]).filter(Boolean);
+      try {
+        await this.api(urlReorder, { method: 'POST', json: { ids } });
+        this.setStatus('Ordre enregistré.', true);
+      } catch (e) {
+        this.setStatus(e.message, false);
+      }
+    },
+    async openPicker(block, type) {
+      this.picker.block = block;
+      this.picker.type = type || (block.type === 'video' ? 'video' : 'photo');
+      this.picker.q = '';
+      this.picker.open = true;
+      await this.loadPicker();
+    },
+    async loadPicker() {
+      try {
+        const q = encodeURIComponent(this.picker.q || '');
+        const t = encodeURIComponent(this.picker.type || 'photo');
+        const data = await this.api(urlPicker + '?q=' + q + '&type=' + t);
+        this.picker.items = data.items || [];
+      } catch (e) {
+        this.setStatus(e.message, false);
+      }
+    },
+    async pickMedia(item) {
+      const block = this.picker.block;
+      if (!block) return;
+      block.media_id = item.id;
+      block.media = item;
+      if (!block.contenu) block.contenu = {};
+      if (block.type === 'video' || this.picker.type === 'video') {
+        block.contenu.video_url = item.url_externe || item.url || '';
+      } else {
+        block.contenu.image_url = item.url || '';
+        block.contenu.image_static = '';
+        if (!block.contenu.image_alt) block.contenu.image_alt = item.titre || '';
+      }
+      block._dirty = true;
+      this.picker.open = false;
+      await this.saveBlock(block, true);
+    },
+    async uploadNewImage(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;
+      await this.flushSaves();
+      const fd = new FormData();
+      fd.append('fichier', file);
+      fd.append('create_block', '1');
+      fd.append('titre', file.name);
+      try {
+        const r = await fetch(urlUpload, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrf },
+          body: fd,
+          credentials: 'same-origin',
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Échec upload');
+        if (data.block) {
+          this.blocks.push(Object.assign(data.block, {
+            _open: true, _dirty: false, _saving: false,
+            contenu: Object.assign({}, data.block.contenu || {}),
+          }));
+          this.$nextTick(() => this.mountSortable());
+        }
+        this.setStatus('Image ajoutée à la page.', true);
+      } catch (e) {
+        this.setStatus(e.message, false);
+      }
+    },
+    async upload(ev, block) {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;
+      await this.flushSaves();
+      const fd = new FormData();
+      fd.append('fichier', file);
+      fd.append('block_id', block.id);
+      fd.append('titre', file.name);
+      try {
+        const r = await fetch(urlUpload, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrf },
+          body: fd,
+          credentials: 'same-origin',
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Échec upload');
+        if (data.block) {
+          Object.assign(block, data.block);
+          block.contenu = Object.assign({}, data.block.contenu || {});
+          block._open = true;
+          block._dirty = false;
+        } else if (data.media) {
+          block.media_id = data.media.id;
+          block.media = data.media;
+          block.contenu.image_url = data.media.url;
+          block.contenu.image_static = '';
+          await this.saveBlock(block, true);
+        }
+        this.setStatus('Image téléversée — visible sur le site.', true);
+      } catch (e) {
+        this.setStatus(e.message, false);
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

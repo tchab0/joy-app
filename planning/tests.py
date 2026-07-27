@@ -403,6 +403,7 @@ class PollTests(PlanningBaseTestCase):
             {
                 "title": "Choix date mars",
                 "description": "Test",
+                "deadline": (timezone.localdate() + timedelta(days=7)).isoformat(),
                 "option_starts_0": starts,
                 "option_label_0": "Vendredi",
             },
@@ -410,6 +411,9 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 302)
         proposal = DateProposal.objects.get(title="Choix date mars")
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+        self.assertEqual(
+            proposal.deadline, timezone.localdate() + timedelta(days=7)
+        )
         option = proposal.options.get()
 
         # Lancement staff requis avant vote.
@@ -822,6 +826,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
             date_debut=starts,
             statut=Event.Statut.TENTATIVE,
             public=False,
+            proposed_by=self.staff,
         )
         EventParticipation.objects.create(
             event=event,
@@ -833,6 +838,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
             status=DateProposal.Status.DRAFT,
             linked_event=event,
             created_by=self.staff,
+            deadline=timezone.localdate() + timedelta(days=3),
         )
         option = DateOption.objects.create(
             proposal=proposal,
@@ -851,6 +857,11 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
         self.assertTrue(summary["poll_answered"])
         self.assertEqual(summary["poll_vote_counts"], {"yes": 0, "no": 0, "maybe": 1})
         self.assertEqual(summary["poll_vote_counts_label"], "Oui 0 · Non 0 · Peut-être 1")
+        self.assertEqual(summary["proposed_by_label"], self.staff.get_full_name() or self.staff.username)
+        self.assertEqual(
+            summary["deadline_label"],
+            (timezone.localdate() + timedelta(days=3)).strftime("%d/%m/%Y"),
+        )
 
         self.client.login(username="musi", password="pass12345")
         day = timezone.localtime(starts).date()
@@ -880,6 +891,7 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
                 "type_id": concert_type.pk,
                 "venue_mode": "existing",
                 "venue_id": self.venue.pk,
+                "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
                 "launch_poll": "1",
             },
         )
@@ -889,6 +901,10 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
         self.assertEqual(proposal.status, DateProposal.Status.OPEN)
         self.assertIsNotNone(proposal.launched_at)
         self.assertEqual(proposal.launched_by_id, self.staff.pk)
+        self.assertEqual(
+            proposal.deadline, timezone.localdate() + timedelta(days=10)
+        )
+        self.assertEqual(event.proposed_by_id, self.staff.pk)
 
     def test_staff_propose_without_launch_keeps_draft(self):
         concert_type = EventType.objects.create(nom="Concert")
@@ -903,12 +919,52 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
                 "type_id": concert_type.pk,
                 "venue_mode": "existing",
                 "venue_id": self.venue.pk,
+                "deadline": (timezone.localdate() + timedelta(days=5)).isoformat(),
             },
         )
         self.assertEqual(r.status_code, 302)
         event = Event.objects.get(titre="Brouillon sondage")
         proposal = DateProposal.objects.get(linked_event=event)
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+
+
+class PollDeadlineEditTests(PlanningBaseTestCase):
+    def test_author_can_update_deadline(self):
+        proposal = DateProposal.objects.create(
+            title="Deadline editable",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.musician,
+            deadline=timezone.localdate() + timedelta(days=2),
+            linked_event=self.event,
+            deadline_reminder_sent_at=timezone.now(),
+        )
+        new_deadline = timezone.localdate() + timedelta(days=9)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:update_poll_deadline", args=[proposal.pk]),
+            {"deadline": new_deadline.isoformat()},
+        )
+        self.assertEqual(r.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.deadline, new_deadline)
+        self.assertIsNone(proposal.deadline_reminder_sent_at)
+
+    def test_other_musician_cannot_update_deadline(self):
+        proposal = DateProposal.objects.create(
+            title="Deadline locked",
+            status=DateProposal.Status.OPEN,
+            created_by=self.staff,
+            deadline=timezone.localdate() + timedelta(days=2),
+            linked_event=self.event,
+        )
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:update_poll_deadline", args=[proposal.pk]),
+            {"deadline": (timezone.localdate() + timedelta(days=20)).isoformat()},
+        )
+        self.assertEqual(r.status_code, 403)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.deadline, timezone.localdate() + timedelta(days=2))
 
 
 class RosterStatusTests(PlanningBaseTestCase):
@@ -2069,3 +2125,250 @@ class MaybeRemindTests(PlanningBaseTestCase):
             self.assertEqual(r2.status_code, 200)
             self.assertContains(r2, reverse("repertoire:part_pdf", args=[piano.pk]))
             self.assertContains(r2, reverse("repertoire:part_pdf", args=[part_tit.pk]))
+
+
+class PollDeadlineRemindTests(PlanningBaseTestCase):
+    def _open_poll(self, *, deadline, title="Sondage J-7"):
+        from planning.models import DateOption
+        from planning.services import launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title=title,
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+            deadline=deadline,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=20),
+            label="Option A",
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        proposal.refresh_from_db()
+        return proposal
+
+    @patch("planning.services.polls.notify_users", return_value=1)
+    def test_send_due_poll_deadline_reminders(self, mock_notify):
+        from planning.services import send_due_poll_deadline_reminders
+
+        due = self._open_poll(deadline=timezone.localdate() + timedelta(days=7))
+        self._open_poll(
+            deadline=timezone.localdate() + timedelta(days=10),
+            title="Trop tôt",
+        )
+        mock_notify.reset_mock()
+
+        treated, sent = send_due_poll_deadline_reminders()
+        self.assertEqual(treated, 1)
+        self.assertEqual(sent, 1)
+        mock_notify.assert_called_once()
+        self.assertIn("Rappel sondage", mock_notify.call_args.kwargs["title"])
+        due.refresh_from_db()
+        self.assertIsNotNone(due.deadline_reminder_sent_at)
+
+        # Second run : déjà marqué → rien.
+        treated2, sent2 = send_due_poll_deadline_reminders()
+        self.assertEqual(treated2, 0)
+        self.assertEqual(sent2, 0)
+
+    @patch("planning.services.polls.notify_users", return_value=1)
+    def test_skips_users_who_already_answered(self, mock_notify):
+        from planning.models import DateVote
+        from planning.services import cast_date_vote, send_due_poll_deadline_reminders
+
+        proposal = self._open_poll(deadline=timezone.localdate() + timedelta(days=7))
+        option = proposal.options.get()
+        cast_date_vote(option, self.musician, DateVote.Choice.YES)
+        mock_notify.reset_mock()
+
+        treated, sent = send_due_poll_deadline_reminders()
+        self.assertEqual(treated, 1)
+        proposal.refresh_from_db()
+        self.assertIsNotNone(proposal.deadline_reminder_sent_at)
+        if mock_notify.called:
+            users = mock_notify.call_args.args[0]
+            self.assertNotIn(self.musician, users)
+
+    @patch("planning.services.polls.notify_users", return_value=1)
+    def test_command_dry_run(self, mock_notify):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        proposal = self._open_poll(deadline=timezone.localdate() + timedelta(days=7))
+        mock_notify.reset_mock()
+        out = StringIO()
+        call_command("remind_poll_deadlines", "--dry-run", stdout=out)
+        self.assertIn("1 sondage", out.getvalue())
+        mock_notify.assert_not_called()
+        proposal.refresh_from_db()
+        self.assertIsNone(proposal.deadline_reminder_sent_at)
+
+
+class EventRoadmapTests(PlanningBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.concert_type = EventType.objects.create(nom="Concert")
+        self.concert = Event.objects.create(
+            titre="Concert Bergerie",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=14),
+            date_fin=timezone.now() + timedelta(days=14, hours=2),
+            statut=Event.Statut.CONFIRME,
+        )
+        EventParticipation.objects.create(
+            event=self.concert,
+            user=self.musician,
+            status=self.statuses["confirmed"],
+            poste=MusicianProfile.Poste.TROMPETTE_1,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+
+    def test_staff_creates_prefilled_roadmap(self):
+        from planning.services.roadmap import get_or_create_roadmap
+
+        self.client.login(username="staff1", password="pass12345")
+        url = reverse("planning:event_roadmap_edit", args=[self.concert.pk])
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Feuille de route")
+        self.assertContains(r, "noir")
+
+        roadmap = get_or_create_roadmap(self.concert)
+        self.assertEqual(roadmap.dress_code, "noir")
+        self.assertTrue(roadmap.material_notes)
+        self.assertIsNotNone(roadmap.arrival_start)
+        # Défauts : −75 / −60 / −45 / 0
+        start = timezone.localtime(self.concert.date_debut)
+        expected_ready = start.time().replace(second=0, microsecond=0)
+        self.assertEqual(roadmap.ready_at, expected_ready)
+
+    def test_musician_reads_roadmap_via_notification_url(self):
+        from planning.services.roadmap import get_or_create_roadmap, notify_roadmap
+
+        get_or_create_roadmap(self.concert, user=self.staff)
+        with patch("planning.services.roadmap.notify_users") as mock_notify:
+            mock_notify.return_value = 1
+            n = notify_roadmap(self.concert)
+            self.assertEqual(n, 1)
+            mock_notify.assert_called_once()
+            kwargs = mock_notify.call_args.kwargs
+            self.assertIn("/feuille-de-route/", kwargs["url"])
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(
+            reverse("planning:event_roadmap", args=[self.concert.pk])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Horaires")
+        self.assertContains(r, "Matériel à prévoir")
+
+    def test_detail_shows_roadmap_link(self):
+        from planning.services.roadmap import get_or_create_roadmap
+
+        get_or_create_roadmap(self.concert, user=self.staff)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:event_detail", args=[self.concert.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Feuille de route")
+        self.assertContains(
+            r, reverse("planning:event_roadmap", args=[self.concert.pk])
+        )
+
+    def test_same_venue_suggests_parking(self):
+        from planning.models import EventRoadmap
+        from planning.services.roadmap import suggest_defaults
+
+        EventRoadmap.objects.create(
+            event=Event.objects.create(
+                titre="Ancien concert",
+                type=self.concert_type,
+                venue=self.venue,
+                date_debut=timezone.now() - timedelta(days=30),
+            ),
+            parking_info="Stationnement gratuit sur place",
+            dress_code="noir",
+            material_notes="• Instrument",
+        )
+        defaults = suggest_defaults(self.concert)
+        self.assertEqual(defaults["parking_info"], "Stationnement gratuit sur place")
+        self.assertIsNotNone(defaults["source_same_venue"])
+
+    def test_calendar_summary_shows_roadmap_when_notified(self):
+        from planning.models import EventRoadmap
+        from planning.services import attach_calendar_roadmaps
+
+        roadmap = EventRoadmap.objects.create(
+            event=self.concert,
+            dress_code="noir",
+            material_notes="- Instrument",
+            arrival_start=timezone.localtime(self.concert.date_debut).time(),
+        )
+        attach_calendar_roadmaps([self.concert])
+        self.assertIsNone(self.concert.cal_roadmap)
+
+        roadmap.notified_at = timezone.now()
+        roadmap.save(update_fields=["notified_at"])
+        attach_calendar_roadmaps([self.concert])
+        self.assertEqual(self.concert.cal_roadmap["id"], roadmap.pk)
+
+        self.client.login(username="musi", password="pass12345")
+        day = timezone.localtime(self.concert.date_debut).date()
+        r = self.client.get(
+            reverse("planning:dashboard"),
+            {"year": day.year, "day": day.isoformat()},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Feuille de route")
+        self.assertContains(
+            r, reverse("planning:event_roadmap", args=[self.concert.pk])
+        )
+
+    def test_roadmap_renders_chat_like_markdown(self):
+        from planning.models import EventRoadmap
+
+        EventRoadmap.objects.create(
+            event=self.concert,
+            parking_info="**Gratuit** sur place",
+            material_notes="- Instrument\n- Partitions",
+            closing_note="> Merci à tous",
+            notified_at=timezone.now(),
+        )
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(
+            reverse("planning:event_roadmap", args=[self.concert.pk])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "<strong>Gratuit</strong>")
+        self.assertContains(r, "<li>")
+        self.assertContains(r, "md-cite")
+        self.assertContains(r, "Merci à tous")
+
+    def test_staff_edit_has_format_toolbar(self):
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(
+            reverse("planning:event_roadmap_edit", args=[self.concert.pk])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'data-pl-md')
+        self.assertContains(r, 'data-md="bold"')
+        self.assertNotContains(r, "maps_url")
+        self.assertContains(r, "roadmap_md.js")
+
+    def test_staff_edit_shows_venue_map_and_gps(self):
+        self.venue.adresse = "1 rue du Jazz"
+        self.venue.latitude = "46.670000"
+        self.venue.longitude = "-1.420000"
+        self.venue.save()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.get(
+            reverse("planning:event_roadmap_edit", args=[self.concert.pk])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "1 rue du Jazz")
+        self.assertContains(r, "GPS")
+        self.assertContains(r, "openstreetmap.org")
+        self.assertContains(r, "event-map")
+        self.assertContains(r, reverse("admin_venue_edit", args=[self.venue.pk]))

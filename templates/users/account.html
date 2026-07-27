@@ -39,6 +39,9 @@
         <a class="btn btn-outline" href="{% url 'account_home' %}?tour=staff"
            onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide staff</a>
         {% endif %}
+        {% if request.user.is_staff or request.user.is_superuser %}
+        <a class="btn btn-outline" href="{% url 'admin_tours' %}">Éditer les guides</a>
+        {% endif %}
       </div>
       {% if staff_notify_form %}
       <form method="post" action="{% url 'account_home' %}" class="account-staff-notify" style="margin-top:1.25rem">

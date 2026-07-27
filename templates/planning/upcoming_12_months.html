@@ -93,6 +93,12 @@
                   <p class="pl-cal-tip__title">{{ event.titre }}</p>
                   <p class="pl-cal-tip__line">{{ s.date_label }} · {{ s.time_label }}</p>
                   {% if s.lieu %}<p class="pl-cal-tip__line">{{ s.lieu }}</p>{% endif %}
+                  {% if s.proposed_by_label %}
+                  <p class="pl-cal-tip__line">Proposé par {{ s.proposed_by_label }}</p>
+                  {% endif %}
+                  {% if s.deadline_label %}
+                  <p class="pl-cal-tip__line">Répondre avant le {{ s.deadline_label }}</p>
+                  {% endif %}
                   {% if not s.is_poll_option %}
                   <p class="pl-cal-tip__line">
                     Présents : {{ s.n_presents }}
@@ -160,6 +166,18 @@
                   <dt>Lieu</dt>
                   <dd>{% if s.lieu %}{{ s.lieu }}{% else %}—{% endif %}</dd>
                 </div>
+                {% if s.proposed_by_label %}
+                <div>
+                  <dt>Proposé par</dt>
+                  <dd>{{ s.proposed_by_label }}</dd>
+                </div>
+                {% endif %}
+                {% if s.deadline_label %}
+                <div>
+                  <dt>Deadline</dt>
+                  <dd>Répondre avant le {{ s.deadline_label }}</dd>
+                </div>
+                {% endif %}
                 {% if s.is_poll_option %}
                 <div>
                   <dt>Statut</dt>
@@ -291,6 +309,12 @@
               <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
                 <span>Setlist</span>
                 <span>Créer</span>
+              </a>
+              {% endif %}
+              {% if event.cal_roadmap %}
+              <a class="pl-day-events__salon" href="{% url 'planning:event_roadmap' event.pk %}">
+                <span>Feuille de route</span>
+                <span>Voir</span>
               </a>
               {% endif %}
               {% if s.has_open_poll %}
@@ -447,6 +471,13 @@
         <div>
           <label for="ev_desc">Description</label>
           <textarea name="description" id="ev_desc" rows="2"></textarea>
+        </div>
+        <div>
+          <label for="ev_deadline">Date limite de réponse</label>
+          <input type="date" name="deadline" id="ev_deadline" required>
+          <p class="pl-row__meta" style="margin:.35rem 0 0">
+            Avant cette date, les musiciens doivent indiquer leur disponibilité.
+          </p>
         </div>
         {% if is_planning_staff %}
         <div x-show="typeLabel && !/r[eé]p[eé]tition/i.test(typeLabel)" x-cloak style="display:grid;gap:.75rem">

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Éditeur de pages — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .pg { max-width: 720px; margin: 0 auto; padding: 1.25rem 1rem 2.5rem; color: var(--text); }
+  .pg h1 { font-family: var(--font-d); font-size: 1.75rem; margin: 0 0 .35rem; color: var(--text); }
+  .pg__lead { color: var(--muted); margin: 0 0 1.5rem; line-height: 1.45; font-size: .95rem; }
+  .pg__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+  .pg__list a {
+    display: flex; flex-direction: column; gap: .2rem;
+    min-height: 44px; padding: .85rem 1rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--surface); color: var(--text); text-decoration: none;
+  }
+  .pg__list a:hover { border-color: var(--accent); }
+  .pg__list strong { color: var(--accent); font-weight: 600; }
+  .pg__list span { color: var(--muted); font-size: .82rem; }
+  .pg__back { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); text-decoration: none; font-size: .9rem; margin-bottom: .5rem; }
+  .pg__back:hover { color: var(--accent); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pg">
+  <a class="pg__back" href="{% url 'admin_hub' %}">← Administration</a>
+  <h1>Éditeur de pages</h1>
+  <p class="pg__lead">Modifiez les textes, images et vidéos des pages publiques. Réorganisez les cartes par glisser-déposer.</p>
+  <ul class="pg__list">
+    {% for p in pages %}
+    <li>
+      <a href="{% url 'admin_page_edit' p.slug %}">
+        <strong>{{ p.titre }}</strong>
+        <span>{{ p.blocks.count }} carte{{ p.blocks.count|pluralize }} · {% if p.publie %}Publiée{% else %}Brouillon{% endif %} · maj {{ p.updated_at|date:"d/m/Y H:i" }}</span>
+      </a>
+    </li>
+    {% empty %}
+    <li><p style="color:var(--muted)">Aucune page. Appliquez les migrations pour créer l’accueil.</p></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

@@ -48,7 +48,34 @@
       {% endif %}
     </p>
     {% endif %}
+    <p class="pl-accept__meta" style="margin-top:.35rem">
+      {% if proposal.created_by %}
+      Proposé par {{ proposal.created_by.get_full_name|default:proposal.created_by.username }}
+      {% endif %}
+      {% if proposal.deadline %}
+      {% if proposal.created_by %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
+      Répondre avant le {{ proposal.deadline|date:"d/m/Y" }}
+      {% endif %}
+    </p>
   </header>
+
+  {% if can_edit_deadline and proposal.status != 'locked' and proposal.status != 'cancelled' %}
+  <section class="pl-section">
+    <h2>Date limite de réponse</h2>
+    <form class="pl-form" method="post" action="{% url 'planning:update_poll_deadline' proposal.pk %}"
+          style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+      {% csrf_token %}
+      <div style="flex:1 1 12rem;min-width:0">
+        <label for="poll_deadline">Deadline</label>
+        <input type="date" name="deadline" id="poll_deadline" required
+               value="{% if proposal.deadline %}{{ proposal.deadline|date:'Y-m-d' }}{% endif %}">
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+        Enregistrer
+      </button>
+    </form>
+  </section>
+  {% endif %}
 
   {% if is_planning_staff and proposal.is_draft %}
   <section class="pl-section pl-accept__staff">

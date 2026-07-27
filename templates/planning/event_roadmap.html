@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ event.titre }} — Feuille de route{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=3">
+<style>
+  .pl-roadmap { color: var(--text); }
+  .pl-roadmap__hero {
+    margin: 0 0 1.25rem;
+    padding: 1rem 1.05rem 1.15rem;
+    background:
+      linear-gradient(145deg, rgba(var(--accent-rgb), .1) 0%, transparent 55%),
+      var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    border-left: 4px solid var(--accent);
+  }
+  .pl-roadmap__kicker {
+    margin: 0 0 .35rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--gold-text);
+  }
+  .pl-roadmap__hero h1 {
+    font-family: var(--font-d);
+    font-size: clamp(1.55rem, 5.5vw, 2.15rem);
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 0 0 .55rem;
+    color: var(--text);
+  }
+  .pl-roadmap__when {
+    margin: 0;
+    font-family: var(--font-d);
+    font-size: clamp(1.15rem, 3.8vw, 1.4rem);
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--accent);
+    text-transform: capitalize;
+  }
+  .pl-roadmap__time {
+    display: block;
+    margin-top: .2rem;
+    font-family: var(--font-b);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: none;
+  }
+  .pl-roadmap__card {
+    margin: 0 0 1rem;
+    padding: .9rem 1rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+  }
+  .pl-roadmap__card h2 {
+    font-family: var(--font-d);
+    font-size: 1.1rem;
+    margin: 0 0 .65rem;
+    color: var(--text);
+  }
+  .pl-roadmap__lieu {
+    margin: 0 0 .35rem;
+    font-size: 1.02rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .pl-roadmap__extra {
+    margin: 0 0 .65rem;
+    color: var(--muted);
+    font-size: .92rem;
+  }
+  .pl-roadmap__extra p { margin: 0 0 .25rem; }
+  .pl-roadmap .event-map-wrap {
+    width: 100%;
+    margin-top: .65rem;
+  }
+  .pl-roadmap .event-map { height: 220px; }
+  @media (min-width: 640px) {
+    .pl-roadmap .event-map { height: 280px; }
+  }
+
+  /* Timeline horaires */
+  .pl-roadmap__tl {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+  .pl-roadmap__tl::before {
+    content: "";
+    position: absolute;
+    left: .55rem;
+    top: .4rem;
+    bottom: .4rem;
+    width: 2px;
+    background: linear-gradient(
+      to bottom,
+      rgba(var(--accent-rgb), .55),
+      rgba(var(--accent-rgb), .12)
+    );
+    border-radius: 1px;
+  }
+  .pl-roadmap__tl li {
+    position: relative;
+    padding: 0 0 .85rem 1.75rem;
+  }
+  .pl-roadmap__tl li:last-child { padding-bottom: 0; }
+  .pl-roadmap__tl li::before {
+    content: "";
+    position: absolute;
+    left: .28rem;
+    top: .35rem;
+    width: .6rem;
+    height: .6rem;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    box-sizing: border-box;
+  }
+  .pl-roadmap__tl li.is-concert::before {
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .2);
+  }
+  .pl-roadmap__tl-label {
+    display: block;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .1rem;
+  }
+  .pl-roadmap__tl-value {
+    font-size: 1.02rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .pl-roadmap__tl li.is-concert .pl-roadmap__tl-value { color: var(--accent); }
+
+  .pl-roadmap__md {
+    font-size: .98rem;
+    line-height: 1.5;
+  }
+  .pl-roadmap__md p { margin: 0 0 .45rem; }
+  .pl-roadmap__md p:last-child { margin-bottom: 0; }
+  .pl-roadmap__md ul {
+    margin: .15rem 0 0;
+    padding-left: 1.15rem;
+  }
+  .pl-roadmap__md li { margin-bottom: .35rem; }
+  .pl-roadmap__md a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .pl-roadmap__md strong { font-weight: 700; }
+  .pl-roadmap__md em { font-style: italic; }
+  .pl-roadmap__md .md-cite,
+  .pl-roadmap__md blockquote {
+    margin: .35rem 0;
+    padding: .45rem .7rem;
+    border-left: 3px solid rgba(var(--accent-rgb), .45);
+    background: rgba(var(--accent-rgb), .07);
+    border-radius: 0 var(--r) var(--r) 0;
+    color: var(--text);
+  }
+
+  .pl-roadmap__dress {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    margin: 0;
+    padding: .45rem .85rem;
+    border-radius: var(--r);
+    background: rgba(var(--accent-rgb), .1);
+    border: 1px solid rgba(var(--accent-rgb), .28);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .pl-roadmap__dress .pl-roadmap__md { display: inline; }
+  .pl-roadmap__dress .pl-roadmap__md p { margin: 0; display: inline; }
+
+  .pl-roadmap__closing {
+    margin: 0;
+    padding: .85rem 1rem;
+    border-radius: var(--r);
+    background:
+      linear-gradient(120deg, rgba(var(--accent-rgb), .07), transparent 70%);
+    border: 1px dashed rgba(var(--accent-rgb), .35);
+    font-family: var(--font-d);
+    font-style: italic;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    text-align: center;
+    color: var(--text);
+  }
+  .pl-roadmap__closing .pl-roadmap__md p { margin: 0; }
+  .pl-roadmap__closing .pl-roadmap__md a { font-style: normal; }
+
+  .pl-roadmap__actions {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin: 1rem 0 0;
+  }
+  .pl-roadmap__actions .pl-btn { min-height: 44px; justify-content: center; }
+  @media (min-width: 640px) {
+    .pl-roadmap__actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl pl-roadmap">
+  {% include "planning/_module_nav.html" with active="calendrier" %}
+  {% if is_planning_staff %}
+  <div class="pl-nav-context pl-nav-context--staff">
+    <a href="{% url 'planning:event_detail' event.pk %}">Événement</a>
+    <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Éditer</a>
+  </div>
+  {% endif %}
+
+  <header class="pl-roadmap__hero">
+    <p class="pl-roadmap__kicker">Feuille de route</p>
+    <h1>{{ event.titre }}</h1>
+    <p class="pl-roadmap__when">
+      <time datetime="{{ event.date_debut|date:'c' }}">{{ event.date_debut|date:"l j F Y" }}</time>
+      <span class="pl-roadmap__time">
+        Concert {{ event.date_debut|date:"H:i" }}
+        {% if roadmap and roadmap.concert_end_note and not event.date_fin %}
+        → {{ roadmap.concert_end_note }}
+        {% elif event.date_fin %}
+        – {{ event.date_fin|date:"H:i" }}
+        {% endif %}
+      </span>
+    </p>
+  </header>
+
+  {% if not roadmap %}
+  <section class="pl-roadmap__card">
+    <p class="pl-row__meta" style="margin:0">La feuille de route n’est pas encore disponible.</p>
+    {% if is_planning_staff %}
+    <p style="margin:.85rem 0 0">
+      <a class="pl-btn pl-btn--staff" href="{% url 'planning:event_roadmap_edit' event.pk %}" style="min-height:44px">Créer la feuille de route</a>
+    </p>
+    {% endif %}
+  </section>
+  {% else %}
+
+  <section class="pl-roadmap__card" aria-labelledby="rm-lieu">
+    <h2 id="rm-lieu">Lieu</h2>
+    <p class="pl-roadmap__lieu">{{ event.lieu_affiche }}</p>
+    {% if roadmap_md.venue_extra %}
+    <div class="pl-roadmap__extra pl-roadmap__md">{{ roadmap_md.venue_extra|safe }}</div>
+    {% endif %}
+    {% if event.venue.latitude %}
+    {% include "includes/_event_map.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" map_id=event.pk show_go=True go_label=event.venue.nom %}
+    {% endif %}
+  </section>
+
+  {% if roadmap.arrival_start or roadmap.arrival_end or roadmap.soundcheck_at or roadmap.ready_at %}
+  <section class="pl-roadmap__card" aria-labelledby="rm-horaires">
+    <h2 id="rm-horaires">Déroulement</h2>
+    <ol class="pl-roadmap__tl">
+      {% if roadmap.arrival_start or roadmap.arrival_end %}
+      <li>
+        <span class="pl-roadmap__tl-label">Arrivée</span>
+        <span class="pl-roadmap__tl-value">
+          {% if roadmap.arrival_start and roadmap.arrival_end %}
+          entre {{ roadmap.arrival_start|time:"H:i" }} et {{ roadmap.arrival_end|time:"H:i" }}
+          {% elif roadmap.arrival_start %}
+          dès {{ roadmap.arrival_start|time:"H:i" }}
+          {% else %}
+          jusqu’à {{ roadmap.arrival_end|time:"H:i" }}
+          {% endif %}
+        </span>
+      </li>
+      {% endif %}
+      {% if roadmap.soundcheck_at %}
+      <li>
+        <span class="pl-roadmap__tl-label">Balances</span>
+        <span class="pl-roadmap__tl-value">début {{ roadmap.soundcheck_at|time:"H:i" }}</span>
+      </li>
+      {% endif %}
+      {% if roadmap.ready_at %}
+      <li>
+        <span class="pl-roadmap__tl-label">Prêt à jouer</span>
+        <span class="pl-roadmap__tl-value">{{ roadmap.ready_at|time:"H:i" }} au plus tard</span>
+      </li>
+      {% endif %}
+      <li class="is-concert">
+        <span class="pl-roadmap__tl-label">Concert</span>
+        <span class="pl-roadmap__tl-value">{{ event.date_debut|date:"H:i" }}</span>
+      </li>
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if roadmap_md.parking %}
+  <section class="pl-roadmap__card" aria-labelledby="rm-park">
+    <h2 id="rm-park">Stationnement</h2>
+    <div class="pl-roadmap__md">{{ roadmap_md.parking|safe }}</div>
+  </section>
+  {% endif %}
+
+  {% if roadmap_md.material %}
+  <section class="pl-roadmap__card" aria-labelledby="rm-mat">
+    <h2 id="rm-mat">Matériel à prévoir</h2>
+    <div class="pl-roadmap__md">{{ roadmap_md.material|safe }}</div>
+  </section>
+  {% endif %}
+
+  {% if roadmap.dress_code %}
+  <section class="pl-roadmap__card" aria-labelledby="rm-dress">
+    <h2 id="rm-dress">Dress code</h2>
+    <div class="pl-roadmap__dress">
+      <span class="pl-roadmap__md">{% if roadmap_md.dress %}{{ roadmap_md.dress|safe }}{% else %}{{ roadmap.dress_code }}{% endif %}</span>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if roadmap_md.closing %}
+  <section class="pl-roadmap__closing" aria-label="Mot de clôture">
+    <div class="pl-roadmap__md">{{ roadmap_md.closing|safe }}</div>
+  </section>
+  {% endif %}
+
+  {% if is_planning_staff %}
+  <div class="pl-roadmap__actions pl-staff">
+    <a class="pl-btn pl-btn--staff" href="{% url 'planning:event_roadmap_edit' event.pk %}">Modifier</a>
+    <form method="post" action="{% url 'planning:event_roadmap_notify' event.pk %}" style="margin:0">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="width:100%;min-height:44px">
+        {% if roadmap.notified_at %}Renvoyer la notification{% else %}Notifier les participants{% endif %}
+      </button>
+    </form>
+  </div>
+  {% if roadmap.notified_at %}
+  <p class="pl-row__meta" style="margin-top:.5rem">Dernière notif. : {{ roadmap.notified_at|date:"d/m/Y H:i" }}</p>
+  {% endif %}
+  {% endif %}
+
+  {% endif %}
+
+  <p style="margin-top:1.25rem">
+    <a href="{% url 'planning:event_detail' event.pk %}" style="color:var(--accent);font-weight:600;text-decoration:none">← Retour à l’événement</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if roadmap and event.venue.latitude %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{% static 'core/event-map.js' %}?v=3"></script>
+{% endif %}
+{% endblock %}

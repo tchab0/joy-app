@@ -2,6 +2,7 @@
 {% load page_lead %}
 {% block title %}Chat — JOY{% endblock %}
 {% block extra_css %}
+{% include "planning/_styles.html" %}
 <style>
   /* Mobile-first room list */
   .chat-wrap {
@@ -40,6 +41,11 @@
     text-decoration: none;
     font-size: .9rem;
     font-weight: 600;
+  }
+  .chat-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
   .chat-list {
     list-style: none;
@@ -87,6 +93,7 @@
     text-transform: uppercase;
     color: var(--gold-text);
   }
+  .chat-kind--staff { color: var(--staff); }
   .chat-badge {
     align-self: start;
     min-width: 1.75rem;
@@ -101,6 +108,56 @@
     align-items: center;
     justify-content: center;
   }
+  .chat-accordion {
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: .15rem .75rem .75rem;
+  }
+  .chat-accordion__summary {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 44px;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chat-accordion__summary::-webkit-details-marker { display: none; }
+  .chat-accordion__summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--accent);
+    font-size: .9em;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .chat-accordion[open] > .chat-accordion__summary {
+    margin-bottom: .65rem;
+  }
+  .chat-accordion[open] > .chat-accordion__summary::before {
+    content: "▾";
+  }
+  .chat-accordion__summary .chat-badge {
+    align-self: center;
+  }
+  .chat-accordion__label {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-accordion__count {
+    color: var(--muted);
+    font-family: var(--font-b);
+    font-size: .85rem;
+    font-weight: 500;
+  }
+  .chat-accordion .chat-list a {
+    background: var(--bg);
+  }
   .chat-empty {
     color: var(--muted);
     padding: 2rem 0;
@@ -110,10 +167,14 @@
     .chat-wrap { padding-top: 1.5rem; }
     .chat-wrap h1 { font-size: 1.85rem; }
     .chat-toolbar a { flex: 0 0 auto; min-width: 10rem; }
+    .chat-accordion__summary { font-size: 1.25rem; }
   }
 </style>
 {% endblock %}
 {% block content %}
+<div class="pl" style="max-width:720px;margin:0 auto;padding:0 1rem">
+  {% include "planning/_module_nav.html" with active="chat" %}
+</div>
 <div class="chat-wrap" data-tour="chat-list">
   <h1>Chat</h1>
   {% page_lead "chat.rooms" %}
@@ -123,29 +184,46 @@
     <a href="{% url 'chat:prefs' %}">Notifications</a>
   </div>
 
-  {% if rooms %}
-  <ul class="chat-list">
-    {% for item in rooms %}
-    <li>
-      <a href="{% url 'chat:room' item.room.pk %}">
-        <div>
-          <div class="chat-kind">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
-          <p class="chat-list__title">{{ item.room.title }}</p>
-          {% if item.last_message %}
-          <p class="chat-list__meta">
-            {{ item.last_message.author.get_full_name|default:item.last_message.author.username|default:"—" }}
-            · {{ item.last_message.created_at|date:"d/m H:i" }}
-            {% if item.last_message.body %} — {{ item.last_message.body|truncatechars:70 }}{% else %} — pièce jointe{% endif %}
-          </p>
-          {% else %}
-          <p class="chat-list__meta">Aucun message pour l’instant</p>
-          {% endif %}
-        </div>
-        {% if item.unread %}<span class="chat-badge" aria-label="{{ item.unread }} non lus">{{ item.unread }}</span>{% endif %}
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
+  {% if has_rooms %}
+  <div class="chat-sections">
+    {% if primary_rooms %}
+    <ul class="chat-list">
+      {% for item in primary_rooms %}
+      {% include "chat/_room_list_item.html" with item=item %}
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if piece_rooms %}
+    <details class="chat-accordion"{% if piece_has_unread %} open{% endif %}>
+      <summary class="chat-accordion__summary">
+        <span class="chat-accordion__label">Morceaux</span>
+        <span class="chat-accordion__count">{{ piece_rooms|length }}</span>
+        {% if piece_unread_total %}<span class="chat-badge" aria-label="{{ piece_unread_total }} non lus">{{ piece_unread_total }}</span>{% endif %}
+      </summary>
+      <ul class="chat-list">
+        {% for item in piece_rooms %}
+        {% include "chat/_room_list_item.html" with item=item %}
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
+    {% if event_rooms %}
+    <details class="chat-accordion"{% if event_has_unread %} open{% endif %}>
+      <summary class="chat-accordion__summary">
+        <span class="chat-accordion__label">Événements</span>
+        <span class="chat-accordion__count">{{ event_rooms|length }}</span>
+        {% if event_unread_total %}<span class="chat-badge" aria-label="{{ event_unread_total }} non lus">{{ event_unread_total }}</span>{% endif %}
+      </summary>
+      <ul class="chat-list">
+        {% for item in event_rooms %}
+        {% include "chat/_room_list_item.html" with item=item %}
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </div>
   {% else %}
   <p class="chat-empty">Aucun salon pour le moment.</p>
   {% endif %}

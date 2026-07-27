@@ -1,4 +1,4 @@
-"""Étapes par défaut des guides musicien / staff."""
+"""Étapes par défaut des guides musicien / staff (IA Coulisses)."""
 
 MUSICIAN_STEPS = [
     {
@@ -6,11 +6,11 @@ MUSICIAN_STEPS = [
         "anchor": "",
         "title": "Bienvenue",
         "body": (
-            "Ce guide présente les outils réservés aux musiciens : "
-            "coulisses (planning et répertoire), chat et votre compte. "
-            "Vous pourrez le rejouer depuis Mon compte → Réglages."
+            "Ce guide présente les Coulisses : planning, partitions et chat, "
+            "puis votre compte. Vous pourrez le rejouer depuis "
+            "Mon compte → Réglages."
         ),
-        "page_path": "/compte/",
+        "page_path": "/planning/",
         "open_mobile_nav": False,
         "scroll_footer": False,
     },
@@ -19,64 +19,38 @@ MUSICIAN_STEPS = [
         "anchor": "nav-coulisses",
         "title": "Coulisses",
         "body": (
-            "Dates, répétitions, concerts et répertoire : tout passe "
-            "par ici. Le calendrier annuel s’affiche en premier ; "
-            "les partitions sont dans l’onglet Morceaux."
+            "Une seule entrée dans le menu pour tout l’espace musicien. "
+            "À l’intérieur : Planning, Répertoire et Chat."
         ),
-        "page_path": "/compte/",
+        "page_path": "/planning/",
         "open_mobile_nav": True,
         "scroll_footer": False,
     },
     {
         "order": 3,
-        "anchor": "nav-chat",
-        "title": "Chat",
-        "body": (
-            "Échangez avec l’orchestre, par morceau ou par date, "
-            "et recevez les documents partagés."
-        ),
-        "page_path": "/compte/",
-        "open_mobile_nav": True,
-        "scroll_footer": False,
-    },
-    {
-        "order": 4,
-        "anchor": "nav-account",
-        "title": "Mon compte",
-        "body": (
-            "Profil, sécurité, notifications — et le bouton pour "
-            "rejouer ce guide quand vous voulez."
-        ),
-        "page_path": "/compte/",
-        "open_mobile_nav": True,
-        "scroll_footer": False,
-    },
-    {
-        "order": 5,
         "anchor": "module-calendrier",
         "title": "Calendrier",
         "body": (
-            "Vue annuelle des dates. Touchez un jour pour voir le détail "
-            "ou proposer un événement si vous y êtes autorisé."
+            "Vue annuelle des dates. Touchez un jour pour le détail, "
+            "ou proposez un événement si vous y êtes autorisé."
         ),
         "page_path": "/planning/",
         "open_mobile_nav": False,
         "scroll_footer": False,
     },
     {
-        "order": 6,
+        "order": 4,
         "anchor": "module-mes-dates",
         "title": "Mes dates",
         "body": (
-            "Vos invitations, réponses (RSVP), remplacements et sondages "
-            "de dates se retrouvent ici."
+            "Vos invitations, sondages et remplacements sont regroupés ici."
         ),
         "page_path": "/planning/moi/",
         "open_mobile_nav": False,
         "scroll_footer": False,
     },
     {
-        "order": 7,
+        "order": 5,
         "anchor": "rsvp-actions",
         "title": "Répondre à une date",
         "body": (
@@ -88,7 +62,19 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
-        "order": 8,
+        "order": 6,
+        "anchor": "module-repertoire",
+        "title": "Morceaux",
+        "body": (
+            "Le répertoire se trouve dans Coulisses → Morceaux "
+            "(plus dans un menu séparé en haut du site)."
+        ),
+        "page_path": "/repertoire/",
+        "open_mobile_nav": False,
+        "scroll_footer": False,
+    },
+    {
+        "order": 7,
         "anchor": "repertoire-filter",
         "title": "Filtrer votre poste",
         "body": (
@@ -100,12 +86,24 @@ MUSICIAN_STEPS = [
         "scroll_footer": False,
     },
     {
+        "order": 8,
+        "anchor": "module-chat",
+        "title": "Salons",
+        "body": (
+            "Le chat est aussi dans les Coulisses. "
+            "Salons orchestre, par morceau ou par date."
+        ),
+        "page_path": "/chat/",
+        "open_mobile_nav": False,
+        "scroll_footer": False,
+    },
+    {
         "order": 9,
         "anchor": "chat-list",
-        "title": "Salons de discussion",
+        "title": "Liste des salons",
         "body": (
-            "Liste des salons orchestre, morceaux et événements. "
-            "Les préférences de notification sont sous Mon compte."
+            "Ouvrez un salon pour discuter et recevoir les documents. "
+            "Les notifications se règlent sous Mon compte."
         ),
         "page_path": "/chat/",
         "open_mobile_nav": False,
@@ -113,11 +111,22 @@ MUSICIAN_STEPS = [
     },
     {
         "order": 10,
+        "anchor": "nav-account",
+        "title": "Mon compte",
+        "body": (
+            "Sécurité, notifications et réglages — hors des Coulisses, "
+            "dans le menu principal."
+        ),
+        "page_path": "/compte/",
+        "open_mobile_nav": True,
+        "scroll_footer": False,
+    },
+    {
+        "order": 11,
         "anchor": "account-replay",
         "title": "C’est tout !",
         "body": (
-            "Vous pouvez relancer ce guide à tout moment depuis "
-            "Mon compte → Réglages."
+            "Relancez ce guide à tout moment depuis Mon compte → Réglages."
         ),
         "page_path": "/compte/",
         "open_mobile_nav": False,
@@ -129,13 +138,13 @@ STAFF_STEPS = [
     {
         "order": 1,
         "anchor": "",
-        "title": "Guide administration",
+        "title": "Guide staff",
         "body": (
-            "Ce parcours présente les outils staff : module Coulisses, "
-            "musiciens, atelier et liens d’administration en bas de page. "
-            "Rejouable depuis Mon compte → Réglages."
+            "En plus du guide musicien, ce parcours montre les outils "
+            "d’organisation : groupe Staff dans les Coulisses, puis le "
+            "tableau de bord Administration. Rejouable depuis Mon compte."
         ),
-        "page_path": "/compte/",
+        "page_path": "/planning/admin/",
         "open_mobile_nav": False,
         "scroll_footer": False,
     },
@@ -144,8 +153,9 @@ STAFF_STEPS = [
         "anchor": "module-staff",
         "title": "Groupe Staff",
         "body": (
-            "Dans Coulisses, le groupe Staff regroupe "
-            "l’admin des dates, les musiciens, l’atelier et les setlists."
+            "Dans Coulisses, le bloc Staff regroupe le quotidien orchestre : "
+            "admin planning, musiciens, atelier et setlists "
+            "(et Répés dans Planning)."
         ),
         "page_path": "/planning/admin/",
         "open_mobile_nav": False,
@@ -156,8 +166,8 @@ STAFF_STEPS = [
         "anchor": "staff-admin",
         "title": "Admin planning",
         "body": (
-            "Créez et gérez les événements, les effectifs (rosters), "
-            "les sondages et le matériel."
+            "Créez et gérez les événements, effectifs (rosters), "
+            "sondages de dates et matériel."
         ),
         "page_path": "/planning/admin/",
         "open_mobile_nav": False,
@@ -168,7 +178,7 @@ STAFF_STEPS = [
         "anchor": "staff-musiciens",
         "title": "Musiciens",
         "body": (
-            "Gérez les profils musiciens : postes, pupitres et accès."
+            "Profils, postes titulaires et remplaçants, accès planning."
         ),
         "page_path": "/planning/admin/musiciens/",
         "open_mobile_nav": False,
@@ -176,30 +186,65 @@ STAFF_STEPS = [
     },
     {
         "order": 5,
-        "anchor": "staff-atelier",
-        "title": "Atelier & setlists",
+        "anchor": "staff-repes",
+        "title": "Répétitions",
         "body": (
-            "Publiez le répertoire (partitions, audio) et composez "
-            "les setlists de concert."
+            "Feuilles de route et absences : sous Planning → Répés "
+            "(réservé au staff)."
+        ),
+        "page_path": "/repetitions/staff/",
+        "open_mobile_nav": False,
+        "scroll_footer": False,
+    },
+    {
+        "order": 6,
+        "anchor": "staff-atelier",
+        "title": "Atelier partitions",
+        "body": (
+            "Publiez les morceaux : PDF, découpe par poste, audio."
         ),
         "page_path": "/repertoire/staff/",
         "open_mobile_nav": False,
         "scroll_footer": False,
     },
     {
-        "order": 6,
-        "anchor": "footer-admin",
-        "title": "Administration du site",
+        "order": 7,
+        "anchor": "staff-setlists",
+        "title": "Setlists",
         "body": (
-            "En bas de chaque page : concerts, lieux, médias, contact, "
-            "retours utilisateurs et l’admin Django."
+            "Composez les programmes de concert à partir du répertoire."
         ),
-        "page_path": "/compte/",
+        "page_path": "/repertoire/staff/setlists/",
+        "open_mobile_nav": False,
+        "scroll_footer": False,
+    },
+    {
+        "order": 8,
+        "anchor": "footer-admin",
+        "title": "Raccourcis Administration",
+        "body": (
+            "En bas de page : accès rapide au tableau de bord, retours, "
+            "CMS concerts, planning et atelier."
+        ),
+        "page_path": "/repertoire/staff/setlists/",
         "open_mobile_nav": False,
         "scroll_footer": True,
     },
     {
-        "order": 7,
+        "order": 9,
+        "anchor": "admin-hub",
+        "title": "Tableau de bord",
+        "body": (
+            "Tous les outils staff au même endroit : site public "
+            "(concerts, lieux, médias, contact), orchestre, retours, "
+            "stats, édition des guides et Django admin."
+        ),
+        "page_path": "/administration/",
+        "open_mobile_nav": False,
+        "scroll_footer": False,
+    },
+    {
+        "order": 10,
         "anchor": "account-replay",
         "title": "Fin du guide staff",
         "body": (

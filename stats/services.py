@@ -119,6 +119,12 @@ def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any
         key=lambda u: (u.last_login is not None, u.last_login or now),
     )[:40]
 
+    recent_logins = list(
+        musicians.exclude(last_login__isnull=True)
+        .select_related("musician_profile", "musician_profile__section")
+        .order_by("-last_login")[:40]
+    )
+
     participations_period = EventParticipation.objects.filter(updated_at__gte=since)
     participation_by_status = list(
         participations_period.values("status__code", "status__label")
@@ -304,6 +310,7 @@ def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any
             "count": musician_count,
             "profiles": profile_count,
             "login_buckets": login_buckets,
+            "recent_logins": recent_logins,
             "inactive": inactive_musicians,
             "participation_by_status": [
                 {

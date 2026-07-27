@@ -19,8 +19,8 @@ INSTALLED_APPS = [
     "channels",
     "users.apps.UsersConfig",
     "core",
-    "orchestra",
-    "events",
+    # "orchestra" — stub réservé, non installé (voir orchestra/README.md)
+    "events.apps.EventsConfig",
     "planning.apps.PlanningConfig",
     "feedback.apps.FeedbackConfig",
     "chat.apps.ChatConfig",
@@ -69,7 +69,16 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [REDIS_URL],
+            "hosts": [
+                {
+                    "address": REDIS_URL,
+                    "socket_connect_timeout": 5,
+                    "socket_timeout": 5,
+                    "retry_on_timeout": True,
+                }
+            ],
+            "capacity": 1500,
+            "expiry": 60,
         },
     },
 }
@@ -77,6 +86,7 @@ CHANNEL_LAYERS = {
 CHAT_ATTACHMENT_MAX_BYTES = int(
     os.environ.get("CHAT_ATTACHMENT_MAX_BYTES", str(25 * 1024 * 1024))
 )
+CHAT_ATTACHMENT_MAX_COUNT = int(os.environ.get("CHAT_ATTACHMENT_MAX_COUNT", "20"))
 CHAT_DIGEST_INTERVAL_MINUTES = int(os.environ.get("CHAT_DIGEST_INTERVAL_MINUTES", "30"))
 
 LANGUAGE_CODE = "fr-fr"

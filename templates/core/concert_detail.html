@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ event.titre }} — Concert JOY{% endblock %}
 {% block og_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
 {% block twitter_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
@@ -6,7 +7,12 @@
 {% block og_description %}{{ meta_description }}{% endblock %}
 {% block twitter_description %}{{ meta_description }}{% endblock %}
 {% block og_type %}event{% endblock %}
+{% block og_image %}{{ SITE_URL }}{% url 'concert_og_image' event.slug %}{% endblock %}
+{% block twitter_image %}{{ SITE_URL }}{% url 'concert_og_image' event.slug %}{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
 <style>
   .event-detail { max-width: 720px; }
   .event-detail .when {
@@ -17,9 +23,51 @@
   }
   .event-detail .meta { color: var(--muted); font-size: .95rem; margin-bottom: .35rem; }
   .event-detail .desc { margin-top: 1.25rem; line-height: 1.65; color: var(--text); }
-  .event-detail .actions { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: .75rem; }
-  .event-map { margin-top: 1.25rem; width: 100%; height: 280px; border-radius: var(--r); border: 1px solid var(--border); overflow: hidden; position: relative; }
-  .event-map iframe { height: calc(100% + 30px); margin-bottom: -30px; }
+  .event-detail .actions {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .5rem;
+  }
+  .event-share { display: inline-flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .event-share__btn,
+  .event-detail .actions .btn-sm,
+  .event-detail .actions .event-map__go {
+    padding: .35rem .75rem;
+    font-size: .72rem;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+  button.event-share__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    font: inherit;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: var(--r);
+    cursor: pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+  button.event-share__btn:disabled { opacity: .55; cursor: wait; }
+  @media (max-width: 600px) {
+    .event-share__btn,
+    .event-detail .actions .btn-sm,
+    .event-detail .actions .event-map__go { min-height: 44px; }
+  }
+  .event-detail .event-map-wrap {
+    margin-top: 1.25rem;
+    width: 100%;
+  }
+  .event-detail .event-map {
+    height: 280px;
+  }
   .badge { display: inline-block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: .15rem .5rem; border-radius: var(--r); margin-left: .5rem; vertical-align: middle; }
   .badge-tentative { background: rgba(184,137,42,.12); color: var(--gold-text); }
   .badge-annule { background: rgba(180,60,60,.12); color: #b43c3c; }
@@ -63,28 +111,23 @@
     <div class="desc">{{ event.description|linebreaks }}</div>
     {% endif %}
     <div class="actions">
-      {% if event.url_billets %}
-      <a href="{{ event.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary">Billetterie →</a>
+      {% if event.show_nav_go %}
+      {% include "includes/_nav_go_button.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" go_label=event.venue.nom go_text="J'y vais" go_class="event-map__go btn btn-primary btn-sm" %}
       {% endif %}
-      <a href="{% url 'contact' %}?mode=prestation" class="btn btn-outline">Demande de prestation</a>
+      {% if event.url_billets %}
+      <a href="{{ event.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Billetterie →</a>
+      {% endif %}
+      <a href="{% url 'contact' %}?mode=prestation" class="btn btn-outline btn-sm">Demande de prestation</a>
+      {% include "includes/_concert_share.html" with event=event %}
     </div>
     {% if event.venue.latitude %}
-    <div class="event-map">
-      <iframe
-        src="https://www.openstreetmap.org/export/embed.html?bbox={{ event.bbox }}&layer=mapnik&mlat={{ event.venue.latitude|stringformat:"f" }}&mlon={{ event.venue.longitude|stringformat:"f" }}"
-        style="width:100%;height:100%;border:0;border-radius:var(--r)"
-        loading="lazy"
-        title="Carte — {{ event.venue.nom }}"
-        referrerpolicy="no-referrer-when-downgrade">
-      </iframe>
-      <a href="https://www.openstreetmap.org/?mlat={{ event.venue.latitude|stringformat:"f" }}&mlon={{ event.venue.longitude|stringformat:"f" }}#map=15/{{ event.venue.latitude|stringformat:"f" }}/{{ event.venue.longitude|stringformat:"f" }}"
-         target="_blank" rel="noopener"
-         title="Voir en plein écran"
-         style="position:absolute;bottom:8px;right:8px;z-index:10;background:white;border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;display:flex;align-items:center;gap:4px;font-size:.75rem;color:#333;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)">
-        OSM
-      </a>
-    </div>
+    {% include "includes/_event_map.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" map_id=event.pk %}
     {% endif %}
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{% static 'core/event-map.js' %}?v=3"></script>
 {% endblock %}

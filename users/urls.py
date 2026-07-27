@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import views
 from . import views_push
+from . import views_tour_editor
 
 urlpatterns = [
     path("connexion/", views.login_view, name="account_login"),
@@ -11,6 +12,12 @@ urlpatterns = [
     path("", views.account_home, name="account_home"),
     path("guide/terminer/", views.tour_complete, name="account_tour_complete"),
     path("aides/masquer/", views.page_lead_dismiss, name="account_page_lead_dismiss"),
+    path("guides/", views_tour_editor.admin_tours, name="admin_tours"),
+    path(
+        "guides/enregistrer/",
+        views_tour_editor.admin_tours_save,
+        name="admin_tours_save",
+    ),
     path("securite/", views.security_view, name="account_security"),
     path("securite/totp/demarrer/", views.totp_setup_start, name="account_totp_start"),
     path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),

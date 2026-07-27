@@ -13,6 +13,7 @@ class ChatRoom(models.Model):
         ORCHESTRA = "orchestra", "Orchestre"
         EVENT = "event", "Événement"
         PIECE = "piece", "Morceau"
+        STAFF = "staff", "Staff"
 
     kind = models.CharField(
         "Type",
@@ -49,6 +50,11 @@ class ChatRoom(models.Model):
                 fields=["kind"],
                 condition=models.Q(kind="orchestra"),
                 name="unique_orchestra_chat_room",
+            ),
+            models.UniqueConstraint(
+                fields=["kind"],
+                condition=models.Q(kind="staff"),
+                name="unique_staff_chat_room",
             ),
         ]
 
@@ -157,7 +163,16 @@ class ChatMessage(models.Model):
         related_name="chat_messages",
         verbose_name="Sondage lié",
     )
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+        verbose_name="Réponse à",
+    )
     created_at = models.DateTimeField("Envoyé le", auto_now_add=True, db_index=True)
+    edited_at = models.DateTimeField("Modifié le", null=True, blank=True)
     deleted_at = models.DateTimeField("Supprimé le", null=True, blank=True)
 
     class Meta:

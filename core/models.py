@@ -369,3 +369,79 @@ class ContactMessage(models.Model):
     @property
     def is_prestation(self) -> bool:
         return self.kind == self.KIND_PRESTATION
+
+
+class SitePage(models.Model):
+    """Page publique éditable (accueil, etc.)."""
+
+    slug = models.SlugField(unique=True, max_length=80)
+    titre = models.CharField(max_length=200)
+    meta_description = models.CharField(max_length=320, blank=True)
+    publie = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Page du site"
+        verbose_name_plural = "Pages du site"
+        ordering = ["titre"]
+
+    def __str__(self):
+        return self.titre
+
+
+class PageBlock(models.Model):
+    """Carte / bloc de contenu d’une page, ordonnable."""
+
+    TYPE_HERO = "hero"
+    TYPE_TEXT = "text"
+    TYPE_IMAGE = "image"
+    TYPE_VIDEO = "video"
+    TYPE_CONCERTS = "concerts"
+    TYPE_CHOICES = [
+        (TYPE_HERO, "En-tête (hero)"),
+        (TYPE_TEXT, "Texte"),
+        (TYPE_IMAGE, "Image"),
+        (TYPE_VIDEO, "Vidéo"),
+        (TYPE_CONCERTS, "Prochains concerts"),
+    ]
+
+    page = models.ForeignKey(SitePage, on_delete=models.CASCADE, related_name="blocks")
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    titre_admin = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text="Libellé visible uniquement dans l’éditeur.",
+    )
+    ordre = models.PositiveIntegerField(default=0)
+    visible = models.BooleanField(default=True)
+    contenu = models.JSONField(default=dict, blank=True)
+    media = models.ForeignKey(
+        MediaItem,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="page_blocks",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Bloc de page"
+        verbose_name_plural = "Blocs de page"
+        ordering = ["ordre", "id"]
+        indexes = [
+            models.Index(fields=["page", "ordre"], name="core_pageblock_page_ordre_idx"),
+        ]
+
+    def __str__(self):
+        label = self.titre_admin or self.get_type_display()
+        return f"{self.page.slug} · {label}"
+
+    def label_carte(self) -> str:
+        if self.titre_admin:
+            return self.titre_admin
+        data = self.contenu or {}
+        for key in ("titre", "title", "title_accent", "tag"):
+            val = data.get(key)
+            if val:
+                return str(val)[:80]
+        return self.get_type_display()

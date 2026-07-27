@@ -6,7 +6,9 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from chat.services import (
     active_membership,
     ensure_staff_membership,
+    mark_room_read,
     post_message,
+    serialize_message,
     user_can_access_room,
 )
 from chat.models import ChatRoom
@@ -31,6 +33,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.group_name = room.channel_group
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        # Accusé de lecture dès l’ouverture du salon live
+        await self._mark_read()
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
@@ -45,7 +49,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({"type": "error", "error": "JSON invalide"}))
             return
 
-        if payload.get("type") != "chat.message":
+        msg_type = payload.get("type")
+        if msg_type == "chat.read":
+            await self._mark_read()
+            return
+
+        if msg_type != "chat.message":
             return
 
         body = (payload.get("body") or "").strip()
@@ -64,17 +73,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if membership is None and (self.user.is_staff or self.user.is_superuser):
             await self._ensure_staff_membership()
 
+        reply_to_id = payload.get("reply_to_id")
         try:
-            message = await self._post(body)
+            message_payload = await self._post(body, reply_to_id)
         except ValueError as exc:
             await self.send(text_data=json.dumps({"type": "error", "error": str(exc)}))
             return
 
-        # broadcast is done inside post_message; also echo is via group
+        # group_send depuis le contexte async (pas async_to_sync dans un thread DB)
+        await self.channel_layer.group_send(
+            self.group_name,
+            {"type": "chat.message", "message": message_payload},
+        )
 
     async def chat_message(self, event):
         await self.send(
             text_data=json.dumps({"type": "chat.message", "message": event["message"]})
+        )
+
+    async def chat_message_edit(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {"type": "chat.message_edit", "message": event["message"]}
+            )
         )
 
     async def chat_reaction(self, event):
@@ -85,6 +106,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "message_id": event["message_id"],
                     "likes": event["likes"],
                 }
+            )
+        )
+
+    async def chat_read(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {"type": "chat.read", "cursor": event["cursor"]}
             )
         )
 
@@ -108,5 +136,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return ensure_staff_membership(self.room, self.user)
 
     @database_sync_to_async
-    def _post(self, body: str):
-        return post_message(room=self.room, author=self.user, body=body)
+    def _mark_read(self):
+        return mark_room_read(self.room, self.user, broadcast=True)
+
+    @database_sync_to_async
+    def _post(self, body: str, reply_to_id=None):
+        message = post_message(
+            room=self.room,
+            author=self.user,
+            body=body,
+            reply_to_id=reply_to_id,
+            broadcast=False,
+        )
+        return serialize_message(message)

@@ -453,6 +453,14 @@ def account_notifications(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _notifications_redirect(request: HttpRequest) -> str:
+    """Retour inbox, ou ``next`` relatif sûr (ex. planning après bannière Coulisses)."""
+    nxt = request.POST.get("next") or request.GET.get("next") or ""
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return nxt
+    return reverse("account_notifications")
+
+
 @login_required
 @require_POST
 def account_notification_mark_read(request: HttpRequest, pk: int) -> HttpResponse:
@@ -461,7 +469,7 @@ def account_notification_mark_read(request: HttpRequest, pk: int) -> HttpRespons
     notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
     notif.mark_read()
     messages.success(request, "Notification marquée comme lue.")
-    return redirect("account_notifications")
+    return redirect(_notifications_redirect(request))
 
 
 @login_required
@@ -474,7 +482,7 @@ def account_notification_mark_responded(request: HttpRequest, pk: int) -> HttpRe
         messages.success(request, "Notification marquée comme répondue.")
     else:
         messages.info(request, "Cette notification n’attend pas de réponse.")
-    return redirect("account_notifications")
+    return redirect(_notifications_redirect(request))
 
 
 @login_required
@@ -494,7 +502,7 @@ def account_notifications_mark_all_read(request: HttpRequest) -> HttpResponse:
         )
     else:
         messages.info(request, "Aucune notification non lue.")
-    return redirect("account_notifications")
+    return redirect(_notifications_redirect(request))
 
 
 @login_required

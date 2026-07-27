@@ -1,0 +1,14 @@
+{# Bouton itinéraire — classes JS: .event-map__go + data-* #}
+{# Attend: lat, lng ; optionnel: go_label, go_text, go_class #}
+<button
+  type="button"
+  class="{{ go_class|default:'event-map__go' }}"
+  data-lat="{{ lat }}"
+  data-lng="{{ lng }}"
+  {% if go_label %}data-label="{{ go_label }}"{% endif %}
+  data-geo="geo:{{ lat }},{{ lng }}?q={{ lat }},{{ lng }}{% if go_label %}({{ go_label|urlencode }}){% endif %}"
+  data-gmaps="https://www.google.com/maps/dir/?api=1&amp;destination={{ lat }},{{ lng }}"
+  data-waze="https://waze.com/ul?ll={{ lat }},{{ lng }}&amp;navigate=yes"
+  data-apple="https://maps.apple.com/?daddr={{ lat }},{{ lng }}{% if go_label %}&amp;q={{ go_label|urlencode }}{% endif %}"
+  aria-haspopup="dialog"
+>{{ go_text|default:"Y aller" }}</button>

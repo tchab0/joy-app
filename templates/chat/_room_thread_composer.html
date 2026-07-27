@@ -14,6 +14,7 @@
       </template>
       <template x-if="!msg.hidden || msg.deleted">
         <div class="chat-msg"
+             :id="'chat-msg-' + msg.id"
              :class="{
                'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
                'chat-msg--highlight': msg.highlight,
@@ -23,8 +24,26 @@
             <span class="chat-msg__meta-info">
               <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
               · <span x-text="formatTime(msg.created_at)"></span>
+              <template x-if="msg.edited_at">
+                <span class="chat-msg__edited"> · modifié</span>
+              </template>
             </span>
             <span class="chat-react" x-show="!msg.deleted">
+              <button type="button"
+                      class="chat-react__btn"
+                      x-show="msg.author_id === currentUserId && !msg.highlight"
+                      @click="startEdit(msg)"
+                      aria-label="Modifier"
+                      title="Modifier">
+                <span aria-hidden="true">✏️</span>
+              </button>
+              <button type="button"
+                      class="chat-react__btn"
+                      @click="startReply(msg)"
+                      aria-label="Répondre"
+                      title="Répondre">
+                <span aria-hidden="true">↩️</span>
+              </button>
               <button type="button"
                       class="chat-react__btn"
                       :class="{ 'is-active': msg.mine === 'up' }"
@@ -46,11 +65,19 @@
               </button>
             </span>
           </div>
+          <template x-if="msg.reply_to">
+            <button type="button" class="chat-msg__quote"
+                    @click="scrollToMessage(msg.reply_to.id)"
+                    :aria-label="'Voir le message de ' + msg.reply_to.author_name">
+              <span class="chat-msg__quote-author" x-text="'@' + (msg.reply_to.author_name || '')"></span>
+              <span class="chat-msg__quote-body" x-text="msg.reply_to.body_preview"></span>
+            </button>
+          </template>
           <template x-if="msg.deleted">
-            <p class="chat-msg__body chat-msg__body--deleted">Message supprimé</p>
+            <div class="chat-msg__body chat-msg__body--deleted">Message supprimé</div>
           </template>
           <template x-if="!msg.deleted && msg.body">
-            <p class="chat-msg__body" x-text="msg.body"></p>
+            <div class="chat-msg__body" x-html="formatBodyHtml(msg.body)"></div>
           </template>
           <template x-if="msg.highlight && msg.poll_url">
             <a class="chat-msg__poll-link" :href="msg.poll_url">Répondre au sondage →</a>
@@ -59,7 +86,12 @@
             <template x-for="att in msg.attachments" :key="att.id">
               <li>
                 <template x-if="att.is_image">
-                  <a :href="att.url" target="_blank" rel="noopener"><img :src="att.url" :alt="att.name" loading="lazy"></a>
+                  <a class="chat-atts__img"
+                     :href="att.url"
+                     target="_blank"
+                     rel="noopener">
+                    <img :src="att.url" :alt="att.name" loading="lazy">
+                  </a>
                 </template>
                 <template x-if="!att.is_image">
                   <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
@@ -67,6 +99,34 @@
               </li>
             </template>
           </ul>
+          <template x-if="(msg.replies_count || 0) > 0 && !msg.deleted">
+            <button type="button"
+                    class="chat-msg__replies"
+                    @click="scrollToReply(msg)"
+                    :aria-label="repliesLabel(msg)">
+              <span x-text="repliesLabel(msg)"></span>
+            </button>
+          </template>
+          <template x-if="msg.author_id === currentUserId && !msg.deleted && !msg.highlight">
+            <div class="chat-msg__reads" x-show="readersFor(msg).length">
+              <button type="button"
+                      class="chat-msg__reads-btn"
+                      @click="toggleReadDetails(msg.id)"
+                      :aria-expanded="(readDetailsId === msg.id).toString()"
+                      :title="readersListTitle(msg)">
+                <span class="chat-msg__reads-checks" aria-hidden="true">✓✓</span>
+                <span x-text="readSummary(msg)"></span>
+              </button>
+              <ul class="chat-msg__reads-list"
+                  x-show="readDetailsId === msg.id"
+                  x-cloak
+                  @click.outside="readDetailsId = null">
+                <template x-for="r in readersFor(msg)" :key="r.user_id">
+                  <li x-text="r.name"></li>
+                </template>
+              </ul>
+            </div>
+          </template>
           <div class="chat-msg__unhides" x-show="followingHidden(index).length > 0">
             <template x-for="h in followingHidden(index)" :key="h.id">
               <button type="button" class="chat-react__unhide"
@@ -84,25 +144,202 @@
   </template>
 </div>
 
-<form class="chat-composer" x-ref="composer" @submit.prevent="send()">
+<button type="button"
+        class="chat-jump-bottom"
+        x-show="!embedded && showJumpBottom"
+        x-cloak
+        x-transition.opacity.duration.150ms
+        @click="jumpToBottom()"
+        aria-label="Aller aux derniers messages">
+  <span class="chat-jump-bottom__icon" aria-hidden="true">↓</span>
+  <span class="chat-jump-bottom__label">Derniers messages</span>
+</button>
+
+<form class="chat-composer"
+      x-ref="composer"
+      :class="{ 'is-dragover': dragOver }"
+      @submit.prevent="send()"
+      @dragenter.prevent="onComposerDragEnter($event)"
+      @dragover.prevent="onComposerDragOver($event)"
+      @dragleave.prevent="onComposerDragLeave($event)"
+      @drop.prevent="onComposerDrop($event)">
+  <div class="chat-composer__drop" x-show="dragOver" x-cloak aria-hidden="true">
+    <span>Déposer pour joindre</span>
+  </div>
   <div class="chat-composer__inner">
-    <textarea x-model="body" x-ref="input"
-              placeholder="Écrire un message…"
-              rows="1"
-              enterkeyhint="send"
-              @focus="onFocus()"
-              @input="autoGrow()"
-              @keydown.enter.exact.prevent="send()"></textarea>
+    <div class="chat-reply-bar" x-show="replyTo || editingId" x-cloak>
+      <template x-if="editingId">
+        <div class="chat-reply-bar__text">
+          <span class="chat-reply-bar__label">Modification</span>
+          <strong>Votre message</strong>
+          <span class="chat-reply-bar__preview" x-text="editPreview"></span>
+        </div>
+      </template>
+      <template x-if="!editingId && replyTo">
+        <div class="chat-reply-bar__text">
+          <span class="chat-reply-bar__label">Réponse à</span>
+          <strong x-text="replyTo ? ('@' + replyTo.author_name) : ''"></strong>
+          <span class="chat-reply-bar__preview" x-text="replyTo ? replyPreview(replyTo) : ''"></span>
+        </div>
+      </template>
+      <button type="button" class="chat-reply-bar__cancel"
+              @click="editingId ? cancelEdit() : clearReply()"
+              :aria-label="editingId ? 'Annuler la modification' : 'Annuler la réponse'">×</button>
+    </div>
+    <div class="chat-pending-atts"
+         x-show="pendingFiles.length || editingAttachments.length"
+         x-cloak>
+      <ul class="chat-pending-atts__list" aria-label="Pièces jointes">
+        <template x-for="item in editingAttachments" :key="item.key">
+          <li class="chat-pending-atts__item">
+            <template x-if="item.isImage && item.url">
+              <img class="chat-pending-atts__thumb"
+                   :src="item.url"
+                   :alt="item.name"
+                   @mouseenter="showAttZoom($event, { url: item.url, name: item.name })"
+                   @mousemove="moveAttZoom($event)"
+                   @mouseleave="hideAttZoom()">
+            </template>
+            <template x-if="!(item.isImage && item.url)">
+              <span class="chat-pending-atts__icon" aria-hidden="true">📄</span>
+            </template>
+            <div class="chat-pending-atts__meta">
+              <span class="chat-pending-atts__name" x-text="item.name"></span>
+              <span class="chat-pending-atts__size" x-text="formatFileSize(item.size)"></span>
+            </div>
+            <button type="button" class="chat-pending-atts__remove"
+                    @click="removeEditingAttachment(item.id)"
+                    :aria-label="'Retirer ' + item.name"
+                    title="Retirer">×</button>
+          </li>
+        </template>
+        <template x-for="item in pendingFiles" :key="item.key">
+          <li class="chat-pending-atts__item">
+            <template x-if="item.isImage && item.preview">
+              <img class="chat-pending-atts__thumb"
+                   :src="item.preview"
+                   :alt="item.name"
+                   @mouseenter="showAttZoom($event, { url: item.preview, name: item.name })"
+                   @mousemove="moveAttZoom($event)"
+                   @mouseleave="hideAttZoom()">
+            </template>
+            <template x-if="!(item.isImage && item.preview)">
+              <span class="chat-pending-atts__icon" aria-hidden="true">📄</span>
+            </template>
+            <div class="chat-pending-atts__meta">
+              <span class="chat-pending-atts__name" x-text="item.name"></span>
+              <span class="chat-pending-atts__size" x-text="formatFileSize(item.size)"></span>
+            </div>
+            <button type="button" class="chat-pending-atts__remove"
+                    @click="removePendingFile(item.key)"
+                    :aria-label="'Retirer ' + item.name"
+                    title="Retirer">×</button>
+          </li>
+        </template>
+      </ul>
+    </div>
+    <div class="chat-composer__input-wrap">
+      <div class="chat-mention" x-show="mentionOpen" x-cloak @click.outside="closeMention()">
+        <p class="chat-mention__hint" x-show="mentionSuggestions.length === 0">Aucun musicien trouvé</p>
+        <template x-for="(m, i) in mentionSuggestions" :key="m.id">
+          <button type="button" class="chat-mention__item"
+                  :class="{ 'is-active': i === mentionIndex }"
+                  @click="pickMention(m)"
+                  @mouseenter="mentionIndex = i">
+            <span class="chat-mention__name" x-text="m.name"></span>
+            <span class="chat-mention__user" x-text="'@' + m.username"></span>
+          </button>
+        </template>
+      </div>
+      <div class="chat-composer__editor"
+           contenteditable="true"
+           role="textbox"
+           aria-multiline="true"
+           enterkeyhint="send"
+           autocomplete="off"
+           x-ref="input"
+           :data-placeholder="editingId ? 'Modifier le message…' : 'Message… — @ pour mentionner'"
+           :class="{ 'is-empty': !body }"
+           @focus="onFocus()"
+           @input="onBodyInput()"
+           @keydown.capture="onBodyKeydown($event)"
+           @beforeinput="onEditorBeforeInput($event)"
+           @paste="onEditorPaste($event)"></div>
+    </div>
     <div class="chat-composer__row">
+      <div class="chat-emoji" @click.outside="emojiOpen = false">
+        <button type="button" class="chat-attach chat-emoji__btn"
+                @click="emojiOpen = !emojiOpen; closeMention()"
+                :aria-expanded="emojiOpen.toString()"
+                aria-label="Insérer un emoji"
+                title="Emoji">
+          😊
+        </button>
+        <div class="chat-emoji__panel" x-show="emojiOpen" x-cloak role="listbox" aria-label="Émojis">
+          <template x-for="em in emojis" :key="em">
+            <button type="button" class="chat-emoji__item" @click="insertEmoji(em)"
+                    :aria-label="'Insérer ' + em" x-text="em"></button>
+          </template>
+        </div>
+      </div>
+      <button type="button" class="chat-attach chat-fmt"
+              @mousedown.prevent
+              @click="applyRichFormat('bold')"
+              aria-label="Gras"
+              title="Gras">
+        <strong>G</strong>
+      </button>
+      <button type="button" class="chat-attach chat-fmt"
+              @mousedown.prevent
+              @click="applyRichFormat('italic')"
+              aria-label="Italique"
+              title="Italique">
+        <em>I</em>
+      </button>
+      <button type="button" class="chat-attach chat-fmt"
+              @mousedown.prevent
+              @click="insertLink()"
+              aria-label="Insérer un lien"
+              title="Lien">
+        🔗
+      </button>
+      <button type="button" class="chat-attach chat-fmt"
+              @mousedown.prevent
+              @click="applyQuote()"
+              aria-label="Citation"
+              title="Citation">
+        «»
+      </button>
+      <button type="button" class="chat-attach chat-fmt"
+              @mousedown.prevent
+              @click="applyBulletList()"
+              aria-label="Liste à puces"
+              title="Liste à puces">
+        •−
+      </button>
+      <button type="button" class="chat-attach"
+              @click="startMentionPicker()"
+              aria-label="Mentionner quelqu’un"
+              title="Mentionner">
+        @
+      </button>
       <label class="chat-attach" aria-label="Joindre un fichier">
         📎
         <input type="file" x-ref="files" multiple
                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.zip,.mp3,.wav,.m4a"
                @change="onFiles()">
       </label>
-      <span class="chat-attach__name" x-text="fileLabel" x-show="fileLabel"></span>
-      <span class="chat-attach__name" x-show="!fileLabel" style="visibility:hidden">.</span>
-      <button type="submit" class="chat-send" :disabled="busy">Envoyer</button>
+      <button type="submit" class="chat-send" :disabled="busy"
+              x-text="editingId ? 'Enregistrer' : 'Envoyer'"></button>
     </div>
   </div>
 </form>
+<template x-teleport="body">
+  <div class="chat-att-zoom"
+       x-show="attZoom"
+       x-cloak
+       :style="attZoomStyle"
+       @mouseleave="hideAttZoom()">
+    <img :src="attZoom ? attZoom.url : ''" :alt="attZoom ? attZoom.name : ''">
+  </div>
+</template>

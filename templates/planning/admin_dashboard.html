@@ -31,6 +31,10 @@
         <label for="description">Description</label>
         <textarea name="description" id="description" rows="2"></textarea>
       </div>
+      <div>
+        <label for="deadline">Date limite de réponse</label>
+        <input type="date" name="deadline" id="deadline" required>
+      </div>
       <template x-for="i in Array.from({length: n}, (_, k) => k)" :key="i">
         <div class="pl-form__row pl-form__row--2" style="padding:.5rem 0;border-top:1px solid var(--border)">
           <div>

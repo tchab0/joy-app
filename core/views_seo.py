@@ -18,6 +18,7 @@ def robots_txt(request):
         "Disallow: /chat/",
         "Disallow: /admin/",
         "Disallow: /admin-",
+        "Disallow: /administration/",
         "Disallow: /feedback/",
         "Disallow: /medias/proposer/",
         f"Sitemap: {base}/sitemap.xml",

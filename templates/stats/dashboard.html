@@ -276,30 +276,57 @@
         </div>
       </div>
 
-      <div class="stats-panel" style="margin-top:1rem">
-        <h3>Musiciens inactifs (≥ 90 j ou jamais connectés)</h3>
-        {% if musicians.inactive %}
-        <table class="stats-table">
-          <thead>
-            <tr>
-              <th>Nom</th>
-              <th>Pupitre</th>
-              <th>Dernière connexion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in musicians.inactive %}
-            <tr>
-              <td>{{ u.get_full_name|default:u.username }}</td>
-              <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
-              <td>{% if u.last_login %}{{ u.last_login|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <p class="stats-muted">Aucun compte inactif sur ce critère.</p>
-        {% endif %}
+      <div class="stats-grid" style="margin-top:1rem">
+        <div class="stats-panel">
+          <h3>Dernières connexions</h3>
+          {% if musicians.recent_logins %}
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Pupitre</th>
+                <th>Connexion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in musicians.recent_logins %}
+              <tr>
+                <td>{{ u.get_full_name|default:u.username }}</td>
+                <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
+                <td>{{ u.last_login|date:"d/m/Y H:i" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="stats-muted">Aucune connexion enregistrée pour l’instant.</p>
+          {% endif %}
+        </div>
+        <div class="stats-panel">
+          <h3>Musiciens inactifs (≥ 90 j ou jamais connectés)</h3>
+          {% if musicians.inactive %}
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Pupitre</th>
+                <th>Dernière connexion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in musicians.inactive %}
+              <tr>
+                <td>{{ u.get_full_name|default:u.username }}</td>
+                <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
+                <td>{% if u.last_login %}{{ u.last_login|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="stats-muted">Aucun compte inactif sur ce critère.</p>
+          {% endif %}
+        </div>
       </div>
     </div>
 

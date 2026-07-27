@@ -1,0 +1,25 @@
+<section class="section page-block-video">
+  <div class="container">
+    {% if block.render.titre %}<h2 class="section-title">{{ block.render.titre }}</h2>{% endif %}
+    {% if block.render.video_embed %}
+    <div class="hero-video page-block-video__player" data-yt-embed="{{ block.render.video_embed }}">
+      <button type="button" class="hero-video__facade" aria-label="Lire la vidéo">
+        {% if block.render.video_thumb %}
+        <img
+          class="hero-video__thumb"
+          src="{{ block.render.video_thumb }}"
+          alt=""
+          width="1280"
+          height="720"
+          loading="lazy"
+          decoding="async">
+        {% endif %}
+        <span class="hero-video__play" aria-hidden="true"></span>
+      </button>
+    </div>
+    {% elif block.media and block.media.url_affichage %}
+    <video class="page-block-video__file" controls playsinline preload="metadata"
+           src="{{ block.media.url_affichage }}"></video>
+    {% endif %}
+  </div>
+</section>

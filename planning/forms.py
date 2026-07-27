@@ -9,7 +9,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from planning.models import MusicianProfile
+from planning.models import EventRoadmap, MusicianProfile
 from users.roles import sync_user_groups
 
 User = get_user_model()
@@ -200,3 +200,75 @@ class MusicianAdminForm(forms.Form):
         profile.set_postes_remplacant(data["postes_remplacant"])
         profile.save()  # sync_section_from_poste via MusicianProfile.save
         return profile
+
+
+_ROADMAP_INPUT = {"class": "pl-input", "style": "width:100%;min-height:44px"}
+_ROADMAP_TEXTAREA = {
+    "class": "pl-input pl-roadmap-md",
+    "style": "width:100%;min-height:6rem",
+    "rows": 4,
+}
+_ROADMAP_TIME = {
+    "class": "pl-input pl-roadmap-time",
+    "type": "time",
+}
+
+
+class EventRoadmapForm(forms.ModelForm):
+    """Formulaire staff feuille de route concert."""
+
+    class Meta:
+        model = EventRoadmap
+        fields = (
+            "venue_extra",
+            "concert_end_note",
+            "arrival_start",
+            "arrival_end",
+            "soundcheck_at",
+            "ready_at",
+            "parking_info",
+            "material_notes",
+            "dress_code",
+            "closing_note",
+        )
+        widgets = {
+            "venue_extra": forms.Textarea(
+                attrs={
+                    **_ROADMAP_TEXTAREA,
+                    "placeholder": "Ex. entrée camping, salle…",
+                    "rows": 2,
+                }
+            ),
+            "concert_end_note": forms.TextInput(
+                attrs={**_ROADMAP_INPUT, "placeholder": "22h / 22h30"}
+            ),
+            "arrival_start": forms.TimeInput(attrs=_ROADMAP_TIME, format="%H:%M"),
+            "arrival_end": forms.TimeInput(attrs=_ROADMAP_TIME, format="%H:%M"),
+            "soundcheck_at": forms.TimeInput(attrs=_ROADMAP_TIME, format="%H:%M"),
+            "ready_at": forms.TimeInput(attrs=_ROADMAP_TIME, format="%H:%M"),
+            "parking_info": forms.Textarea(
+                attrs={
+                    **_ROADMAP_TEXTAREA,
+                    "placeholder": "Ex. Stationnement gratuit possible sur place",
+                    "rows": 3,
+                }
+            ),
+            "material_notes": forms.Textarea(attrs={**_ROADMAP_TEXTAREA, "rows": 6}),
+            "dress_code": forms.TextInput(
+                attrs={**_ROADMAP_INPUT, "placeholder": "noir"}
+            ),
+            "closing_note": forms.Textarea(
+                attrs={**_ROADMAP_TEXTAREA, "rows": 2}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("arrival_start", "arrival_end", "soundcheck_at", "ready_at"):
+            self.fields[name].input_formats = ["%H:%M", "%H:%M:%S"]
+        md_help = (
+            "Même formatage que le chat : **gras**, _italique_, listes -, "
+            "citations >, liens [texte](https://…)."
+        )
+        for name in ("venue_extra", "parking_info", "material_notes", "closing_note"):
+            self.fields[name].help_text = md_help

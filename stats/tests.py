@@ -36,6 +36,36 @@ class UsageEventTests(TestCase):
 
 
 @override_settings(ALLOWED_HOSTS=["*"])
+class DashboardRecentLoginsTests(TestCase):
+    def test_recent_logins_ordered(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from stats.services import build_dashboard_context, resolve_period
+
+        User = get_user_model()
+        now = timezone.now()
+        older = User.objects.create_user(
+            username="old_login", password="x", is_musician=True
+        )
+        older.last_login = now - timedelta(days=5)
+        older.save(update_fields=["last_login"])
+        newer = User.objects.create_user(
+            username="new_login", password="x", is_musician=True
+        )
+        newer.last_login = now - timedelta(hours=1)
+        newer.save(update_fields=["last_login"])
+        User.objects.create_user(
+            username="never_login", password="x", is_musician=True
+        )
+
+        ctx = build_dashboard_context(period=resolve_period("30"))
+        recent = ctx["musicians"]["recent_logins"]
+        self.assertEqual([u.username for u in recent], ["new_login", "old_login"])
+
+
+@override_settings(ALLOWED_HOSTS=["*"])
 class PublicPageViewTests(TestCase):
     def test_public_home_is_counted(self):
         from stats.models import PublicPageView

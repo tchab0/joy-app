@@ -6,8 +6,9 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, F, OuterRef
 from django.urls import reverse
+from datetime import timedelta
 import logging
 import threading
 
@@ -15,11 +16,12 @@ from events.models import Event, Venue, EventType
 from events.forms import EventForm, VenueForm
 from events.weather import attach_weather
 from .cache_utils import cache_page_anonymous
-from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage
+from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock
 from .forms import MediaSoumissionForm, ContactForm, PrestationForm
 from .forms import EXTENSIONS_AUTORISEES
 from .utils_compression import compresser_media
 from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, website_jsonld
+from .page_cms import enrich_block, get_published_page, home_cache_version
 from users.models import User
 from users.notify import notify_users
 
@@ -64,25 +66,66 @@ def _public_events_qs():
     )
 
 
-@cache_page_anonymous(settings.CACHE_TTL_HOME)
+NAV_GO_DAYS_BEFORE = 3
+
+
+def _attach_nav_go(events):
+    """Marque show_nav_go si GPS + concert dans les 3 jours (hors annulé)."""
+    now = timezone.now()
+    window_end = now + timedelta(days=NAV_GO_DAYS_BEFORE)
+    for e in events:
+        has_gps = bool(
+            e.venue and e.venue.latitude is not None and e.venue.longitude is not None
+        )
+        e.show_nav_go = bool(
+            has_gps
+            and e.statut != Event.Statut.ANNULE
+            and e.date_debut <= window_end
+        )
+    return events
+
+
+@cache_page_anonymous(settings.CACHE_TTL_HOME, key_prefix=lambda: f"home-v{home_cache_version()}")
 def home(request):
-    qs = _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")[:3]
-    prochains = []
+    page = get_published_page("accueil")
+    blocks = []
+    concerts_limit = 3
+    if page:
+        for block in page.blocks.all():
+            enrich_block(block)
+            blocks.append(block)
+            if block.type == PageBlock.TYPE_CONCERTS:
+                concerts_limit = max(concerts_limit, int(block.render.get("limit") or 3))
+
+    qs = _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")[
+        :concerts_limit
+    ]
+    prochains_all = []
     for e in qs:
         e.bbox = None
         if e.venue and e.venue.latitude and e.venue.longitude:
             lat = float(e.venue.latitude)
             lng = float(e.venue.longitude)
             e.bbox = f"{lng-0.003},{lat-0.003},{lng+0.003},{lat+0.003}"
-        prochains.append(e)
-    return render(
-        request,
-        "core/home.html",
-        {
-            "prochains": prochains,
-            "json_ld": dumps_jsonld(music_group_jsonld(), website_jsonld()),
-        },
-    )
+        prochains_all.append(e)
+    _attach_nav_go(prochains_all)
+
+    has_concerts_block = False
+    for block in blocks:
+        if block.type == PageBlock.TYPE_CONCERTS:
+            has_concerts_block = True
+            lim = int(block.render.get("limit") or 3)
+            block.prochains = prochains_all[:lim]
+
+    ctx = {
+        "page": page,
+        "blocks": blocks,
+        "prochains": prochains_all[:3],
+        "has_concerts_block": has_concerts_block,
+        "json_ld": dumps_jsonld(music_group_jsonld(), website_jsonld()),
+        "use_cms": bool(page and blocks),
+    }
+    return render(request, "core/home.html", ctx)
 
 
 def _add_bbox(qs):
@@ -99,8 +142,10 @@ def _add_bbox(qs):
 
 @cache_page_anonymous(settings.CACHE_TTL_CONCERTS)
 def concerts(request):
-    prochains = _add_bbox(
-        _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")
+    prochains = _attach_nav_go(
+        _add_bbox(
+            _public_events_qs().filter(date_debut__gte=timezone.now()).order_by("date_debut")
+        )
     )
     attach_weather(prochains)
     passes = _public_events_qs().filter(date_debut__lt=timezone.now()).order_by("-date_debut")[:10]
@@ -125,7 +170,7 @@ def concert_detail(request, slug):
         slug=slug,
         public=True,
     )
-    events = _add_bbox([event])
+    events = _attach_nav_go(_add_bbox([event]))
     event = events[0]
     attach_weather([event])
     desc = event.description.strip() if event.description else (
@@ -163,6 +208,10 @@ def medias(request):
         request.session.create()
     session_key = request.session.session_key
 
+    tri = (request.GET.get("tri") or "evenements").strip().lower()
+    if tri not in ("evenements", "votes"):
+        tri = "evenements"
+
     def annoter(qs):
         return qs.annotate(
             nb_votes=Count("votes"),
@@ -175,27 +224,46 @@ def medias(request):
     audios = annoter(MediaItem.objects.filter(type="audio", publie=True))
     pdfs = annoter(MediaItem.objects.filter(type="pdf", publie=True))
 
-    photos = list(
-        annoter(
-            MediaItem.objects.filter(
-                type="photo", publie=True, evenement__isnull=False
-            ).select_related("evenement")
-        ).order_by("-evenement__date", "evenement_id", "ordre", "id")
+    photos_qs = annoter(
+        MediaItem.objects.filter(
+            type="photo", publie=True, evenement__isnull=False
+        ).select_related("evenement")
     )
-    groupes_map: dict = {}
+
     groupes_photos = []
-    for p in photos:
-        # Compute display URL once (avoids repeated Path.exists() in template).
-        p.display_url = p.url_affichage
-        key = p.evenement_id
-        if key not in groupes_map:
-            groupe = {"evenement": p.evenement, "photos": []}
-            groupes_map[key] = groupe
-            groupes_photos.append(groupe)
-        groupes_map[key]["photos"].append(p)
+    photos_votes = []
+
+    if tri == "votes":
+        photos_votes = list(
+            photos_qs.order_by("-nb_votes", "-evenement__date", "evenement_id", "id")
+        )
+        for p in photos_votes:
+            p.display_url = p.url_affichage
+    else:
+        # Chronologie inverse : événements les plus récents d'abord.
+        photos = list(
+            photos_qs.order_by(
+                F("evenement__date").desc(nulls_last=True),
+                "evenement_id",
+                "ordre",
+                "id",
+            )
+        )
+        groupes_map: dict = {}
+        for p in photos:
+            # Compute display URL once (avoids repeated Path.exists() in template).
+            p.display_url = p.url_affichage
+            key = p.evenement_id
+            if key not in groupes_map:
+                groupe = {"evenement": p.evenement, "photos": []}
+                groupes_map[key] = groupe
+                groupes_photos.append(groupe)
+            groupes_map[key]["photos"].append(p)
 
     return render(request, "core/medias.html", {
         "groupes_photos": groupes_photos,
+        "photos_votes": photos_votes,
+        "tri": tri,
         "videos": videos,
         "audios": audios,
         "pdfs": pdfs,
@@ -622,6 +690,12 @@ def don(request):
 def adhesion(request):
     lien = ExternalLink.objects.filter(slug="adhesion-helloasso", actif=True).first()
     return render(request, "core/adhesion.html", {"lien": lien})
+
+
+@staff_member_required
+def admin_hub(request):
+    """Point d’entrée unique pour les outils staff (CMS + ops orchestre)."""
+    return render(request, "core/admin_hub.html")
 
 
 @staff_member_required

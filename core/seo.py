@@ -17,6 +17,7 @@ NOINDEX_PREFIXES = (
     "/stats/",
     "/admin/",
     "/admin-",
+    "/administration/",
     "/feedback/",
     "/medias/proposer/",
 )

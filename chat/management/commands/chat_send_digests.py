@@ -4,10 +4,10 @@ from collections import defaultdict
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Max
 from django.core.management.base import BaseCommand
 
 from chat.models import ChatMembership, ChatMessage
+from chat.services import message_targets_instant_notify
 from users.notify import notify_users
 
 User = get_user_model()
@@ -51,19 +51,38 @@ class Command(BaseCommand):
             updates: list[tuple[ChatMembership, int]] = []
 
             for m in user_memberships:
-                qs = ChatMessage.objects.filter(
-                    room_id=m.room_id,
-                    deleted_at__isnull=True,
-                    pk__gt=m.last_digested_message_id,
-                ).exclude(author_id=user_id)
-                count = qs.count()
-                if count == 0:
+                qs = (
+                    ChatMessage.objects.filter(
+                        room_id=m.room_id,
+                        deleted_at__isnull=True,
+                        pk__gt=m.last_digested_message_id,
+                    )
+                    .exclude(author_id=user_id)
+                    .select_related("reply_to")
+                )
+                msgs = list(qs.order_by("pk"))
+                if not msgs:
                     continue
-                max_id = qs.aggregate(m=Max("pk"))["m"] or m.last_digested_message_id
-                room_summaries.append((m.room.title, count))
+                max_id = msgs[-1].pk
+                # Déjà notifiés en instantané (@mention ou réponse) → hors digest
+                digest_msgs = [
+                    msg
+                    for msg in msgs
+                    if not message_targets_instant_notify(
+                        msg, user_id, username=user.username
+                    )
+                ]
                 updates.append((m, max_id))
+                if not digest_msgs:
+                    continue
+                room_summaries.append((m.room.title, len(digest_msgs)))
 
             if not room_summaries:
+                # Avancer le curseur même si tout a déjà été notifié en instantané
+                if updates and not dry_run:
+                    for membership, max_id in updates:
+                        membership.last_digested_message_id = max_id
+                        membership.save(update_fields=["last_digested_message_id"])
                 continue
 
             total = sum(c for _, c in room_summaries)

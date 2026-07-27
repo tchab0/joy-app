@@ -43,6 +43,10 @@
     return data.publicKey;
   }
 
+  /**
+   * Toujours passer par register()+ready (comme enable).
+   * getRegistration("/") seul échoue souvent au reload sur Android Chrome.
+   */
   async function ensureServiceWorker() {
     if (!("serviceWorker" in navigator)) {
       throw new Error("sw_unsupported");
@@ -108,7 +112,12 @@
 
   async function disable() {
     if (!("serviceWorker" in navigator)) return { ok: true };
-    const reg = await navigator.serviceWorker.getRegistration("/");
+    let reg = null;
+    try {
+      reg = await ensureServiceWorker();
+    } catch (_e) {
+      reg = await navigator.serviceWorker.getRegistration("/");
+    }
     if (!reg) return { ok: true };
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
@@ -118,16 +127,40 @@
     return { ok: true };
   }
 
-  async function localSubscription() {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      return null;
+  /**
+   * Retrouve l’abonnement local via register()+ready, puis re-POST serveur.
+   * Appelé au chargement des préférences pour une config durable.
+   */
+  async function syncLocalToServer() {
+    if (!("Notification" in window) || !("PushManager" in window)) {
+      return false;
     }
-    const reg = await navigator.serviceWorker.getRegistration("/");
-    if (!reg) return null;
-    return reg.pushManager.getSubscription();
+    if (Notification.permission !== "granted") {
+      return false;
+    }
+    let reg = null;
+    try {
+      reg = await ensureServiceWorker();
+    } catch (_e) {
+      try {
+        reg = await navigator.serviceWorker.getRegistration("/");
+      } catch (_e2) {
+        return false;
+      }
+    }
+    if (!reg) return false;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return false;
+    try {
+      await postSubscription(sub);
+      return true;
+    } catch (_e) {
+      return true; // local OK même si le re-POST échoue
+    }
   }
 
   async function status() {
+    const thisDevice = await syncLocalToServer();
     const r = await fetch("/compte/push/status/", {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -135,17 +168,11 @@
     const data = r.ok
       ? await r.json()
       : { ok: false, configured: false, subscriptions: 0 };
-    let thisDevice = false;
-    try {
-      thisDevice = !!(await localSubscription());
-    } catch (_e) {
-      thisDevice = false;
-    }
     return {
       ok: !!data.ok,
       configured: !!data.configured,
       subscriptions: data.subscriptions || 0,
-      thisDevice,
+      thisDevice: !!thisDevice,
     };
   }
 
@@ -156,5 +183,6 @@
     disable,
     status,
     ensureServiceWorker,
+    syncLocalToServer,
   };
 })();

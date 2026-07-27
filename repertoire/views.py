@@ -26,7 +26,7 @@ from repertoire.forms import (
     SetlistDuplicateForm,
     SetlistForm,
 )
-from repertoire.models import Part, PartPoste, Piece, Setlist
+from repertoire.models import Part, PartPoste, Piece, Setlist, part_sort_order
 from repertoire.pdf_utils import (
     extract_pdf_pages_bytes,
     images_to_pdf_bytes,
@@ -73,7 +73,7 @@ def _save_part_pdf(piece: Piece, poste: str, data: bytes, filename: str, source_
         poste=poste,
         defaults={
             "source_name": source_name or filename,
-            "sort_order": 0,
+            "sort_order": part_sort_order(poste),
         },
     )
     part.file.save(filename, ContentFile(data), save=True)

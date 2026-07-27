@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Éditer feuille de route — {{ event.titre }}{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
+<style>
+  .pl-roadmap-edit { color: var(--text); }
+  .pl-roadmap-edit .pl-head h1 {
+    font-size: clamp(1.55rem, 4.5vw, 2rem);
+  }
+  .pl-roadmap-edit .pl-head .pl-sub-title {
+    margin: 0 0 .35rem;
+    font-family: var(--font-d);
+    font-size: clamp(1.15rem, 3.5vw, 1.35rem);
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: capitalize;
+  }
+  .pl-roadmap-edit .pl-lieu {
+    margin: 0 0 1.15rem;
+    padding: .85rem .95rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+  }
+  .pl-roadmap-edit .pl-lieu h2 {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0 0 .55rem;
+  }
+  .pl-roadmap-edit .pl-lieu__name {
+    margin: 0 0 .25rem;
+    font-size: 1.02rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .pl-roadmap-edit .pl-lieu__addr {
+    margin: 0 0 .55rem;
+    font-size: .92rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .pl-roadmap-edit .pl-lieu__links {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    margin: 0 0 .75rem;
+  }
+  .pl-roadmap-edit .pl-lieu__links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+    font-size: .92rem;
+  }
+  .pl-roadmap-edit .pl-lieu__links a:hover { text-decoration: underline; }
+  .pl-roadmap-edit .pl-lieu .event-map-wrap {
+    width: 100%;
+    margin-top: .35rem;
+  }
+  .pl-roadmap-edit .pl-lieu .event-map { height: 220px; }
+  @media (min-width: 640px) {
+    .pl-roadmap-edit .pl-lieu .event-map { height: 280px; }
+    .pl-roadmap-edit .pl-lieu__links {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: .35rem 1.1rem;
+      align-items: center;
+    }
+  }
+  .pl-roadmap-edit .pl-form label {
+    display: block;
+    font-size: .82rem;
+    font-weight: 600;
+    margin: 0 0 .3rem;
+    color: var(--text);
+  }
+  .pl-roadmap-edit .pl-form .pl-hint {
+    display: block;
+    font-size: .78rem;
+    color: var(--muted);
+    margin: .25rem 0 .55rem;
+    line-height: 1.35;
+  }
+  .pl-roadmap-edit .pl-form .pl-hint button {
+    appearance: none;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-roadmap-edit .pl-form__field { margin-bottom: .95rem; }
+  .pl-roadmap-edit input.pl-roadmap-time {
+    width: auto;
+    max-width: 8.25rem;
+    min-width: 6.5rem;
+    min-height: 44px;
+    padding: .45rem .55rem;
+  }
+  .pl-roadmap-edit .pl-form__actions {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: 1.25rem;
+  }
+  .pl-roadmap-edit .pl-form__actions .pl-btn {
+    min-height: 44px;
+    width: 100%;
+    justify-content: center;
+  }
+  .pl-md {
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .pl-md__bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    padding: .35rem .4rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(var(--accent-rgb), .05);
+  }
+  .pl-md__bar button {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--r);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pl-md__bar button:hover,
+  .pl-md__bar button:focus-visible {
+    background: rgba(var(--accent-rgb), .12);
+    border-color: rgba(var(--accent-rgb), .25);
+    color: var(--accent);
+  }
+  .pl-md__bar button em { font-style: italic; font-weight: 600; }
+  .pl-md textarea {
+    display: block;
+    width: 100%;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent;
+    resize: vertical;
+    margin: 0;
+  }
+  @media (min-width: 640px) {
+    .pl-roadmap-edit .pl-form__row--2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    .pl-roadmap-edit .pl-form__times {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem 1rem;
+    }
+    .pl-roadmap-edit .pl-form__times .pl-form__field {
+      flex: 0 0 auto;
+      margin-bottom: .5rem;
+    }
+    .pl-roadmap-edit .pl-form__actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+    .pl-roadmap-edit .pl-form__actions .pl-btn { width: auto; min-width: 11rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl pl-roadmap-edit pl-staff">
+  {% include "planning/_module_nav.html" with active="calendrier" %}
+  <div class="pl-nav-context pl-nav-context--staff">
+    <a href="{% url 'planning:event_detail' event.pk %}">Événement</a>
+    <a href="{% url 'planning:event_roadmap' event.pk %}">Aperçu</a>
+  </div>
+
+  <header class="pl-head" data-tour="staff">
+    <h1>{{ event.titre }}</h1>
+    <p class="pl-sub-title">{{ event.date_debut|date:"l j F Y" }} · {{ event.date_debut|date:"H:i" }}{% if event.date_fin %} – {{ event.date_fin|date:"H:i" }}{% endif %}</p>
+    <p class="pl-sub">Feuille de route — préremplie ; suggestions des concerts précédents (même lieu en priorité).{% if suggestions.source_same_venue %} D’après « {{ suggestions.source_same_venue.event.titre }} ».{% elif suggestions.source_any %} D’après « {{ suggestions.source_any.event.titre }} ».{% endif %}</p>
+  </header>
+
+  <section class="pl-lieu" aria-labelledby="rm-edit-lieu">
+    <h2 id="rm-edit-lieu">Lieu de l’événement</h2>
+    {% if event.venue %}
+    <p class="pl-lieu__name">{{ event.venue.nom }}</p>
+    <p class="pl-lieu__addr">
+      {% if event.venue.adresse %}{{ event.venue.adresse }}{% if event.venue.ville %}, {% endif %}{% endif %}
+      {% if event.venue.ville %}{{ event.venue.ville }}{% endif %}
+      {% if not event.venue.adresse and not event.venue.ville %}—{% endif %}
+    </p>
+    <div class="pl-lieu__links">
+      {% if event.venue.has_coords %}
+      <a href="geo:{{ event.venue.latitude }},{{ event.venue.longitude }}?q={{ event.venue.latitude }},{{ event.venue.longitude }}({{ event.venue.nom|urlencode }})"
+         title="Ouvrir dans l’app cartes">
+        GPS {{ event.venue.latitude }}, {{ event.venue.longitude }}
+      </a>
+      <a href="https://www.openstreetmap.org/?mlat={{ event.venue.latitude|stringformat:'f' }}&amp;mlon={{ event.venue.longitude|stringformat:'f' }}#map=16/{{ event.venue.latitude|stringformat:'f' }}/{{ event.venue.longitude|stringformat:'f' }}"
+         target="_blank" rel="noopener">
+        Ouvrir dans OpenStreetMap
+      </a>
+      {% elif event.venue.adresse or event.venue.ville %}
+      <a href="https://www.openstreetmap.org/search?query={{ event.lieu_affiche|urlencode }}"
+         target="_blank" rel="noopener">
+        Chercher l’adresse sur OpenStreetMap
+      </a>
+      {% endif %}
+      <a href="{% url 'admin_venue_edit' event.venue.pk %}">Modifier le lieu / la position</a>
+    </div>
+    {% if event.venue.has_coords %}
+    {% include "includes/_event_map.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" map_id="roadmap-edit" show_go=True go_label=event.venue.nom %}
+    {% else %}
+    <p class="pl-hint" style="margin:0">Aucune coordonnée GPS sur ce lieu — précisez-la pour afficher le plan et le bouton « Y aller ».</p>
+    {% endif %}
+    {% else %}
+    <p class="pl-hint" style="margin:0">Aucun lieu rattaché à cet événement.</p>
+    {% endif %}
+  </section>
+
+  <form class="pl-form" method="post" action="{% url 'planning:event_roadmap_edit' event.pk %}" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="pl-empty" style="color:var(--accent)">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="pl-form__field">
+      <label for="{{ form.venue_extra.id_for_label }}">{{ form.venue_extra.label }}</label>
+      <div class="pl-md" data-pl-md>
+        <div class="pl-md__bar" role="toolbar" aria-label="Formatage">
+          <button type="button" data-md="bold" title="Gras" aria-label="Gras"><strong>G</strong></button>
+          <button type="button" data-md="italic" title="Italique" aria-label="Italique"><em>I</em></button>
+          <button type="button" data-md="link" title="Lien" aria-label="Lien">🔗</button>
+          <button type="button" data-md="list" title="Liste" aria-label="Liste à puces">•−</button>
+          <button type="button" data-md="quote" title="Citation" aria-label="Citation">«»</button>
+        </div>
+        {{ form.venue_extra }}
+      </div>
+      {% if form.venue_extra.help_text %}<span class="pl-hint">{{ form.venue_extra.help_text }}</span>{% endif %}
+    </div>
+
+    {% if not event.date_fin %}
+    <div class="pl-form__field">
+      <label for="{{ form.concert_end_note.id_for_label }}">{{ form.concert_end_note.label }}</label>
+      {{ form.concert_end_note }}
+      <span class="pl-hint">Si la fin n’est pas exacte (ex. 22h / 22h30).</span>
+    </div>
+    {% endif %}
+
+    <fieldset style="border:0;margin:0;padding:0">
+      <legend style="font-family:var(--font-d);font-size:1.05rem;margin:0 0 .65rem">Horaires musiciens</legend>
+      <div class="pl-form__times">
+        <div class="pl-form__field">
+          <label for="{{ form.arrival_start.id_for_label }}">{{ form.arrival_start.label }}</label>
+          {{ form.arrival_start }}
+        </div>
+        <div class="pl-form__field">
+          <label for="{{ form.arrival_end.id_for_label }}">{{ form.arrival_end.label }}</label>
+          {{ form.arrival_end }}
+        </div>
+        <div class="pl-form__field">
+          <label for="{{ form.soundcheck_at.id_for_label }}">{{ form.soundcheck_at.label }}</label>
+          {{ form.soundcheck_at }}
+        </div>
+        <div class="pl-form__field">
+          <label for="{{ form.ready_at.id_for_label }}">{{ form.ready_at.label }}</label>
+          {{ form.ready_at }}
+        </div>
+      </div>
+      <span class="pl-hint">Par défaut : arrivée −1h15/−1h, balances −45 min, prêt = début concert.</span>
+    </fieldset>
+
+    <div class="pl-form__field">
+      <label for="{{ form.parking_info.id_for_label }}">{{ form.parking_info.label }}</label>
+      <div class="pl-md" data-pl-md>
+        <div class="pl-md__bar" role="toolbar" aria-label="Formatage">
+          <button type="button" data-md="bold" title="Gras" aria-label="Gras"><strong>G</strong></button>
+          <button type="button" data-md="italic" title="Italique" aria-label="Italique"><em>I</em></button>
+          <button type="button" data-md="link" title="Lien" aria-label="Lien">🔗</button>
+          <button type="button" data-md="list" title="Liste" aria-label="Liste à puces">•−</button>
+          <button type="button" data-md="quote" title="Citation" aria-label="Citation">«»</button>
+        </div>
+        {{ form.parking_info }}
+      </div>
+      {% if suggestions.parking_hint and not form.parking_info.value %}
+      <span class="pl-hint">
+        Proposition précédente :
+        <button type="button" data-fill="id_parking_info" data-value="{{ suggestions.parking_hint|escape }}">{{ suggestions.parking_hint|truncatechars:80 }}</button>
+      </span>
+      {% endif %}
+      {% if form.parking_info.help_text %}<span class="pl-hint">{{ form.parking_info.help_text }}</span>{% endif %}
+    </div>
+
+    <div class="pl-form__field">
+      <label for="{{ form.material_notes.id_for_label }}">{{ form.material_notes.label }}</label>
+      <div class="pl-md" data-pl-md>
+        <div class="pl-md__bar" role="toolbar" aria-label="Formatage">
+          <button type="button" data-md="bold" title="Gras" aria-label="Gras"><strong>G</strong></button>
+          <button type="button" data-md="italic" title="Italique" aria-label="Italique"><em>I</em></button>
+          <button type="button" data-md="link" title="Lien" aria-label="Lien">🔗</button>
+          <button type="button" data-md="list" title="Liste" aria-label="Liste à puces">•−</button>
+          <button type="button" data-md="quote" title="Citation" aria-label="Citation">«»</button>
+        </div>
+        {{ form.material_notes }}
+      </div>
+      {% if form.material_notes.help_text %}<span class="pl-hint">{{ form.material_notes.help_text }}</span>{% endif %}
+    </div>
+
+    <div class="pl-form__field">
+      <label for="{{ form.dress_code.id_for_label }}">{{ form.dress_code.label }}</label>
+      {{ form.dress_code }}
+    </div>
+
+    <div class="pl-form__field">
+      <label for="{{ form.closing_note.id_for_label }}">{{ form.closing_note.label }}</label>
+      <div class="pl-md" data-pl-md>
+        <div class="pl-md__bar" role="toolbar" aria-label="Formatage">
+          <button type="button" data-md="bold" title="Gras" aria-label="Gras"><strong>G</strong></button>
+          <button type="button" data-md="italic" title="Italique" aria-label="Italique"><em>I</em></button>
+          <button type="button" data-md="link" title="Lien" aria-label="Lien">🔗</button>
+          <button type="button" data-md="list" title="Liste" aria-label="Liste à puces">•−</button>
+          <button type="button" data-md="quote" title="Citation" aria-label="Citation">«»</button>
+        </div>
+        {{ form.closing_note }}
+      </div>
+      {% if form.closing_note.help_text %}<span class="pl-hint">{{ form.closing_note.help_text }}</span>{% endif %}
+    </div>
+
+    <div class="pl-form__actions">
+      <button type="submit" class="pl-btn pl-btn--staff" name="save" value="1">Enregistrer</button>
+      <button type="submit" class="pl-btn pl-btn--primary" name="notify" value="1">Enregistrer et notifier</button>
+      <a class="pl-btn" href="{% url 'planning:event_roadmap' event.pk %}" style="text-align:center;text-decoration:none;display:inline-flex;align-items:center">Aperçu</a>
+    </div>
+  </form>
+</div>
+<script src="{% static 'planning/roadmap_md.js' %}?v=1"></script>
+<script>
+(function () {
+  document.querySelectorAll("[data-fill]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var el = document.getElementById(btn.getAttribute("data-fill"));
+      if (!el) return;
+      el.value = btn.getAttribute("data-value") || "";
+      el.focus();
+    });
+  });
+})();
+</script>
+{% endblock %}
+
+{% block extra_js %}
+{% if event.venue and event.venue.has_coords %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{% static 'core/event-map.js' %}?v=3"></script>
+{% endif %}
+{% endblock %}

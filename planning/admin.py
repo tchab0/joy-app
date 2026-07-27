@@ -7,6 +7,7 @@ from planning.models import (
     EquipmentItem,
     EventEquipmentAssignment,
     EventParticipation,
+    EventRoadmap,
     MusicianProfile,
     OrchestraSection,
     ParticipationStatus,
@@ -94,7 +95,15 @@ class DateOptionAdmin(admin.ModelAdmin):
 
 @admin.register(DateProposal)
 class DateProposalAdmin(admin.ModelAdmin):
-    list_display = ("title", "status", "created_by", "created_at", "linked_event")
+    list_display = (
+        "title",
+        "status",
+        "deadline",
+        "deadline_reminder_sent_at",
+        "created_by",
+        "created_at",
+        "linked_event",
+    )
     list_filter = ("status",)
     inlines = [DateOptionInline]
     autocomplete_fields = ("created_by", "linked_event")
@@ -122,3 +131,18 @@ class EquipmentItemAdmin(admin.ModelAdmin):
 class EventEquipmentAssignmentAdmin(admin.ModelAdmin):
     list_display = ("event", "item", "assigned_to", "status")
     list_filter = ("status",)
+
+
+@admin.register(EventRoadmap)
+class EventRoadmapAdmin(admin.ModelAdmin):
+    list_display = (
+        "event",
+        "dress_code",
+        "arrival_start",
+        "soundcheck_at",
+        "notified_at",
+        "updated_at",
+    )
+    search_fields = ("event__titre", "parking_info", "dress_code")
+    raw_id_fields = ("event", "updated_by")
+    readonly_fields = ("notified_at", "created_at", "updated_at")

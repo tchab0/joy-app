@@ -5,14 +5,22 @@ embedded (True), show_chat_chrome (False on poll).
 {% endcomment %}
 {% if room %}
 {{ messages_data|json_script:messages_script_id }}
+{{ mention_members|json_script:mention_members_script_id }}
+{{ read_cursors|json_script:read_cursors_script_id }}
 <div class="chat-room{% if embedded %} chat-room--embedded{% endif %}"
      x-data="chatRoom({
        messagesScriptId: '{{ messages_script_id|escapejs }}',
+       membersScriptId: '{{ mention_members_script_id|escapejs }}',
+       readCursorsScriptId: '{{ read_cursors_script_id|escapejs }}',
        currentUserId: {{ current_user_id }},
        wsUrl: '{{ ws_url|escapejs }}',
        apiSendUrl: '{{ api_send_url|escapejs }}',
        apiReactUrl: '{{ api_react_url|escapejs }}',
+       apiEditUrl: '{{ api_edit_url|escapejs }}',
+       apiMembersUrl: '{{ api_members_url|escapejs }}',
+       apiReadUrl: '{{ api_read_url|escapejs }}',
        csrfToken: '{{ csrf_token }}',
+       initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
        embedded: {{ embedded|yesno:'true,false' }}
      })"
      x-init="init()"

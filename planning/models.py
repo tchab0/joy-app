@@ -431,6 +431,18 @@ class DateProposal(models.Model):
         related_name="date_proposals_launched",
         verbose_name="Lancé par",
     )
+    deadline = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Date limite de réponse",
+        help_text="Date avant laquelle les musiciens doivent répondre au sondage.",
+    )
+    deadline_reminder_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Rappel deadline envoyé le",
+        help_text="Horodatage du rappel J−7 avant la date limite de réponse.",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Modifié le")
 
@@ -627,3 +639,105 @@ class EventEquipmentAssignment(models.Model):
 
     def __str__(self):
         return f"{self.event} — {self.item}"
+
+
+class EventRoadmap(models.Model):
+    """Feuille de route concert (horaires, parking, matériel, dress code)."""
+
+    event = models.OneToOneField(
+        "events.Event",
+        on_delete=models.CASCADE,
+        related_name="roadmap",
+        verbose_name="Événement",
+    )
+    maps_url = models.URLField(
+        "Lien carte",
+        blank=True,
+        help_text="Google Maps ou autre. Prérempli depuis les coordonnées du lieu si possible.",
+    )
+    venue_extra = models.CharField(
+        "Précision lieu",
+        max_length=255,
+        blank=True,
+        help_text="Complément (salle, parking d’entrée…).",
+    )
+    concert_end_note = models.CharField(
+        "Fin de concert (approx.)",
+        max_length=80,
+        blank=True,
+        help_text="Ex. 22h / 22h30 si la fin exacte n’est pas figée.",
+    )
+    arrival_start = models.TimeField(
+        "Arrivée dès",
+        null=True,
+        blank=True,
+    )
+    arrival_end = models.TimeField(
+        "Arrivée jusqu’à",
+        null=True,
+        blank=True,
+    )
+    soundcheck_at = models.TimeField(
+        "Début des balances",
+        null=True,
+        blank=True,
+    )
+    ready_at = models.TimeField(
+        "Prêt à jouer à",
+        null=True,
+        blank=True,
+        help_text="Heure à laquelle tout le monde doit être prêt.",
+    )
+    parking_info = models.TextField(
+        "Stationnement",
+        blank=True,
+    )
+    material_notes = models.TextField(
+        "Matériel à prévoir",
+        blank=True,
+        help_text="Checklist personnelle (instrument, partitions, pupitre…).",
+    )
+    dress_code = models.CharField(
+        "Dress code",
+        max_length=120,
+        blank=True,
+    )
+    closing_note = models.TextField(
+        "Mot de clôture",
+        blank=True,
+    )
+    notified_at = models.DateTimeField(
+        "Dernière notification",
+        null=True,
+        blank=True,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_event_roadmaps",
+        verbose_name="Mis à jour par",
+    )
+    created_at = models.DateTimeField("Créé le", auto_now_add=True)
+    updated_at = models.DateTimeField("Mis à jour le", auto_now=True)
+
+    class Meta:
+        verbose_name = "feuille de route concert"
+        verbose_name_plural = "feuilles de route concert"
+        ordering = ["-event__date_debut"]
+
+    def __str__(self) -> str:
+        return f"Feuille de route — {self.event}"
+
+    @property
+    def is_ready_to_share(self) -> bool:
+        """Au moins les horaires d’arrivée ou le parking sont renseignés."""
+        return bool(
+            self.arrival_start
+            or self.arrival_end
+            or self.soundcheck_at
+            or self.parking_info.strip()
+            or self.material_notes.strip()
+            or self.dress_code.strip()
+        )

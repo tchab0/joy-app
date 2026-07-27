@@ -13,8 +13,22 @@
   .badge-tentative { background:rgba(184,137,42,.12); color:var(--gold-text); }
   .badge-annule    { background:rgba(180,60,60,.12);  color:#b43c3c; }
   .badge-prive     { background:rgba(0,0,0,.07);      color:var(--muted); }
-  .row-actions { display:flex; gap:.5rem; }
+  .row-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
   .btn-sm { padding:.35rem .85rem; font-size:.78rem; }
+  .event-share { display:inline-flex; flex-wrap:wrap; gap:.35rem; align-items:center; }
+  .event-share__item { display:inline-flex; align-items:center; gap:.3rem; }
+  .event-share__count {
+    font-size:.72rem; font-weight:600; color:var(--muted); min-width:1ch;
+    font-variant-numeric:tabular-nums; line-height:1;
+  }
+  .event-share__btn { padding:.35rem .65rem; font-size:.7rem; min-height:32px; display:inline-flex; align-items:center; }
+  button.event-share__btn {
+    appearance:none; -webkit-appearance:none; background:transparent; color:var(--accent);
+    border:1.5px solid var(--accent); font:inherit; letter-spacing:.04em; text-transform:uppercase;
+    font-weight:600; border-radius:var(--r); cursor:pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background:var(--accent); color:#fff; }
+  button.event-share__btn:disabled { opacity:.55; cursor:wait; }
   .btn-danger { background:transparent; color:#b43c3c; border:1.5px solid #b43c3c; }
   .btn-danger:hover { background:#b43c3c; color:#fff; }
   .empty-state { padding:3rem; text-align:center; color:var(--muted); font-style:italic; }
@@ -24,7 +38,7 @@
 <section class="section">
   <div class="container">
     <div class="admin-header">
-      <h1 class="section-title" style="margin-bottom:0">Gestion des concerts</h1>
+      <h1 class="section-title" style="margin-bottom:0">CMS concerts</h1>
       <a href="{% url 'admin_concert_add' %}" class="btn btn-primary">+ Ajouter un concert</a>
     </div>
     {% if events %}
@@ -52,6 +66,9 @@
           <td>
             <div class="row-actions">
               <a href="{% url 'admin_concert_edit' e.pk %}" class="btn btn-outline btn-sm">Modifier</a>
+              {% if e.public and e.slug %}
+                {% include "includes/_concert_share.html" with event=e show_share_counts=True %}
+              {% endif %}
               <form method="post" action="{% url 'admin_concert_delete' e.pk %}" onsubmit="return confirm('Supprimer ce concert ?')">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>

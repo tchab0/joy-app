@@ -2,7 +2,8 @@
 server {
     server_name jazz-orchestra-yonnais.fr;
 
-    client_max_body_size 30M;
+    # Aligné sur MAX_SIZE_BYTES Django (1 Go) — lots de photos + versions éditées.
+    client_max_body_size 1024M;
 
     access_log /var/log/nginx/jazz-orchestra-yonnais.access.log;
     error_log /var/log/nginx/jazz-orchestra-yonnais.error.log;
@@ -52,7 +53,9 @@ server {
     location / {
         include proxy_params;
         proxy_pass http://unix:/run/gunicorn-jazz-orchestra-yonnais/gunicorn.sock;
-        proxy_read_timeout 120;
+        proxy_read_timeout 600;
+        proxy_send_timeout 600;
+        client_body_timeout 600;
     }
 
     listen [::]:443 ssl ipv6only=on;
@@ -89,7 +92,7 @@ server {
     listen [::]:443 ssl;
     server_name dev.jazz-orchestra-yonnais.fr;
 
-    client_max_body_size 30M;
+    client_max_body_size 1024M;
 
     access_log /var/log/nginx/jazz-orchestra-yonnais.dev.access.log;
     error_log /var/log/nginx/jazz-orchestra-yonnais.dev.error.log;
@@ -144,7 +147,9 @@ server {
     location / {
         include proxy_params;
         proxy_pass http://unix:/run/gunicorn-jazz-orchestra-yonnais-dev/gunicorn.sock;
-        proxy_read_timeout 120;
+        proxy_read_timeout 600;
+        proxy_send_timeout 600;
+        client_body_timeout 600;
     }
 }
 

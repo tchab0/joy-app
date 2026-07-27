@@ -28,9 +28,11 @@ PAGE_LEAD_LABELS: dict[str, str] = {
     "core.proposer_media": "Proposer un média",
     "core.admin_contact": "Staff — messages contact",
     "core.admin_notifications": "Staff — notifications musiciens",
+    "core.admin_hub": "Staff — tableau de bord",
     "users.security": "Sécurité",
     "users.member_area": "Espace adhérent",
     "feedback.admin": "Staff — retours utilisateurs",
+    "users.admin_tours": "Staff — guides d’aide",
 }
 
 KNOWN_PAGE_LEAD_KEYS = frozenset(PAGE_LEAD_LABELS)

@@ -78,7 +78,13 @@ def resolve_rehearsal_venue(
 
 
 def get_or_create_rehearsal_type() -> EventType:
-    obj, _ = EventType.objects.get_or_create(nom=REHEARSAL_TYPE_NAME)
+    obj, created = EventType.objects.get_or_create(
+        nom=REHEARSAL_TYPE_NAME,
+        defaults={"is_rehearsal": True},
+    )
+    if not obj.is_rehearsal:
+        obj.is_rehearsal = True
+        obj.save(update_fields=["is_rehearsal"])
     return obj
 
 
