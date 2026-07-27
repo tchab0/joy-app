@@ -1,0 +1,20 @@
+---
+description: Emplacement du dépôt Git et layout du workspace JOY
+alwaysApply: true
+---
+
+# Layout workspace
+
+Le workspace Cursor ouvre souvent `/srv/jazz-orchestra-yonnais` — ce dossier **n’est pas** un dépôt Git.
+
+| Chemin | Rôle |
+|--------|------|
+| `repo/` | **Dépôt Git** (code Django). Remote : `git@github.com:tchab0/joy-app.git` |
+| `media/`, `data/`, `logs/` | Données / médias / logs hors Git |
+| `.env`, `.env.dev`, `.venv/` | Config locale & venv (hors Git) |
+
+## Git / commits
+
+- Exécuter `git status`, `commit`, `push` **depuis `repo/`** (cwd = `/srv/jazz-orchestra-yonnais/repo`).
+- Ne pas versionner `db.sqlite3`, `.env*`, ni le contenu de `media/` / `data/` / `logs/`.
+- Branches typiques : `main`, `cursor/musician-planning-mvp`.
