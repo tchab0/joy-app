@@ -3,6 +3,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from events.models import Event
+from planning.models import MusicianProfile
 
 User = get_user_model()
 
@@ -35,6 +36,15 @@ def ensure_musician_profile(sender, instance, **kwargs):
     except (ProgrammingError, OperationalError):
         # Schéma planning pas encore migré — ne pas faire échouer le save User.
         pass
+
+
+@receiver(post_save, sender=MusicianProfile)
+def invalidate_remplacants_cache(sender, instance, **kwargs):
+    """Les disponibilités de remplacement doivent suivre le profil immédiatement."""
+    from django.core.cache import cache
+    from planning.services.roster import REMPLACANTS_BY_SECTION_CACHE_KEY
+
+    cache.delete(REMPLACANTS_BY_SECTION_CACHE_KEY)
 
 
 @receiver(post_save, sender=Event)

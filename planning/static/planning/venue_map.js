@@ -8,6 +8,30 @@ window.PlVenueMap = (function () {
   const CITY_ZOOM = 13;
   const MARKER_ZOOM = 16;
   const instances = new Map();
+  let leafletPromise = null;
+
+  function loadLeaflet() {
+    if (typeof window.L !== 'undefined') return Promise.resolve(window.L);
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve, reject) => {
+      const cssHref = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      if (!document.querySelector('link[href="' + cssHref + '"]')) {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = cssHref;
+        document.head.appendChild(css);
+      }
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = () => resolve(window.L);
+      script.onerror = () => {
+        leafletPromise = null;
+        reject(new Error('Leaflet unavailable'));
+      };
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  }
 
   function els(root) {
     const prefix = root.getAttribute('data-pl-venue-map');
@@ -148,6 +172,15 @@ window.PlVenueMap = (function () {
   }
 
   function sync(root, mode) {
+    if (typeof L === 'undefined') {
+      loadLeaflet()
+        .then(() => sync(root, mode))
+        .catch(() => {
+          const ui = els(root);
+          if (ui.hint) ui.hint.textContent = 'Carte indisponible pour le moment.';
+        });
+      return;
+    }
     const inst = ensure(root);
     if (!inst) return;
     setTimeout(() => inst.map.invalidateSize(), 60);
@@ -162,6 +195,10 @@ window.PlVenueMap = (function () {
   }
 
   function onSelect(root, selectEl) {
+    if (typeof L === 'undefined') {
+      loadLeaflet().then(() => onSelect(root, selectEl)).catch(() => {});
+      return;
+    }
     const inst = ensure(root);
     if (!inst || !selectEl) return;
     const opt = selectEl.selectedOptions && selectEl.selectedOptions[0];
@@ -205,6 +242,10 @@ window.PlVenueMap = (function () {
 
   /** Centre la carte sur la ville — n’enregistre pas de précision. */
   function centerOnCity(root) {
+    if (typeof L === 'undefined') {
+      loadLeaflet().then(() => centerOnCity(root)).catch(() => {});
+      return;
+    }
     const inst = ensure(root);
     if (!inst) return;
     const ui = inst.ui;
@@ -247,6 +288,10 @@ window.PlVenueMap = (function () {
 
   /** Place un marqueur via adresse/nom+ville (précision optionnelle). */
   function geocode(root) {
+    if (typeof L === 'undefined') {
+      loadLeaflet().then(() => geocode(root)).catch(() => {});
+      return;
+    }
     const inst = ensure(root);
     if (!inst) return;
     const ui = inst.ui;
@@ -276,10 +321,14 @@ window.PlVenueMap = (function () {
   }
 
   function clearPrecision(root) {
+    if (typeof L === 'undefined') {
+      loadLeaflet().then(() => clearPrecision(root)).catch(() => {});
+      return;
+    }
     const inst = ensure(root);
     if (!inst) return;
     inst.clearMarkerOnly();
   }
 
-  return { sync, onSelect, centerOnCity, geocode, clearPrecision, ensure };
+  return { sync, onSelect, centerOnCity, geocode, clearPrecision, ensure, loadLeaflet };
 })();

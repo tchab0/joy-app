@@ -295,6 +295,9 @@ class UserNotification(models.Model):
             return False
         self.read_at = timezone.now()
         self.save(update_fields=["read_at"])
+        from users.notify import invalidate_nav_banner
+
+        invalidate_nav_banner(self.user)
         return True
 
     def mark_responded(self) -> bool:

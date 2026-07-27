@@ -18,6 +18,7 @@ urlpatterns = [
         views.PlanningYearCalendarView.as_view(),
         name="upcoming_12_months",
     ),
+    path("api/weather/", views.CalendarWeatherView.as_view(), name="calendar_weather"),
     path("proposer/", views.ProposeEventView.as_view(), name="propose_event"),
     path("events/<int:pk>/", views.EventDetailView.as_view(), name="event_detail"),
     path(

@@ -32,6 +32,8 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+SESSION_CACHE_ALIAS = "default"
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -57,3 +59,23 @@ CACHES = {
         "TIMEOUT": 300,
     }
 }
+
+# Compile et met en cache les templates une fois par worker en production.
+TEMPLATES = [
+    {
+        **TEMPLATES[0],
+        "APP_DIRS": False,
+        "OPTIONS": {
+            **TEMPLATES[0]["OPTIONS"],
+            "loaders": [
+                (
+                    "django.template.loaders.cached.Loader",
+                    [
+                        "django.template.loaders.filesystem.Loader",
+                        "django.template.loaders.app_directories.Loader",
+                    ],
+                )
+            ],
+        },
+    }
+]

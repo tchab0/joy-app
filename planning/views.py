@@ -12,6 +12,7 @@ from django.contrib.auth.mixins import AccessMixin
 from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -418,7 +419,6 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         attach_calendar_chat_links(events, user)
         attach_calendar_setlists(events)
         attach_calendar_roadmaps(events)
-        attach_weather(events, concerts_only=True)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
             events_by_day[timezone.localtime(event.date_debut).date()].append(event)
@@ -462,6 +462,41 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
 
 # Alias conservé pour les URLs / tests existants.
 PlanningUpcomingView = PlanningYearCalendarView
+
+
+class CalendarWeatherView(MusicianRequiredMixin, View):
+    """Hydrate les prévisions après le premier rendu du calendrier."""
+
+    def get(self, request):
+        raw_ids = (request.GET.get("ids") or "").split(",")
+        event_ids: list[int] = []
+        for raw_id in raw_ids[:200]:
+            try:
+                event_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        if not event_ids:
+            return JsonResponse({"weather": {}})
+
+        events = list(
+            Event.objects.filter(pk__in=event_ids)
+            .select_related("venue", "type")
+            .order_by("pk")
+        )
+        attach_weather(events, concerts_only=True)
+        return JsonResponse(
+            {
+                "weather": {
+                    str(event.pk): render_to_string(
+                        "includes/_weather.html",
+                        {"weather": event.weather, "compact": 1},
+                        request=request,
+                    )
+                    for event in events
+                    if event.weather
+                }
+            }
+        )
 
 
 def _calendar_url(day_raw: str) -> str:

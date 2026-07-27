@@ -15,12 +15,23 @@ def cache_page_anonymous(timeout, key_prefix=""):
     """
 
     def decorator(view_func):
+        cached_view = cache_page(timeout, key_prefix=key_prefix)(view_func)
+
         @wraps(view_func)
         def _wrapped(request, *args, **kwargs):
             if getattr(request.user, "is_authenticated", False):
                 return view_func(request, *args, **kwargs)
-            prefix = key_prefix() if callable(key_prefix) else key_prefix
-            return cache_page(timeout, key_prefix=prefix)(view_func)(request, *args, **kwargs)
+            # ``cache_page`` accepts a static key prefix. Recrée le décorateur
+            # pour les rares préfixes versionnés (ex. page d'accueil).
+            if callable(key_prefix):
+                response = cache_page(timeout, key_prefix=key_prefix())(
+                    view_func
+                )(request, *args, **kwargs)
+            else:
+                response = cached_view(request, *args, **kwargs)
+            if not getattr(request, "_cache_update_cache", True):
+                response["X-JOY-Page-Cache"] = "HIT"
+            return response
 
         return _wrapped
 

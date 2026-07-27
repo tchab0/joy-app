@@ -267,7 +267,7 @@ def calendar_chat_links_for_user(events, user) -> dict[int, dict]:
         from django.db import OperationalError, ProgrammingError
 
         from chat.models import ChatMembership, ChatRoom
-        from chat.services import unread_count
+        from chat.services import unread_counts_for_memberships
 
         memberships = list(
             ChatMembership.objects.filter(
@@ -280,6 +280,7 @@ def calendar_chat_links_for_user(events, user) -> dict[int, dict]:
     except (ProgrammingError, OperationalError, ImportError):
         return {}
 
+    unread_counts = unread_counts_for_memberships(memberships)
     links: dict[int, dict] = {}
     for m in memberships:
         event_id = m.room.event_id
@@ -287,7 +288,7 @@ def calendar_chat_links_for_user(events, user) -> dict[int, dict]:
             continue
         links[event_id] = {
             "room_id": m.room_id,
-            "unread": unread_count(m),
+            "unread": unread_counts.get(m.pk, 0),
         }
 
     if is_staff:

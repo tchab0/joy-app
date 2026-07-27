@@ -1,5 +1,9 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ room.title }} — Chat JOY{% endblock %}
+{% block extra_head %}
+<script defer src="{% static 'chat/room.js' %}?v=1"></script>
+{% endblock %}
 {% block extra_css %}
 {% include "chat/_room_styles.html" %}
 {% endblock %}
@@ -45,5 +49,4 @@
 
   {% include "chat/_room_thread_composer.html" %}
 </div>
-{% include "chat/_room_script.html" %}
 {% endblock %}

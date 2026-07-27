@@ -1,9 +1,11 @@
 from django.contrib.auth.models import Group, Permission
-from django.db.models.signals import post_migrate, post_save
+from django.core.cache import cache
+from django.db.models.signals import post_delete, post_migrate, post_save
 from django.dispatch import receiver
 
 from .models import User
 from .roles import GROUP_MEMBER, GROUP_MUSICIAN, sync_user_groups
+from .tour_models import ProductTour, ProductTourStep
 
 _ROLE_FIELDS = frozenset(
     {
@@ -44,3 +46,19 @@ def ensure_role_groups(sender, **kwargs):
         musician_group.permissions.add(planning_perm)
     if member_perm:
         member_group.permissions.add(member_perm)
+
+
+def _bump_product_tour_cache(**kwargs):
+    """Versionne le cache partagé après une édition de guide ou étape."""
+    from users.tour_service import TOUR_CACHE_VERSION_KEY
+
+    cache.add(TOUR_CACHE_VERSION_KEY, 1, None)
+    try:
+        cache.incr(TOUR_CACHE_VERSION_KEY)
+    except ValueError:
+        cache.set(TOUR_CACHE_VERSION_KEY, 2, None)
+
+
+for _tour_model in (ProductTour, ProductTourStep):
+    post_save.connect(_bump_product_tour_cache, sender=_tour_model)
+    post_delete.connect(_bump_product_tour_cache, sender=_tour_model)

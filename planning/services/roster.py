@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
@@ -29,6 +30,8 @@ from planning.models import (
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+REMPLACANTS_BY_SECTION_CACHE_KEY = "planning:remplacants-by-section"
+REMPLACANTS_BY_SECTION_CACHE_TTL = 90
 
 from planning.services.substitutes import (
     _remplacant_any_q,
@@ -163,6 +166,10 @@ def remplacants_by_section_code() -> dict[str, list[dict]]:
     Chaque entrée : user_id, name, poste, invite_slot (« user_id:poste »).
     Un musicien n’apparaît qu’une fois par pupitre (1er poste remp. matching).
     """
+    cached = cache.get(REMPLACANTS_BY_SECTION_CACHE_KEY)
+    if cached is not None:
+        return cached
+
     profiles = (
         MusicianProfile.objects.select_related("user")
         .filter(user__is_active=True, user__is_musician=True)
@@ -185,6 +192,12 @@ def remplacants_by_section_code() -> dict[str, list[dict]]:
                     "invite_slot": f"{profile.user_id}:{poste}",
                 }
             )
-    return by_section
+    result = dict(by_section)
+    cache.set(
+        REMPLACANTS_BY_SECTION_CACHE_KEY,
+        result,
+        REMPLACANTS_BY_SECTION_CACHE_TTL,
+    )
+    return result
 
 

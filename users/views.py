@@ -496,6 +496,9 @@ def account_notifications_mark_all_read(request: HttpRequest) -> HttpResponse:
         user=request.user, read_at__isnull=True
     ).update(read_at=timezone.now())
     if n:
+        from users.notify import invalidate_nav_banner
+
+        invalidate_nav_banner(request.user)
         messages.success(
             request,
             f"{n} notification{'s' if n != 1 else ''} marquée{'s' if n != 1 else ''} comme lue{'s' if n != 1 else ''}.",

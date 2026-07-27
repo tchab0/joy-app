@@ -3,6 +3,12 @@
 
 {% block title %}{{ proposal.title }} — Sondage JOY{% endblock %}
 
+{% block extra_head %}
+{% if room %}
+<script defer src="{% static 'chat/room.js' %}?v=1"></script>
+{% endif %}
+{% endblock %}
+
 {% block extra_css %}
 {% include "planning/_styles.html" %}
 {% if room %}

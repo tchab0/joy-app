@@ -5,7 +5,6 @@
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 {% endblock %}
 
 {% block content %}
@@ -218,10 +217,10 @@
                 </div>
                 {% endif %}
                 {% endif %}
-                {% if event.weather %}
+                {% if s.is_concert %}
                 <div>
                   <dt>Météo</dt>
-                  <dd>{% include "includes/_weather.html" with weather=event.weather compact=1 %}</dd>
+                  <dd data-calendar-weather="{{ event.pk }}" hidden></dd>
                 </div>
                 {% endif %}
                 <div>
@@ -565,6 +564,30 @@ function initMissingInviteLocks(root) {
 }
 document.addEventListener('DOMContentLoaded', () => initMissingInviteLocks());
 
+function loadCalendarWeather() {
+  const nodes = [...document.querySelectorAll('[data-calendar-weather]')];
+  const ids = [...new Set(nodes.map((node) => node.dataset.calendarWeather).filter(Boolean))];
+  if (!ids.length) return;
+  fetch('{% url "planning:calendar_weather" %}?ids=' + encodeURIComponent(ids.join(',')), {
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+  })
+    .then((response) => response.ok ? response.json() : null)
+    .then((payload) => {
+      const weather = (payload && payload.weather) || {};
+      nodes.forEach((node) => {
+        const html = weather[node.dataset.calendarWeather];
+        if (!html) return;
+        node.innerHTML = html;
+        node.hidden = false;
+      });
+    })
+    .catch(() => {});
+}
+window.addEventListener('load', () => {
+  requestAnimationFrame(() => requestAnimationFrame(loadCalendarWeather));
+}, { once: true });
+
 function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl }) {
   let savedLayer = 'all';
   try { savedLayer = localStorage.getItem('pl-cal-layer') || 'all'; } catch (e) {}
@@ -713,7 +736,6 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{% static 'planning/venue_map.js' %}"></script>
 <script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endblock %}

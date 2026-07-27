@@ -98,6 +98,28 @@ def attach_weather(events, *, concerts_only: bool = False) -> None:
         event.weather = forecast_for_event(event)
 
 
+def cached_forecast_for_event(event) -> dict[str, Any] | None:
+    """Lit seulement le cache météo/géocodage, sans requête HTTP."""
+    venue = getattr(event, "venue", None)
+    if not venue or not event.date_debut:
+        return None
+
+    local_dt = timezone.localtime(event.date_debut)
+    now = timezone.localtime()
+    if local_dt < now - timedelta(hours=1):
+        return None
+    if (local_dt.date() - now.date()).days > FORECAST_DAYS:
+        return None
+
+    coords = _cached_coords(venue)
+    if not coords:
+        return None
+    lat, lng = coords
+    hour_key = local_dt.strftime("%Y-%m-%dT%H")
+    cached = cache.get(_safe_cache_key("weather", f"{lat:.2f}", f"{lng:.2f}", hour_key))
+    return cached if cached else None
+
+
 def forecast_for_event(event) -> dict[str, Any] | None:
     venue = getattr(event, "venue", None)
     if not venue or not event.date_debut:
@@ -116,6 +138,16 @@ def forecast_for_event(event) -> dict[str, Any] | None:
 
     lat, lng = coords
     return get_forecast(lat, lng, local_dt)
+
+
+def _cached_coords(venue) -> tuple[float, float] | None:
+    if venue.latitude is not None and venue.longitude is not None:
+        return float(venue.latitude), float(venue.longitude)
+    query_parts = [p for p in (venue.adresse, venue.ville, "France") if p]
+    if not venue.ville:
+        return None
+    cached = cache.get(_safe_cache_key("geocode", " ".join(query_parts).strip().lower()))
+    return tuple(cached) if cached else None
 
 
 def get_forecast(lat: float, lng: float, local_dt: datetime) -> dict[str, Any] | None:

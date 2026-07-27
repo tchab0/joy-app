@@ -70,7 +70,11 @@ def compresser_media(media_item):
             ], check=True, capture_output=True)
 
         elif media_item.type == "photo":
+            from io import BytesIO
+
+            from django.core.files.base import ContentFile
             from PIL import Image
+
             dest = dest_dir / f"{nom_base}.webp"
             img = Image.open(src)
             img = img.convert("RGB")
@@ -78,6 +82,23 @@ def compresser_media(media_item):
             if max(img.size) > max_dim:
                 img.thumbnail((max_dim, max_dim), Image.LANCZOS)
             img.save(str(dest), "WEBP", quality=78, method=6)
+
+            # Miniature grille (~400w) pour srcset mobile / cartes.
+            thumb = img.copy()
+            thumb_max = 400
+            if max(thumb.size) > thumb_max:
+                thumb.thumbnail((thumb_max, thumb_max), Image.LANCZOS)
+            buf = BytesIO()
+            thumb.save(buf, "WEBP", quality=72, method=6)
+            thumb_name = f"{nom_base}-400.webp"
+            if media_item.miniature:
+                media_item.miniature.delete(save=False)
+            media_item.miniature.save(
+                thumb_name,
+                ContentFile(buf.getvalue()),
+                save=False,
+            )
+            media_item.save(update_fields=["miniature"])
 
         elif media_item.type == "pdf":
             try:

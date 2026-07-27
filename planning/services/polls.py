@@ -300,11 +300,17 @@ def user_has_answered_poll(user, proposal: DateProposal) -> bool:
     return voted >= len(option_ids)
 
 
-def pending_polls_for_user(user) -> list[DateProposal]:
+def pending_polls_for_user(
+    user,
+    *,
+    proposal_ids: list[int] | None = None,
+    include_tallies: bool = True,
+) -> list[DateProposal]:
     """
     Sondages OPEN accessibles à l’utilisateur et pas encore entièrement répondu.
 
-    Attache ``proposal.banner_options`` : liste de dicts
+    Attache ``proposal.banner_options`` quand ``include_tallies`` est vrai :
+    liste de dicts
     ``{option, my_vote, counts, counts_json, counts_label}`` pour le vote
     inline de la bannière (totaux visibles par tous).
     """
@@ -326,6 +332,10 @@ def pending_polls_for_user(user) -> list[DateProposal]:
         .select_related("linked_event")
         .order_by("-launched_at", "-created_at")
     )
+    if proposal_ids is not None:
+        if not proposal_ids:
+            return []
+        qs = qs.filter(pk__in=proposal_ids)
     if not is_staff:
         qs = qs.filter(
             linked_event__isnull=False,
@@ -334,13 +344,24 @@ def pending_polls_for_user(user) -> list[DateProposal]:
 
     pending: list[DateProposal] = []
     for proposal in qs:
-        if not user_can_access_poll(user, proposal):
+        options = list(proposal.options.all())
+        # ``options`` et leurs votes sont déjà prefetched. Ne pas refaire un
+        # ``COUNT`` par sondage pour savoir si toutes les options sont votées.
+        my_votes = {
+            option.pk: next(
+                (vote for vote in option.votes.all() if vote.user_id == user.pk),
+                None,
+            )
+            for option in options
+        }
+        if not options or all(my_votes.values()):
             continue
-        if user_has_answered_poll(user, proposal):
+        if not include_tallies:
+            pending.append(proposal)
             continue
         banner_options = []
-        for opt in proposal.options.all():
-            my = next((v for v in opt.votes.all() if v.user_id == user.pk), None)
+        for opt in options:
+            my = my_votes[opt.pk]
             counts = vote_counts_for_option(opt)
             banner_options.append(
                 {
@@ -353,6 +374,9 @@ def pending_polls_for_user(user) -> list[DateProposal]:
             )
         proposal.banner_options = banner_options
         pending.append(proposal)
+    if proposal_ids is not None:
+        positions = {proposal_id: position for position, proposal_id in enumerate(proposal_ids)}
+        pending.sort(key=lambda proposal: positions.get(proposal.pk, len(positions)))
     return pending
 
 
@@ -604,6 +628,9 @@ def cast_date_vote(option: DateOption, user, choice: str) -> DateVote:
         user=user,
         defaults={"choice": choice},
     )
+    from users.nav_cache import invalidate_nav_banner_cache
+
+    invalidate_nav_banner_cache(user)
     try:
         from users.notify import mark_notifications_responded
 

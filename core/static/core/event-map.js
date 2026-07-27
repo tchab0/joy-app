@@ -54,8 +54,87 @@
     }, 200);
   }
 
+  var LEAFLET_CSS =
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  var LEAFLET_JS =
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  var leafletPromise = null;
+
+  function loadLeaflet() {
+    if (typeof L !== "undefined") {
+      return Promise.resolve();
+    }
+    if (leafletPromise) {
+      return leafletPromise;
+    }
+    leafletPromise = new Promise(function (resolve, reject) {
+      if (!document.querySelector('link[data-joy-leaflet="1"]')) {
+        var link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = LEAFLET_CSS;
+        link.setAttribute("data-joy-leaflet", "1");
+        document.head.appendChild(link);
+      }
+      var existing = document.querySelector('script[data-joy-leaflet="1"]');
+      if (existing) {
+        if (typeof L !== "undefined") {
+          resolve();
+          return;
+        }
+        existing.addEventListener("load", function () {
+          resolve();
+        });
+        existing.addEventListener("error", reject);
+        return;
+      }
+      var script = document.createElement("script");
+      script.src = LEAFLET_JS;
+      script.setAttribute("data-joy-leaflet", "1");
+      script.onload = function () {
+        resolve();
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  }
+
+  function initOneWhenReady(el) {
+    loadLeaflet()
+      .then(function () {
+        initOne(el);
+      })
+      .catch(function () {
+        /* ignore leaflet load errors */
+      });
+  }
+
+  function initAllLazy() {
+    var maps = document.querySelectorAll(".event-map[data-lat][data-lng]");
+    if (!maps.length) {
+      return;
+    }
+    if (!("IntersectionObserver" in window)) {
+      maps.forEach(initOneWhenReady);
+      return;
+    }
+    var io = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          io.unobserve(entry.target);
+          initOneWhenReady(entry.target);
+        });
+      },
+      { rootMargin: "200px 0px", threshold: 0.01 }
+    );
+    maps.forEach(function (el) {
+      io.observe(el);
+    });
+  }
+
   function initAll() {
-    document.querySelectorAll(".event-map[data-lat][data-lng]").forEach(initOne);
+    initAllLazy();
   }
 
   function getPref() {

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 from typing import TYPE_CHECKING
 
+from django.conf import settings
 from django.db import OperationalError, ProgrammingError
+from django.core import signing
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -100,8 +103,40 @@ def record_usage(
         logger.exception("Échec enregistrement UsageEvent (%s)", name)
 
 
-def record_public_pageview(request: HttpRequest) -> None:
-    """Enregistre une vue de page publique (session anonyme, pas d’IP)."""
+PUBLIC_VISITOR_COOKIE = "joy_visitor"
+PUBLIC_VISITOR_COOKIE_SALT = "stats.public-visitor"
+PUBLIC_VISITOR_COOKIE_AGE = 365 * 24 * 60 * 60
+
+
+def _public_visitor_id(request: HttpRequest, response) -> str:
+    """Retourne un identifiant visiteur signé sans créer de session Django."""
+    raw_cookie = request.COOKIES.get(PUBLIC_VISITOR_COOKIE, "")
+    try:
+        payload = signing.loads(
+            raw_cookie,
+            salt=PUBLIC_VISITOR_COOKIE_SALT,
+            max_age=PUBLIC_VISITOR_COOKIE_AGE,
+        )
+        visitor_id = str(payload.get("id", "")) if isinstance(payload, dict) else ""
+        if visitor_id:
+            return visitor_id
+    except (signing.BadSignature, TypeError, ValueError):
+        pass
+
+    visitor_id = secrets.token_urlsafe(18)
+    response.set_cookie(
+        PUBLIC_VISITOR_COOKIE,
+        signing.dumps({"id": visitor_id}, salt=PUBLIC_VISITOR_COOKIE_SALT),
+        max_age=PUBLIC_VISITOR_COOKIE_AGE,
+        secure=not settings.DEBUG,
+        httponly=True,
+        samesite="Lax",
+    )
+    return visitor_id
+
+
+def record_public_pageview(request: HttpRequest, response) -> None:
+    """Enregistre une vue de page publique (cookie signé, pas d’IP)."""
     from core.seo import path_should_noindex
 
     path = request.path or "/"
@@ -113,15 +148,15 @@ def record_public_pageview(request: HttpRequest) -> None:
         return
 
     try:
-        # Crée une session si besoin pour compter les visiteurs uniques.
-        if not request.session.session_key:
-            request.session.save()
-        session_key = request.session.session_key or ""
+        visitor_id = _public_visitor_id(request, response)
+        # Échantillonner 1 INSERT sur 5 (cookie visiteur déjà posé).
+        if secrets.randbelow(5) != 0:
+            return
         from stats.models import PublicPageView
 
         PublicPageView.objects.create(
             path=path[:300],
-            session_key=session_key[:40],
+            session_key=visitor_id[:40],
         )
     except (ProgrammingError, OperationalError) as exc:
         logger.warning("PublicPageView ignoré (%s): %s", path, exc)
@@ -131,6 +166,8 @@ def record_public_pageview(request: HttpRequest) -> None:
 
 def record_request_usage(request: HttpRequest, response=None) -> None:
     if response is not None and not _is_trackable_html(request, response):
+        return
+    if response is not None and response.get("X-JOY-Page-Cache") == "HIT":
         return
     if request.method not in ("GET", "HEAD"):
         return
@@ -144,7 +181,7 @@ def record_request_usage(request: HttpRequest, response=None) -> None:
     if not path_should_noindex(path):
         if response is None or _is_trackable_html(request, response):
             if request.method == "GET" and not _is_bot(request):
-                record_public_pageview(request)
+                record_public_pageview(request, response)
         return
 
     # Outils authentifiés uniquement.

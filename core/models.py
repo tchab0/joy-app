@@ -205,6 +205,50 @@ class MediaItem(models.Model):
             return ""
         return f"{self._media_url()}{rel}"
 
+    @property
+    def url_miniature(self):
+        """URL petite vignette WebP si générée, sinon affichage plein."""
+        if self.miniature:
+            try:
+                return self.miniature.url
+            except (ValueError, OSError):
+                pass
+        return self.url_affichage
+
+    @property
+    def youtube_id(self):
+        """Extrait l’ID YouTube depuis url_externe (embed / watch / youtu.be)."""
+        url = (self.url_externe or "").strip()
+        if not url:
+            return ""
+        import re
+
+        patterns = (
+            r"(?:youtube(?:-nocookie)?\.com/embed/)([A-Za-z0-9_-]{6,})",
+            r"(?:youtube\.com/watch\?[^#]*v=)([A-Za-z0-9_-]{6,})",
+            r"(?:youtu\.be/)([A-Za-z0-9_-]{6,})",
+            r"(?:youtube\.com/shorts/)([A-Za-z0-9_-]{6,})",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return ""
+
+    @property
+    def youtube_embed_url(self):
+        vid = self.youtube_id
+        if not vid:
+            return (self.url_externe or "").strip()
+        return f"https://www.youtube-nocookie.com/embed/{vid}?rel=0"
+
+    @property
+    def youtube_thumb_url(self):
+        vid = self.youtube_id
+        if not vid:
+            return ""
+        return f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
     @staticmethod
     def _media_root():
         from django.conf import settings

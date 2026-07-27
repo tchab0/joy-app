@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from django.core.cache import cache
 from django.db import OperationalError, ProgrammingError
 from django.middleware.csrf import get_token
 from django.urls import reverse
@@ -12,18 +13,32 @@ from django.urls import reverse
 from users.roles import user_can_access_planning
 
 logger = logging.getLogger(__name__)
+TOUR_CACHE_VERSION_KEY = "users:product-tour-version"
+TOUR_CACHE_TTL = 24 * 60 * 60
 
 
-def _safe_tours_queryset():
+def product_tour_cache_version() -> int:
+    cache.add(TOUR_CACHE_VERSION_KEY, 1, None)
+    return int(cache.get(TOUR_CACHE_VERSION_KEY, 1))
+
+
+def _safe_tours_payload() -> list[dict[str, Any]]:
     """Tolère l’absence de tables (migration pas encore appliquée)."""
     from users.tour_models import ProductTour
 
+    cache_key = f"users:product-tours:v{product_tour_cache_version()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        return list(
-            ProductTour.objects.filter(is_active=True)
+        tours = list(
+            serialize_tour(tour)
+            for tour in ProductTour.objects.filter(is_active=True)
             .prefetch_related("steps")
             .order_by("audience")
         )
+        cache.set(cache_key, tours, TOUR_CACHE_TTL)
+        return tours
     except (ProgrammingError, OperationalError) as exc:
         logger.warning("Guides coach marks indisponibles (schéma) : %s", exc)
         return []
@@ -76,22 +91,22 @@ def build_tour_config(request) -> dict[str, Any] | None:
     if not user or not user.is_authenticated:
         return None
 
-    tours = _safe_tours_queryset()
+    tours = _safe_tours_payload()
     if not tours:
         return None
 
     by_audience: dict[str, Any] = {}
     pending: list[str] = []
     for tour in tours:
-        if not user_can_take_tour(user, tour.audience):
+        audience = tour["audience"]
+        if not user_can_take_tour(user, audience):
             continue
-        payload = serialize_tour(tour)
-        if not payload["steps"]:
+        if not tour["steps"]:
             continue
-        by_audience[tour.audience] = payload
-        done_v = user_tour_completed_version(user, tour.audience)
-        if done_v < tour.version:
-            pending.append(tour.audience)
+        by_audience[audience] = tour
+        done_v = user_tour_completed_version(user, audience)
+        if done_v < tour["version"]:
+            pending.append(audience)
 
     # Ordre : musicien puis staff
     pending.sort(key=lambda a: 0 if a == "musician" else 1)

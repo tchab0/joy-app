@@ -77,7 +77,7 @@ def notify_users(
 
 
 def unread_notifications_for_user(
-    user, *, limit: int = 50
+    user, *, limit: int = 50, total: int | None = None
 ) -> tuple[list, int]:
     """
     Notifications in-app non lues du destinataire (ordre plus récentes d’abord).
@@ -91,7 +91,8 @@ def unread_notifications_for_user(
         from users.models import UserNotification
 
         qs = UserNotification.objects.filter(user=user, read_at__isnull=True)
-        total = qs.count()
+        if total is None:
+            total = qs.count()
         return list(qs[:limit]), total
     except (ProgrammingError, OperationalError):
         logger.warning(
@@ -99,6 +100,29 @@ def unread_notifications_for_user(
             getattr(user, "pk", None),
         )
         return [], 0
+
+
+def unread_notification_count_for_user(user) -> int:
+    """Compte les notifications non lues sans charger leur contenu."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return 0
+    try:
+        from users.models import UserNotification
+
+        return UserNotification.objects.filter(user=user, read_at__isnull=True).count()
+    except (ProgrammingError, OperationalError):
+        logger.warning(
+            "unread_notification_count_for_user indisponible (migration ?) user_id=%s",
+            getattr(user, "pk", None),
+        )
+        return 0
+
+
+def invalidate_nav_banner(user) -> None:
+    """Invalide le résumé de navigation après une notification modifiée."""
+    from users.nav_cache import invalidate_nav_banner_cache
+
+    invalidate_nav_banner_cache(user)
 
 
 def _is_chat_notification(item) -> bool:
@@ -195,7 +219,7 @@ def mark_notifications_responded(
         q |= Q(related_type=t, related_id=i)
 
     try:
-        return (
+        updated = (
             UserNotification.objects.filter(
                 user=user,
                 requires_response=True,
@@ -204,6 +228,9 @@ def mark_notifications_responded(
             .filter(q)
             .update(responded_at=timezone.now())
         )
+        if updated:
+            invalidate_nav_banner(user)
+        return updated
     except (ProgrammingError, OperationalError):
         logger.warning(
             "mark_notifications_responded indisponible (migration ?) user_id=%s",
@@ -235,6 +262,7 @@ def _persist_inbox(
             related_type=(related_type or "")[:20],
             related_id=related_id,
         )
+        invalidate_nav_banner(user)
     except (ProgrammingError, OperationalError):
         logger.warning(
             "Inbox notifications indisponible (migration manquante ?) — "

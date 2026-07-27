@@ -1,4 +1,3 @@
-<script>
 function chatRoom(cfg) {
   cfg = cfg || {};
   function loadJson(scriptId, fallback) {
@@ -1877,4 +1876,3 @@ function chatRoom(cfg) {
     },
   };
 }
-</script>

@@ -8,8 +8,6 @@
 {% block twitter_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations.{% endif %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
 <style>
   .hero {
@@ -17,7 +15,7 @@
     color: #fff;
     padding: 1.5rem 0 1.75rem;
     text-align: center;
-    animation: hero-in .6s ease forwards;
+    animation: hero-in .6s ease both;
   }
   .hero-title {
     font-family: var(--font-d);
@@ -388,12 +386,12 @@
   }
 
   @keyframes hero-in {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: .96; transform: translateY(10px); }
     to   { opacity: 1; transform: none; }
   }
 
   @keyframes event-in {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: .96; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
   }
 
@@ -403,6 +401,10 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .hero,
+    .event-card {
+      animation: none;
+    }
     .home-scroll-cue svg {
       animation: none;
     }
@@ -494,6 +496,7 @@
            width="960"
            height="346"
            loading="eager"
+           fetchpriority="high"
            decoding="async">
     </div>
     <p class="hero-sub">
@@ -558,9 +561,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="{% static 'core/event-map.js' %}?v=3"></script>
+<script src="{% static 'core/event-map.js' %}?v=4"></script>
 <script>
 (function () {
   document.querySelectorAll(".hero-video[data-yt-embed]").forEach(function (wrap) {

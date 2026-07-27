@@ -418,6 +418,26 @@ def unread_messages_filter() -> Q:
     )
 
 
+def unread_counts_for_memberships(memberships) -> dict[int, int]:
+    """Compte les non-lus de plusieurs memberships en une seule requête."""
+    membership_ids = [m.pk for m in memberships if getattr(m, "pk", None)]
+    if not membership_ids:
+        return {}
+    from django.db.models import Count
+
+    return dict(
+        ChatMembership.objects.filter(pk__in=membership_ids)
+        .annotate(
+            unread=Count(
+                "room__messages",
+                filter=unread_messages_filter(),
+                distinct=True,
+            )
+        )
+        .values_list("pk", "unread")
+    )
+
+
 def serialize_mention_member(user) -> dict:
     name = (user.get_full_name() or "").strip() or user.username
     return {

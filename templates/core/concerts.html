@@ -7,8 +7,6 @@
 {% block og_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
 {% block twitter_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
 {% block extra_css %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
 <style>
   .event-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; margin-bottom: 1px; display: grid; grid-template-columns: 80px 1fr; gap: 1.5rem; align-items: start; }
@@ -169,7 +167,5 @@
 </section>
 {% endblock %}
 {% block extra_js %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="{% static 'core/event-map.js' %}?v=3"></script>
+<script src="{% static 'core/event-map.js' %}?v=4"></script>
 {% endblock %}
