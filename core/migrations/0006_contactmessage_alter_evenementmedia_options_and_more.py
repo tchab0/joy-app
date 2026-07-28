@@ -59,9 +59,10 @@ class Migration(migrations.Migration):
             model_name='evenementmedia',
             name='ordre',
         ),
-        migrations.RemoveField(
+        migrations.RenameField(
             model_name='externallink',
-            name='label',
+            old_name='label',
+            new_name='titre',
         ),
         migrations.RemoveField(
             model_name='mediaitem',
@@ -72,11 +73,10 @@ class Migration(migrations.Migration):
             name='lieu',
             field=models.CharField(blank=True, max_length=200),
         ),
-        migrations.AddField(
+        migrations.AlterField(
             model_name='externallink',
             name='titre',
-            field=models.CharField(default=1, max_length=120),
-            preserve_default=False,
+            field=models.CharField(max_length=120),
         ),
         migrations.AddField(
             model_name='mediaitem',
