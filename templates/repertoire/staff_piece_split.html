@@ -82,15 +82,28 @@
                 :disabled="current <= 1" aria-label="Page précédente">‹</button>
         <div class="rep-split__preview">
           <img :src="previewUrl(current)" :alt="'Page ' + current"
+               :key="'prev-' + current + '-' + (bust[current] || 0)"
                width="900" height="1270" decoding="async">
-          <p class="rep-split__page-label" x-text="current + ' / ' + pageCount"></p>
+          <div class="rep-split__page-tools">
+            <button type="button" class="rep-split__rot"
+                    @click="rotatePage('left')"
+                    :disabled="busy"
+                    aria-label="Tourner à gauche"
+                    title="Tourner à gauche">⟲</button>
+            <p class="rep-split__page-label" x-text="current + ' / ' + pageCount"></p>
+            <button type="button" class="rep-split__rot"
+                    @click="rotatePage('right')"
+                    :disabled="busy"
+                    aria-label="Tourner à droite"
+                    title="Tourner à droite">⟳</button>
+          </div>
         </div>
         <button type="button" class="rep-split__nav" @click="nextPage()"
                 :disabled="current >= pageCount" aria-label="Page suivante">›</button>
       </div>
 
       <div class="rep-split__film" role="list" aria-label="Pages du PDF">
-        <template x-for="n in pageNumbers" :key="n">
+        <template x-for="n in pageNumbers" :key="n + '-' + (bust[n] || 0)">
           <button type="button" class="rep-split__thumb"
                   role="listitem"
                   :class="thumbClass(n)"
@@ -209,6 +222,7 @@
       busy: false,
       error: '',
       colorMap: {},
+      bust: {},
 
       get pageNumbers() {
         const n = this.pageCount | 0;
@@ -269,11 +283,12 @@
         return r ? r.poste : '';
       },
       thumbUrl(n) {
-        return '{% url "repertoire:staff_piece_decoupe_thumb" piece.slug 1 %}'.replace('/page/1/', '/page/' + n + '/');
+        const base = '{% url "repertoire:staff_piece_decoupe_thumb" piece.slug 1 %}'.replace('/page/1/', '/page/' + n + '/');
+        return base + '?t=' + encodeURIComponent((this.bust[n] || 0) + '-' + (this.sourceName || 'x'));
       },
       previewUrl(n) {
         return '{% url "repertoire:staff_piece_decoupe_preview" piece.slug 1 %}'.replace('/preview/1/', '/preview/' + n + '/')
-          + '?t=' + encodeURIComponent(this.sourceName || 'x');
+          + '?t=' + encodeURIComponent((this.bust[n] || 0) + '-' + (this.sourceName || 'x'));
       },
       thumbClass(n) {
         return {
@@ -359,12 +374,43 @@
       prevPage() { if (this.current > 1) this.current -= 1; },
       nextPage() { if (this.current < this.pageCount) this.current += 1; },
 
+      async rotatePage(direction) {
+        const n = this.current;
+        if (!n || this.busy) return;
+        this.busy = true;
+        this.error = '';
+        try {
+          const r = await fetch(
+            '{% url "repertoire:staff_piece_decoupe_rotate" piece.slug 1 %}'.replace('/page/1/', '/page/' + n + '/'),
+            {
+              method: 'POST',
+              headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ direction }),
+            }
+          );
+          const d = await r.json();
+          if (!d.ok) {
+            this.error = d.error || 'Rotation impossible.';
+            this.busy = false;
+            return;
+          }
+          this.bust = Object.assign({}, this.bust, { [n]: (this.bust[n] || 0) + 1 });
+        } catch (e) {
+          this.error = 'Erreur réseau.';
+        }
+        this.busy = false;
+      },
+
       applyLoaded(d) {
         this.pageCount = d.page_count;
         this.sourceName = d.source_name || 'source.pdf';
         this.ready = true;
         this.current = 1;
         this.ranges = [];
+        this.bust = {};
         this.cancelSelect();
       },
 

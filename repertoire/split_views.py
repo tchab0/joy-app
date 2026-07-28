@@ -14,7 +14,11 @@ from django.views import View
 from planning.views import PlanningStaffRequiredMixin
 from repertoire import split_store
 from repertoire.models import PartPoste, Piece
-from repertoire.pdf_utils import extract_pdf_pages_bytes, render_pdf_page_jpeg
+from repertoire.pdf_utils import (
+    extract_pdf_pages_bytes,
+    render_pdf_page_jpeg,
+    rotate_pdf_page,
+)
 
 
 def _json_error(message: str, status: int = 400) -> JsonResponse:
@@ -195,6 +199,35 @@ class StaffPieceDecoupePreviewView(PlanningStaffRequiredMixin, View):
         except ValueError as exc:
             raise Http404 from exc
         return HttpResponse(data, content_type="image/jpeg")
+
+
+class StaffPieceDecoupeRotateView(PlanningStaffRequiredMixin, View):
+    def post(self, request, slug: str, page: int):
+        piece = get_object_or_404(Piece, slug=slug)
+        source = split_store.load_from_session(request.session, piece.pk)
+        if source is None:
+            return _json_error("Aucun PDF source. Rechargez un fichier.", status=404)
+        if page < 1 or page > source.page_count:
+            return _json_error("Page hors limites.")
+        body = _parse_json_body(request)
+        direction = (body.get("direction") or request.POST.get("direction") or "").strip()
+        if direction == "left":
+            degrees = -90
+        elif direction == "right":
+            degrees = 90
+        else:
+            try:
+                degrees = int(body.get("degrees") or request.POST.get("degrees") or 0)
+            except (TypeError, ValueError):
+                return _json_error("Indiquez left, right, ou degrees (±90).")
+            if degrees not in (-90, 90, -180, 180, -270, 270):
+                return _json_error("Rotation invalide (multiples de ±90°).")
+        try:
+            angle = rotate_pdf_page(source.pdf_path, page, degrees)
+        except ValueError as exc:
+            return _json_error(str(exc))
+        source.invalidate_thumb(page)
+        return JsonResponse({"ok": True, "page": page, "rotate": angle})
 
 
 class StaffPieceDecoupeCommitView(PlanningStaffRequiredMixin, View):

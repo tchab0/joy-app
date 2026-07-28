@@ -489,6 +489,56 @@ class PdfDecoupeEditorTests(TestCase):
         piano = self.piece.parts.get(poste=PartPoste.PIANO)
         self.assertEqual(pdf_page_count(piano.file.path), 2)
 
+    def test_rotate_page_left_and_right(self):
+        import pikepdf
+
+        from repertoire import split_store
+
+        self._upload()
+        source = split_store.load_from_session(self.client.session, self.piece.pk)
+        self.assertIsNotNone(source)
+        # Warm thumb cache then rotate — thumb must be rebuilt
+        thumb = self.client.get(
+            reverse(
+                "repertoire:staff_piece_decoupe_thumb",
+                args=[self.piece.slug, 2],
+            )
+        )
+        self.assertEqual(thumb.status_code, 200)
+        self.assertTrue(source.thumb_path(2).is_file())
+
+        r = self.client.post(
+            reverse(
+                "repertoire:staff_piece_decoupe_rotate",
+                args=[self.piece.slug, 2],
+            ),
+            data='{"direction":"right"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertEqual(r.json()["rotate"] % 360, 90)
+        self.assertFalse(source.thumb_path(2).is_file())
+
+        with pikepdf.open(source.pdf_path) as pdf:
+            self.assertEqual(int(pdf.pages[1].get("/Rotate", 0) or 0) % 360, 90)
+
+        r2 = self.client.post(
+            reverse(
+                "repertoire:staff_piece_decoupe_rotate",
+                args=[self.piece.slug, 2],
+            ),
+            data='{"direction":"left"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.json()["rotate"] % 360, 0)
+
+        # Other pages untouched
+        with pikepdf.open(source.pdf_path) as pdf:
+            self.assertEqual(int(pdf.pages[0].get("/Rotate", 0) or 0) % 360, 0)
+            self.assertEqual(int(pdf.pages[1].get("/Rotate", 0) or 0) % 360, 0)
+
     def test_reject_overlap_and_duplicate_poste(self):
         self._upload()
         r = self.client.post(

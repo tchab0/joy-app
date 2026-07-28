@@ -62,6 +62,11 @@ urlpatterns = [
         name="staff_piece_decoupe_preview",
     ),
     path(
+        "staff/morceau/<slug:slug>/decoupe/page/<int:page>/rotate/",
+        split_views.StaffPieceDecoupeRotateView.as_view(),
+        name="staff_piece_decoupe_rotate",
+    ),
+    path(
         "staff/morceau/<slug:slug>/decoupe/commit/",
         split_views.StaffPieceDecoupeCommitView.as_view(),
         name="staff_piece_decoupe_commit",

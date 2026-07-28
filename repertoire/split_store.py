@@ -31,6 +31,11 @@ class SplitSource:
     def thumb_path(self, page: int) -> Path:
         return _dir_for(self.token) / "thumbs" / f"{page}.jpg"
 
+    def invalidate_thumb(self, page: int) -> None:
+        thumb = self.thumb_path(page)
+        if thumb.is_file():
+            thumb.unlink(missing_ok=True)
+
 
 @dataclass
 class ServerPdfCandidate:
