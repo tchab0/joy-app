@@ -29,7 +29,12 @@ from repertoire.models import (
     SetlistItem,
     part_sort_order,
 )
-from repertoire.pdf_utils import extract_pdf_pages_bytes, images_to_pdf_bytes, pdf_page_count
+from repertoire.pdf_utils import (
+    extract_pdf_pages_bytes,
+    images_to_pdf_bytes,
+    pdf_page_count,
+    rotate_pdf_page,
+)
 
 User = get_user_model()
 
@@ -538,6 +543,54 @@ class PdfDecoupeEditorTests(TestCase):
         with pikepdf.open(source.pdf_path) as pdf:
             self.assertEqual(int(pdf.pages[0].get("/Rotate", 0) or 0) % 360, 0)
             self.assertEqual(int(pdf.pages[1].get("/Rotate", 0) or 0) % 360, 0)
+
+    def test_concurrent_rotations_are_serialized(self):
+        import threading
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        from unittest.mock import patch
+
+        import pikepdf
+
+        from repertoire import split_store
+
+        self._upload()
+        source = split_store.load_from_session(self.client.session, self.piece.pk)
+        self.assertIsNotNone(source)
+
+        real_open = pikepdf.open
+        calls_lock = threading.Lock()
+        start = threading.Barrier(4)
+        active_calls = 0
+        max_active_calls = 0
+
+        def slow_open(*args, **kwargs):
+            nonlocal active_calls, max_active_calls
+            with calls_lock:
+                active_calls += 1
+                max_active_calls = max(max_active_calls, active_calls)
+            try:
+                time.sleep(0.05)
+                return real_open(*args, **kwargs)
+            finally:
+                with calls_lock:
+                    active_calls -= 1
+
+        def rotate(page):
+            start.wait()
+            return rotate_pdf_page(source.pdf_path, page, 90)
+
+        with patch("pikepdf.open", side_effect=slow_open):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                angles = list(pool.map(rotate, range(1, 5)))
+
+        self.assertEqual(angles, [90, 90, 90, 90])
+        self.assertEqual(max_active_calls, 1)
+        with real_open(source.pdf_path) as pdf:
+            self.assertEqual(
+                [int(page.get("/Rotate", 0) or 0) % 360 for page in pdf.pages],
+                [90, 90, 90, 90],
+            )
 
     def test_reject_overlap_and_duplicate_poste(self):
         self._upload()

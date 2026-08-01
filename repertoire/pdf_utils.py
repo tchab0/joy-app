@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import fcntl
 import io
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from django.core.files.base import ContentFile
@@ -60,6 +64,18 @@ def pdf_page_count(source_path: str | Path) -> int:
         return len(pdf.pages)
 
 
+@contextmanager
+def _exclusive_pdf_lock(path: Path) -> Iterator[None]:
+    """Serialise les modifications d’un PDF entre workers."""
+    lock_path = path.with_name(f".{path.name}.lock")
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def rotate_pdf_page(source_path: str | Path, page: int, degrees: int) -> int:
     """
     Tourne la page `page` (1-indexée) de `degrees` (±90 / ±180 / ±270).
@@ -73,22 +89,23 @@ def rotate_pdf_page(source_path: str | Path, page: int, degrees: int) -> int:
         raise ValueError("Rotation invalide (multiples de ±90°).")
 
     path = Path(source_path)
-    tmp = path.with_name(path.stem + ".rotating.pdf")
-    try:
-        with pikepdf.open(path) as pdf:
-            n = len(pdf.pages)
-            if page > n:
-                raise ValueError(f"Le PDF n’a que {n} page(s).")
-            pg = pdf.pages[page - 1]
-            pg.rotate(degrees, relative=True)
-            new_angle = int(pg.get("/Rotate", 0) or 0) % 360
-            pdf.save(tmp)
-        tmp.replace(path)
-        return new_angle
-    except Exception:
-        if tmp.is_file():
-            tmp.unlink(missing_ok=True)
-        raise
+    tmp = path.with_name(f".{path.stem}.{uuid.uuid4().hex}.rotating.pdf")
+    with _exclusive_pdf_lock(path):
+        try:
+            with pikepdf.open(path) as pdf:
+                n = len(pdf.pages)
+                if page > n:
+                    raise ValueError(f"Le PDF n’a que {n} page(s).")
+                pg = pdf.pages[page - 1]
+                pg.rotate(degrees, relative=True)
+                new_angle = int(pg.get("/Rotate", 0) or 0) % 360
+                pdf.save(tmp)
+            tmp.replace(path)
+            return new_angle
+        except Exception:
+            if tmp.is_file():
+                tmp.unlink(missing_ok=True)
+            raise
 
 
 def render_pdf_page_jpeg(
