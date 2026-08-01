@@ -1,0 +1,10 @@
+[Unit]
+Description=JOY — demande photos événements (quotidien 10h)
+
+[Timer]
+OnCalendar=*-*-* 10:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

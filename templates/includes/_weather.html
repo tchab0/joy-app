@@ -1,0 +1,19 @@
+{# Chip météo — attend ``weather`` (dict) ; option ``compact`` #}
+{% if weather %}
+<div class="wx{% if compact %} wx--compact{% endif %}" title="Prévision à l’heure du concert">
+  <span class="wx__icon wx__icon--{{ weather.icon }}" aria-hidden="true">
+    {% include "includes/_weather_icon.html" with icon=weather.icon %}
+  </span>
+  <span class="wx__body">
+    <span class="wx__temp">{{ weather.temp_c }}&nbsp;°C</span>
+    <span class="wx__label">{{ weather.label }}</span>
+    {% if weather.precip_prob is not None %}
+    <span class="wx__meta">{{ weather.precip_prob }}&nbsp;% pluie</span>
+    {% endif %}
+    <span class="wx__meta">à {{ weather.at_hour }}</span>
+  </span>
+  {% if weather.unreliable %}
+  <span class="wx__note">Prévision indicative</span>
+  {% endif %}
+</div>
+{% endif %}

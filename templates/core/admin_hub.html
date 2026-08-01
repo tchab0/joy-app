@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Administration — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .hub { max-width: 720px; margin: 0 auto; padding: 1.25rem 1rem 2.5rem; color: var(--text); }
+  .hub h1 {
+    font-family: var(--font-d);
+    font-size: 1.75rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .hub__lead { color: var(--muted); margin: 0 0 1.5rem; line-height: 1.45; font-size: .95rem; }
+  .hub__group { margin-bottom: 1.5rem; }
+  .hub__label {
+    display: block;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 .55rem;
+  }
+  .hub__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4rem; }
+  .hub__list a {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-height: 44px;
+    padding: .75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+  }
+  .hub__list a:hover { border-color: var(--accent); }
+  .hub__list strong { color: var(--accent); font-weight: 600; font-size: .95rem; }
+  .hub__list span { color: var(--muted); font-size: .82rem; line-height: 1.35; }
+  @media (min-width: 640px) {
+    .hub { padding-top: 1.75rem; }
+    .hub h1 { font-size: 2rem; }
+    .hub__list { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="hub" data-tour="admin-hub">
+  <h1>Administration</h1>
+  {% page_lead "core.admin_hub" %}
+    Tous les outils staff au même endroit — site public et ops orchestre.
+  {% endpage_lead %}
+  <p class="hub__lead">Choisissez une zone. Les liens du pied de page restent des raccourcis.</p>
+
+  <section class="hub__group" aria-labelledby="hub-site">
+    <span class="hub__label" id="hub-site">Site public</span>
+    <ul class="hub__list">
+      <li>
+        <a href="{% url 'admin_pages' %}">
+          <strong>Éditeur de pages</strong>
+          <span>Accueil : textes, images, vidéos, ordre des cartes</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_concerts' %}">
+          <strong>CMS concerts</strong>
+          <span>Visibilité publique, affiche, billetterie, description</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_venues' %}">
+          <strong>Lieux</strong>
+          <span>Adresses et coordonnées des salles</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_medias' %}">
+          <strong>Médias</strong>
+          <span>Modération photos et vidéos</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_contact' %}">
+          <strong>Messages contact</strong>
+          <span>Boîte de réception du formulaire public</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_notifications' %}">
+          <strong>Notifs site</strong>
+          <span>Annonces diffusées aux comptes</span>
+        </a>
+      </li>
+    </ul>
+  </section>
+
+  <section class="hub__group" aria-labelledby="hub-ops">
+    <span class="hub__label" id="hub-ops">Orchestre</span>
+    <ul class="hub__list">
+      <li>
+        <a href="{% url 'planning:admin' %}">
+          <strong>Admin planning</strong>
+          <span>Dates, effectifs, sondages, matériel</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'planning:admin_musicians' %}">
+          <strong>Musiciens</strong>
+          <span>Profils, postes titulaires et remplaçants</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'repetitions:staff_list' %}">
+          <strong>Répétitions</strong>
+          <span>Feuilles de route et absences</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'repertoire:staff_list' %}">
+          <strong>Atelier partitions</strong>
+          <span>Morceaux, PDF, découpe, audio</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'repertoire:staff_setlist_list' %}">
+          <strong>Setlists</strong>
+          <span>Programmes liés aux concerts</span>
+        </a>
+      </li>
+    </ul>
+  </section>
+
+  <section class="hub__group" aria-labelledby="hub-meta">
+    <span class="hub__label" id="hub-meta">Suivi &amp; système</span>
+    <ul class="hub__list">
+      <li>
+        <a href="{% url 'admin_feedback' %}">
+          <strong>Retours</strong>
+          <span>Commentaires pages et votes</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'stats:dashboard' %}">
+          <strong>Statistiques</strong>
+          <span>Usage du site et des coulisses</span>
+        </a>
+      </li>
+      <li>
+        <a href="{% url 'admin_tours' %}">
+          <strong>Guides</strong>
+          <span>Parcours d’aide musicien et staff</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin/">
+          <strong>Django admin</strong>
+          <span>CRUD détaillé des modèles</span>
+        </a>
+      </li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

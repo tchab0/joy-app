@@ -1,0 +1,17 @@
+[Unit]
+Description=Export partitions JOY → Nextcloud (MobileSheets)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/srv/jazz-orchestra-yonnais/repo
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+EnvironmentFile=/srv/jazz-orchestra-yonnais/.env
+ExecStart=/srv/jazz-orchestra-yonnais/.venv/bin/python manage.py export_parts_for_nextcloud
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

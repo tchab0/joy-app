@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load page_lead %}
+
+{% block title %}Répertoire — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <header class="pl-head">
+    <h1>Répertoire</h1>
+    {% page_lead "repertoire.pieces" class="page-lead--in-head" %}
+      Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.
+    {% endpage_lead %}
+  </header>
+
+  {% include "planning/_module_nav.html" with active="repertoire" %}
+
+  <form class="rep-filter" method="get" action="" data-tour="repertoire-filter">
+    <label for="poste">Poste</label>
+    <select id="poste" name="poste" onchange="this.form.submit()">
+      <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
+      {% for value, label in poste_choices %}
+      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if pieces %}
+  <section class="pl-section">
+    {% for piece in pieces %}
+    {% with missing=piece.missing_big_band_labels %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">
+          {{ piece.title }}
+          {% if missing %}
+          <span class="rep-alert-dot"
+                title="Partitions manquantes : {{ missing|join:', ' }}"
+                aria-label="{{ missing|length }} poste{{ missing|length|pluralize }} sans partition : {{ missing|join:', ' }}"></span>
+          {% endif %}
+        </a>
+        <p class="pl-row__meta">
+          {{ piece.parts.count }} partition{{ piece.parts.count|pluralize }}
+          {% if missing %}
+          · <span class="rep-alert-meta">{{ missing|length }} poste{{ missing|length|pluralize }} manquant{{ missing|length|pluralize }}</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        {% if piece.matching_part %}
+        {% include "repertoire/_pdf_preview_icon.html" with part=piece.matching_part title="Aperçu PDF" %}
+        <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' piece.matching_part.pk %}">PDF</a>
+        {% endif %}
+        <a class="pl-btn" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">Fiche</a>
+      </div>
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </section>
+  {% else %}
+  <p class="pl-empty">Aucun morceau publié{% if selected_poste != 'all' %} pour ce poste{% endif %}.</p>
+  {% endif %}
+</div>
+{% endblock %}

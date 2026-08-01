@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ event.titre }} — Concert JOY{% endblock %}
+{% block og_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}{{ event.titre }} — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block twitter_description %}{{ meta_description }}{% endblock %}
+{% block og_type %}event{% endblock %}
+{% block og_image %}{{ SITE_URL }}{% url 'concert_og_image' event.slug %}{% endblock %}
+{% block twitter_image %}{{ SITE_URL }}{% url 'concert_og_image' event.slug %}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
+<style>
+  .event-detail { max-width: 720px; }
+  .event-detail .when {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    color: var(--accent);
+    margin-bottom: .5rem;
+  }
+  .event-detail .meta { color: var(--muted); font-size: .95rem; margin-bottom: .35rem; }
+  .event-detail .desc { margin-top: 1.25rem; line-height: 1.65; color: var(--text); }
+  .event-detail .actions {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .5rem;
+  }
+  .event-share { display: inline-flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .event-share__btn,
+  .event-detail .actions .btn-sm,
+  .event-detail .actions .event-map__go {
+    padding: .35rem .75rem;
+    font-size: .72rem;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+  button.event-share__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    font: inherit;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: var(--r);
+    cursor: pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+  button.event-share__btn:disabled { opacity: .55; cursor: wait; }
+  @media (max-width: 600px) {
+    .event-share__btn,
+    .event-detail .actions .btn-sm,
+    .event-detail .actions .event-map__go { min-height: 44px; }
+  }
+  .event-detail .event-map-wrap {
+    margin-top: 1.25rem;
+    width: 100%;
+  }
+  .event-detail .event-map {
+    height: 280px;
+  }
+  .badge { display: inline-block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: .15rem .5rem; border-radius: var(--r); margin-left: .5rem; vertical-align: middle; }
+  .badge-tentative { background: rgba(184,137,42,.12); color: var(--gold-text); }
+  .badge-annule { background: rgba(180,60,60,.12); color: #b43c3c; }
+  .back-link { display: inline-block; margin-bottom: 1.25rem; color: var(--accent); text-decoration: none; font-size: .9rem; }
+  .back-link:hover { text-decoration: underline; }
+</style>
+{% include "includes/_weather_styles.html" %}
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container event-detail">
+    <a class="back-link" href="{% url 'concerts' %}">← Tous les concerts</a>
+    <h1 class="section-title" style="margin-bottom:.75rem">
+      {{ event.titre }}
+      {% if event.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
+      {% if event.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
+    </h1>
+    <p class="when">
+      <time datetime="{{ event.date_debut|date:'c' }}">{{ event.date_debut|date:"l d F Y" }} · {{ event.horaires_affiches }}</time>
+    </p>
+    {% if event.parent %}
+    <p class="meta">Dans : {{ event.parent.titre }}</p>
+    {% endif %}
+    {% if event.organisme %}
+    <p class="meta">Organisé par {{ event.organisme }}</p>
+    {% endif %}
+    <p class="meta">{{ event.lieu_affiche }}</p>
+    {% include "includes/_weather.html" with weather=event.weather %}
+    {% if event.show_contact %}
+    <p class="meta" style="margin-top:.5rem">
+      Contact{% if event.contact_nom %} : {{ event.contact_nom }}{% endif %}
+      {% if event.contact_telephone %}
+        · <a href="tel:{{ event.contact_telephone }}" style="color:var(--accent)">{{ event.contact_telephone }}</a>
+      {% endif %}
+      {% if event.contact_email %}
+        · <a href="mailto:{{ event.contact_email }}" style="color:var(--accent)">{{ event.contact_email }}</a>
+      {% endif %}
+    </p>
+    {% endif %}
+    {% if event.description %}
+    <div class="desc">{{ event.description|linebreaks }}</div>
+    {% endif %}
+    <div class="actions">
+      {% if event.show_nav_go %}
+      {% include "includes/_nav_go_button.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" go_label=event.venue.nom go_text="J'y vais" go_class="event-map__go btn btn-primary btn-sm" %}
+      {% endif %}
+      {% if event.url_billets %}
+      <a href="{{ event.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Billetterie →</a>
+      {% endif %}
+      <a href="{% url 'contact' %}?mode=prestation" class="btn btn-outline btn-sm">Demande de prestation</a>
+      {% include "includes/_concert_share.html" with event=event %}
+    </div>
+    {% if event.venue.latitude %}
+    {% include "includes/_event_map.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" map_id=event.pk %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'core/event-map.js' %}?v=4"></script>
+{% endblock %}

@@ -1,0 +1,47 @@
+{# Partage multi-réseaux — attend `event` (events.Event avec slug). #}
+{# Optionnel : show_share_counts=True pour afficher le compteur devant chaque bouton. #}
+{% if event.slug %}
+<div
+  class="event-share"
+  role="group"
+  aria-label="Partager ce concert"
+  data-share-track="{% url 'concert_share_track' event.slug %}"
+>
+  <span class="event-share__item">
+    {% if show_share_counts %}<span class="event-share__count" aria-label="{{ event.shares_facebook }} partages Facebook">{{ event.shares_facebook }}</span>{% endif %}
+    <a
+      href="https://www.facebook.com/sharer/sharer.php?u={{ SITE_URL }}{{ event.get_absolute_url }}"
+      target="_blank"
+      rel="noopener"
+      class="btn btn-outline btn-sm event-share__btn"
+      title="Partager sur Facebook"
+      data-share-network="facebook"
+    >Facebook</a>
+  </span>
+  <span class="event-share__item">
+    {% if show_share_counts %}<span class="event-share__count" aria-label="{{ event.shares_instagram }} partages Instagram">{{ event.shares_instagram }}</span>{% endif %}
+    <button
+      type="button"
+      class="btn btn-outline btn-sm event-share__btn"
+      title="Partager sur Instagram (feuille de partage ou lien + image)"
+      data-share-network="instagram"
+      data-ig-image="{% url 'concert_og_image' event.slug %}"
+      data-ig-url="{{ SITE_URL }}{{ event.get_absolute_url }}"
+      data-ig-title="{{ event.titre }}"
+      onclick="return window.joyShareInstagram(this)"
+    >Instagram</button>
+  </span>
+  <span class="event-share__item">
+    {% if show_share_counts %}<span class="event-share__count" aria-label="{{ event.shares_bluesky }} partages Bluesky">{{ event.shares_bluesky }}</span>{% endif %}
+    <a
+      href="https://bsky.app/intent/compose?text={% filter urlencode %}{{ event.titre }} — Jazz Orchestra Yonnais
+{{ SITE_URL }}{{ event.get_absolute_url }}{% endfilter %}"
+      target="_blank"
+      rel="noopener"
+      class="btn btn-outline btn-sm event-share__btn"
+      title="Partager sur Bluesky"
+      data-share-network="bluesky"
+    >Bluesky</a>
+  </span>
+</div>
+{% endif %}

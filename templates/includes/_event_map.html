@@ -1,0 +1,27 @@
+{# Carte Leaflet — attend lat, lng, map_id (unique), optionnel mini, show_go, go_label, go_text #}
+{% if lat and lng %}
+<div class="event-map-wrap{% if mini %} event-map-wrap--mini{% endif %}{% if show_go %} event-map-wrap--go{% endif %}">
+  <div
+    class="event-map{% if mini %} event-map--mini{% endif %}"
+    id="event-map-{{ map_id }}"
+    data-lat="{{ lat }}"
+    data-lng="{{ lng }}"
+    data-zoom="{{ zoom|default:15 }}"
+    role="img"
+    aria-label="Carte du lieu"
+  ></div>
+  <a
+    class="event-map__ext"
+    href="{% if osm_link %}{{ osm_link }}{% else %}https://www.openstreetmap.org/?mlat={{ lat }}&amp;mlon={{ lng }}#map=15/{{ lat }}/{{ lng }}{% endif %}"
+    target="_blank"
+    rel="noopener"
+    title="Voir en plein écran"
+  >
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    OSM
+  </a>
+  {% if show_go %}
+  {% include "includes/_nav_go_button.html" with lat=lat lng=lng go_label=go_label go_text=go_text|default:"Y aller" %}
+  {% endif %}
+</div>
+{% endif %}

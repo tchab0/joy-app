@@ -1,0 +1,46 @@
+{% with p=id_prefix|default:"ev" %}
+<div class="pl-org-typeahead"
+     x-data='organismeTypeahead({
+       options: [{% for o in organismes %}"{{ o.nom|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}],
+       initial: "{{ organisme_value|default:''|escapejs }}"
+     })'
+     @click.outside="open = false"
+     @keydown.escape.window="open = false">
+  <label for="{{ p }}_organisme">Organisme organisateur <span class="pl-row__meta">(optionnel)</span></label>
+  <div class="pl-org-typeahead__wrap">
+    <input type="text" name="organisme" id="{{ p }}_organisme"
+           x-model="query"
+           @focus="open = true"
+           @click="open = true"
+           @input="open = true"
+           placeholder="Choisir ou saisir…"
+           autocomplete="off"
+           role="combobox"
+           aria-autocomplete="list"
+           :aria-expanded="open.toString()"
+           aria-controls="{{ p }}_organisme_list">
+    <button type="button" class="pl-org-typeahead__toggle"
+            @click.prevent="toggle()"
+            :aria-expanded="open.toString()"
+            aria-label="Afficher la liste des organismes"
+            tabindex="-1">▾</button>
+  </div>
+  <ul class="pl-org-typeahead__list" id="{{ p }}_organisme_list"
+      x-show="open" x-cloak
+      role="listbox">
+    <template x-for="opt in filtered" :key="opt">
+      <li role="option"
+          class="pl-org-typeahead__option"
+          @mousedown.prevent="choose(opt)"
+          x-text="opt"></li>
+    </template>
+    <li class="pl-org-typeahead__hint" x-show="options.length === 0 && !query.trim()" x-cloak>
+      Aucun organisme mémorisé — saisissez un nom.
+    </li>
+    <li class="pl-org-typeahead__hint" x-show="isNew" x-cloak>
+      Nouveau : sera mémorisé à l’enregistrement
+    </li>
+  </ul>
+  <p class="pl-row__meta" style="margin:.3rem 0 0">Touchez ▾ pour la liste, ou saisissez un nouveau nom.</p>
+</div>
+{% endwith %}

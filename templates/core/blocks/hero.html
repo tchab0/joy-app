@@ -1,0 +1,51 @@
+{% load static %}
+<section class="hero">
+  <div class="container">
+    <h1 class="hero-title">
+      {% if block.render.title_accent %}<span>{{ block.render.title_accent }}</span><br>{% endif %}
+      {{ block.render.title }}
+    </h1>
+    {% if block.render.tag %}<p class="hero-tag">{{ block.render.tag }}</p>{% endif %}
+    {% if block.render.image_url or block.render.image_static %}
+    <div class="hero-photo">
+      {% if block.render.image_url %}
+      <img src="{{ block.render.image_url }}"
+           alt="{{ block.render.image_alt|default:'Jazz Orchestra Yonnais' }}"
+           width="960"
+           height="346"
+           loading="eager"
+           fetchpriority="high"
+           decoding="async">
+      {% else %}
+      <img src="{% static block.render.image_static %}"
+           alt="{{ block.render.image_alt|default:'Jazz Orchestra Yonnais' }}"
+           width="960"
+           height="346"
+           loading="eager"
+           fetchpriority="high"
+           decoding="async">
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if block.render.subtitle %}
+    <p class="hero-sub">{{ block.render.subtitle }}</p>
+    {% endif %}
+    {% if block.render.video_embed %}
+    <div class="hero-video" data-yt-embed="{{ block.render.video_embed }}">
+      <button type="button" class="hero-video__facade" aria-label="Lire la vidéo Jazz Orchestra Yonnais">
+        {% if block.render.video_thumb %}
+        <img
+          class="hero-video__thumb"
+          src="{{ block.render.video_thumb }}"
+          alt=""
+          width="1280"
+          height="720"
+          loading="lazy"
+          decoding="async">
+        {% endif %}
+        <span class="hero-video__play" aria-hidden="true"></span>
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</section>

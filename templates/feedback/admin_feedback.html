@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Retours utilisateurs — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .admin-toolbar { display:flex; gap:1rem; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; }
+  .admin-filters { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+  .filter-link {
+    display:inline-flex; align-items:center; min-height:40px; padding:.55rem .9rem;
+    border:1px solid var(--border); border-radius:var(--r); text-decoration:none; color:var(--text);
+    background:var(--surface); font-size:.85rem;
+  }
+  .filter-link.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .filter-link.is-progress.active { background:var(--gold); color:#fff; border-color:var(--gold); }
+  .filter-link.is-snooze.active { background:var(--muted); color:#fff; border-color:var(--muted); }
+  .filter-link.is-done.active { background:var(--ok); color:#fff; border-color:var(--ok); }
+  .fb-sort { display:flex; align-items:center; gap:.5rem; font-size:.85rem; color:var(--text); }
+  .fb-sort select { padding:.45rem .7rem; border:1px solid var(--border); border-radius:var(--r); background:#fff; color:var(--text); }
+  .fb-list { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+  .fb-item { border-bottom:1px solid var(--border); color:var(--text); }
+  .fb-item:last-child { border-bottom:none; }
+  .fb-item.is-new { background:rgba(var(--accent-rgb),.04); }
+  .fb-item-head {
+    width:100%; text-align:left; background:none; border:none; cursor:pointer;
+    padding:1rem 1.1rem; display:flex; gap:1rem; align-items:flex-start; justify-content:space-between;
+    font:inherit; color:inherit;
+  }
+  .fb-item-head:hover { background:rgba(0,0,0,.02); }
+  .fb-badges { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.45rem; }
+  .fb-author { font-weight:600; font-size:.95rem; }
+  .fb-author span { font-weight:400; color:var(--muted); }
+  .fb-preview { color:var(--muted); font-size:.9rem; margin-top:.25rem; }
+  .fb-meta { display:flex; flex-wrap:wrap; gap:.75rem; margin-top:.45rem; font-size:.8rem; color:var(--muted); }
+  .fb-chevron { transition:transform var(--trans); color:var(--muted); flex-shrink:0; margin-top:.2rem; }
+  .fb-chevron.open { transform:rotate(180deg); }
+  .fb-item-body { padding:0 1.1rem 1.1rem; display:grid; gap:1rem; grid-template-columns:1fr; }
+  @media (min-width:900px) { .fb-item-body { grid-template-columns:1.4fr .9fr; } }
+  .fb-message { white-space:pre-wrap; font-size:.95rem; color:var(--text); }
+  .fb-page a { color:var(--accent); word-break:break-all; font-size:.85rem; }
+  .fb-actions { display:flex; flex-direction:column; gap:.75rem; }
+  .fb-panel {
+    border:1px solid var(--border); border-radius:var(--r); background:var(--bg);
+    padding:.85rem; display:flex; flex-direction:column; gap:.55rem; color:var(--text);
+  }
+  .fb-panel h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .fb-panel.is-gold { border-color:rgba(184,137,42,.35); background:rgba(184,137,42,.08); }
+  .fb-panel.is-vote { border-color:rgba(var(--accent-rgb),.25); background:rgba(var(--accent-rgb),.05); }
+  .fb-panel label { display:flex; align-items:center; gap:.5rem; font-size:.9rem; font-weight:500; cursor:pointer; }
+  .fb-panel input[type=date], .fb-panel textarea, .fb-panel input[type=text] {
+    width:100%; padding:.5rem .65rem; border:1px solid var(--border); border-radius:var(--r);
+    font:inherit; background:#fff; color:var(--text);
+  }
+  .fb-stars-admin { display:flex; flex-wrap:wrap; gap:.15rem; align-items:center; }
+  .fb-stars-admin button {
+    background:none; border:none; cursor:pointer; font-size:1.35rem; color:#d6d3d1; line-height:1; padding:.1rem;
+  }
+  .fb-stars-admin button.is-on { color:var(--gold); }
+  .fb-stars-admin .clear { font-size:.8rem; color:var(--muted); text-decoration:underline; margin-left:.35rem; }
+  .fb-notified { font-size:.85rem; color:var(--ok); }
+  .empty-state {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+    padding:2rem; color:var(--muted);
+  }
+  .role-grid { display:grid; gap:.35rem; }
+  .role-grid label { font-weight:400; font-size:.85rem; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container">
+    <div class="admin-toolbar">
+      <div>
+        <h1 class="section-title">Retours utilisateurs</h1>
+        {% page_lead "feedback.admin" %}
+          Bugs, confort d’usage et demandes de fonctionnalités depuis le pied de page.
+        {% endpage_lead %}
+      </div>
+      <div class="admin-filters">
+        <a href="{{ page_feedback_pending_list_url }}" class="filter-link {% if not page_feedback_show_treated and not page_feedback_show_in_progress and not page_feedback_show_snoozed %}active{% endif %}">
+          En attente{% if page_feedback_pending_count %} ({{ page_feedback_pending_count }}){% endif %}
+        </a>
+        {% if page_feedback_in_progress_count or page_feedback_show_in_progress %}
+        <a href="{{ page_feedback_in_progress_list_url }}" class="filter-link is-progress {% if page_feedback_show_in_progress %}active{% endif %}">
+          En cours ({{ page_feedback_in_progress_count }})
+        </a>
+        {% endif %}
+        {% if page_feedback_snoozed_count or page_feedback_show_snoozed %}
+        <a href="{{ page_feedback_snoozed_list_url }}" class="filter-link is-snooze {% if page_feedback_show_snoozed %}active{% endif %}">
+          Reportés ({{ page_feedback_snoozed_count }})
+        </a>
+        {% endif %}
+        {% if page_feedback_treated_count or page_feedback_show_treated %}
+        <a href="{{ page_feedback_treated_list_url }}" class="filter-link is-done {% if page_feedback_show_treated %}active{% endif %}">
+          Traités ({{ page_feedback_treated_count }})
+        </a>
+        {% endif %}
+        <form method="get" action="{% url 'admin_feedback' %}" class="fb-sort">
+          <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+          <label for="feedback-sort">Tri</label>
+          <select id="feedback-sort" name="feedback_sort" onchange="this.form.submit()">
+            {% for value, label in page_feedback_sort_choices %}
+            <option value="{{ value }}" {% if value == page_feedback_sort %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </div>
+
+    {% if page_feedback_items %}
+    <div class="fb-list">
+      {% for item in page_feedback_items %}
+      <article id="page-feedback-{{ item.id }}" class="fb-item {% if item.is_unread %}is-new{% endif %}" x-data="{ open: {{ item.open_on_load|yesno:'true,false' }} }">
+        <button type="button" class="fb-item-head" @click="open = !open" :aria-expanded="open.toString()">
+          <div style="min-width:0;flex:1">
+            <div class="fb-badges">
+              <span class="{{ item.category_css_class }}">{{ item.category_label }}</span>
+              {% if item.is_unread %}<span class="fb-badge fb-badge-new">Nouveau</span>{% endif %}
+              {% if item.is_in_progress %}<span class="fb-badge fb-badge-progress">En cours</span>{% endif %}
+              {% if item.is_snoozed %}<span class="fb-badge fb-badge-snooze">Reporté</span>{% endif %}
+              {% if item.is_treated %}<span class="fb-badge fb-badge-done">Traité</span>{% endif %}
+              {% if item.vote_was_opened %}<span class="fb-badge fb-badge-vote">Sondage · {{ item.vote_total_count }} vote{{ item.vote_total_count|pluralize }}</span>{% endif %}
+              <span class="fb-badge">{{ item.created_at|date:"d/m/Y H:i" }}</span>
+            </div>
+            <p class="fb-author">{{ item.author_name }} <span>({{ item.author_username }})</span></p>
+            <p class="fb-preview">{{ item.message|truncatechars:140 }}</p>
+            <div class="fb-meta">
+              <span>{{ item.supporter_count }} soutien{{ item.supporter_count|pluralize }}</span>
+              {% if item.importance %}<span>Importance {{ item.importance }}/5</span>{% endif %}
+              {% if item.admin_priority %}<span>Priorité admin {{ item.admin_priority }}/5</span>{% endif %}
+            </div>
+          </div>
+          <span class="fb-chevron" :class="open ? 'open' : ''" aria-hidden="true">▾</span>
+        </button>
+
+        <div class="fb-item-body" x-show="open" x-cloak>
+          <div>
+            <p class="fb-message">{{ item.message }}</p>
+            <div class="fb-page" style="margin-top:.85rem">
+              {% if item.page_title %}<p style="font-weight:600">{{ item.page_title }}</p>{% endif %}
+              {% if item.page_profile %}<p style="color:var(--muted);font-size:.85rem">Rôles : {{ item.page_profile }}</p>{% endif %}
+              <a href="{{ item.page_url }}">{{ item.page_url }}</a>
+            </div>
+          </div>
+
+          <div class="fb-actions">
+            {% if item.show_snooze_form %}
+            <form method="post" action="{% url 'set_page_feedback_snooze' item.id %}" class="fb-panel is-gold">
+              {% csrf_token %}
+              <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+              <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+              <h3>Reporter</h3>
+              <label for="snooze-until-{{ item.id }}">Réapparition le</label>
+              <input type="date" id="snooze-until-{{ item.id }}" name="snoozed_until" min="{{ item.snooze_min_date }}" required>
+              <button type="submit" class="btn btn-primary">Reporter</button>
+            </form>
+            {% elif item.show_unsnooze_form %}
+            <form method="post" action="{% url 'clear_page_feedback_snooze' item.id %}" class="fb-panel is-gold">
+              {% csrf_token %}
+              <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+              <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+              <h3>Reporté{% if item.snoozed_until %} jusqu’au {{ item.snoozed_until|date:"d/m/Y" }}{% endif %}</h3>
+              <button type="submit" class="btn btn-outline">Remettre en attente</button>
+            </form>
+            {% endif %}
+
+            <form method="post" action="{% url 'set_page_feedback_in_progress' item.id %}" class="fb-panel">
+              {% csrf_token %}
+              <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+              <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+              <input type="hidden" name="in_progress" value="{% if item.is_in_progress %}1{% else %}0{% endif %}" id="in-progress-value-{{ item.id }}">
+              <label>
+                <input type="checkbox" {% if item.is_in_progress %}checked{% endif %}
+                       onchange="document.getElementById('in-progress-value-{{ item.id }}').value = this.checked ? '1' : '0'; this.form.submit();">
+                En cours
+              </label>
+            </form>
+
+            <form method="post" action="{% url 'set_page_feedback_treated' item.id %}" class="fb-panel">
+              {% csrf_token %}
+              <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+              <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+              <input type="hidden" name="treated" value="{% if item.is_treated %}1{% else %}0{% endif %}" id="treated-value-{{ item.id }}">
+              <label>
+                <input type="checkbox" {% if item.is_treated %}checked{% endif %}
+                       onchange="document.getElementById('treated-value-{{ item.id }}').value = this.checked ? '1' : '0'; this.form.submit();">
+                Traité
+              </label>
+            </form>
+
+            <div class="fb-panel">
+              <h3>Priorité admin</h3>
+              <form method="post" action="{% url 'set_page_feedback_priority' item.id %}" class="fb-stars-admin">
+                {% csrf_token %}
+                <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+                <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+                {% for star in "12345" %}
+                <button type="submit" name="admin_priority" value="{{ forloop.counter }}"
+                        class="{% if item.admin_priority and forloop.counter <= item.admin_priority %}is-on{% endif %}"
+                        title="Priorité {{ forloop.counter }}/5">★</button>
+                {% endfor %}
+                {% if item.admin_priority %}
+                <button type="submit" name="admin_priority" value="" class="clear">Effacer</button>
+                {% endif %}
+              </form>
+            </div>
+
+            {% if item.can_notify_author %}
+            <form method="post" action="{% url 'notify_page_feedback_author' item.id %}" class="fb-panel">
+              {% csrf_token %}
+              <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+              <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+              <button type="submit" class="btn btn-primary">Informer l’auteur</button>
+            </form>
+            {% elif item.is_author_notified %}
+            <div class="fb-panel">
+              <p class="fb-notified">Auteur informé le {{ item.author_notified_at|date:"d/m/Y H:i" }}</p>
+            </div>
+            {% endif %}
+
+            {% if item.show_vote_admin %}
+            <div class="fb-panel is-vote">
+              <h3>Vote communauté</h3>
+              {% if item.vote_was_opened %}
+              <p style="font-size:.85rem">{{ item.vote_for_count }} pour · {{ item.vote_against_count }} contre</p>
+              {% endif %}
+              <form method="post" action="{% url 'open_page_feedback_vote' item.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+                <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+                <label for="vote-formulation-{{ item.id }}">Formulation</label>
+                <textarea id="vote-formulation-{{ item.id }}" name="formulation" rows="3" minlength="10" maxlength="2000" required>{{ item.vote_formulation }}</textarea>
+                <fieldset class="role-grid" style="margin-top:.5rem">
+                  <legend style="font-size:.8rem;color:var(--muted);margin-bottom:.25rem">Rôles appelés à voter</legend>
+                  {% for role in item.vote_role_choices %}
+                  <label>
+                    <input type="checkbox" name="vote_roles" value="{{ role.key }}" {% if role.checked %}checked{% endif %}>
+                    {{ role.label }}
+                  </label>
+                  {% endfor %}
+                </fieldset>
+                <button type="submit" class="btn btn-primary" style="margin-top:.5rem">
+                  {% if item.vote_was_opened %}Reformuler et soumettre{% else %}Soumettre au vote{% endif %}
+                </button>
+              </form>
+              {% if item.show_close_vote %}
+              <form method="post" action="{% url 'close_page_feedback_vote' item.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+                <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+                <button type="submit" class="btn btn-outline">Arrêter le vote</button>
+              </form>
+              {% elif item.show_reopen_vote %}
+              <form method="post" action="{% url 'reopen_page_feedback_vote' item.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+                <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+                <button type="submit" class="btn btn-outline">Rouvrir le vote</button>
+              </form>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      {% if page_feedback_show_treated %}Aucun retour traité.
+      {% elif page_feedback_show_in_progress %}Aucun retour en cours.
+      {% elif page_feedback_show_snoozed %}Aucun retour reporté.
+      {% else %}Aucun retour en attente.{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% if page_feedback_focus_id %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('{{ page_feedback_focus_id|escapejs }}');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+</script>
+{% endif %}
+{% endblock %}

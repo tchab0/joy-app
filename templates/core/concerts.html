@@ -1,23 +1,87 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Concerts — JOY{% endblock %}
+{% block og_title %}Concerts — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Concerts — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
+{% block og_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
+{% block twitter_description %}Agenda des concerts du Jazz Orchestra Yonnais à La Roche-sur-Yon et en Vendée — jazz, swing et big band.{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
 <style>
   .event-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; margin-bottom: 1px; display: grid; grid-template-columns: 80px 1fr; gap: 1.5rem; align-items: start; }
+  .event-card a.event-titre-link { color: inherit; text-decoration: none; }
+  .event-card a.event-titre-link:hover { color: var(--accent); }
   .event-date .day { font-family: var(--font-d); font-size: 2rem; font-weight: 700; color: var(--accent); display: block; line-height: 1; }
   .event-date .month { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
   .event-titre { font-weight: 600; font-size: 1.05rem; margin-bottom: .3rem; }
   .event-meta { font-size: .85rem; color: var(--muted); }
   .event-desc { margin-top: .75rem; font-size: .9rem; color: var(--muted); }
-  .event-map { margin-top:.85rem; width:80%; height:300px; border-radius:var(--r); border:1px solid var(--border); overflow:hidden; position:relative; }
-  .event-map iframe { height:calc(100% + 30px); margin-bottom:-30px; }
-  @media(max-width:600px){ .event-map { margin-left:calc(-80px - 1.5rem); width:calc(100% + 80px + 1.5rem); border-radius:0; } }
+  .event-card-actions {
+    margin-top: .75rem;
+    width: 80%;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: .35rem;
+  }
+  .event-share {
+    display: contents;
+  }
+  .event-share__btn,
+  .event-card-actions .btn-sm,
+  .event-card-actions .event-map__go {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: .35rem .4rem;
+    font-size: .65rem;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  button.event-share__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    font: inherit;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: var(--r);
+    cursor: pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+  button.event-share__btn:disabled { opacity: .55; cursor: wait; }
+  @media(max-width:600px){
+    .event-card-actions {
+      margin-left: calc(-80px - 1.5rem);
+      width: calc(100% + 80px + 1.5rem);
+      gap: .3rem;
+    }
+    .event-share__btn,
+    .event-card-actions .btn-sm,
+    .event-card-actions .event-map__go {
+      min-height: 40px;
+      padding: .3rem .25rem;
+      font-size: .6rem;
+      letter-spacing: .02em;
+    }
+  }
   .section-subtitle { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 1rem; font-weight: 600; }
   .passes { opacity: .7; }
   .badge { display:inline-block; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; padding:.15rem .5rem; border-radius:var(--r); margin-left:.5rem; vertical-align:middle; }
-  .badge-tentative { background:rgba(185,135,40,.12); color:#a07020; }
+  .badge-tentative { background:rgba(184,137,42,.12); color:var(--gold-text); }
   .badge-annule    { background:rgba(180,60,60,.12);  color:#b43c3c; }
   .btn-billets { display:inline-block; margin-top:.75rem; }
 </style>
+{% include "includes/_weather_styles.html" %}
 {% endblock %}
 {% block content %}
 <section class="section">
@@ -26,46 +90,52 @@
     <p class="section-subtitle">À venir</p>
     {% if prochains %}
       {% for e in prochains %}
-      <div class="event-card">
+      <article class="event-card">
         <div class="event-date">
-          <span class="day">{{ e.date_debut|date:"d" }}</span>
-          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          <time datetime="{{ e.date_debut|date:'c' }}">
+            <span class="day">{{ e.date_debut|date:"d" }}</span>
+            <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          </time>
         </div>
         <div>
-          <div class="event-titre">
-            {{ e.titre }}
+          <h2 class="event-titre">
+            <a class="event-titre-link" href="{{ e.get_absolute_url }}">{{ e.titre }}</a>
             {% if e.statut == 'tentative' %}<span class="badge badge-tentative">Date à confirmer</span>{% endif %}
             {% if e.statut == 'annule' %}<span class="badge badge-annule">Annulé</span>{% endif %}
-          </div>
-          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }} · {{ e.date_debut|date:"H\hi" }}</div>
-          {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
-          {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-billets">Billetterie →</a>{% endif %}
-          {% if e.venue.latitude %}
-          <div class="event-map" style="position:relative">
-            <iframe
-              src="https://www.openstreetmap.org/export/embed.html?bbox={{ e.bbox }}&layer=mapnik&mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}"
-              style="width:100%;height:100%;border:0;border-radius:var(--r)"
-              loading="lazy"
-              title="Carte du lieu"
-              referrerpolicy="no-referrer-when-downgrade">
-            </iframe>
-            <a href="https://www.openstreetmap.org/?mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}#map=15/{{ e.venue.latitude|stringformat:"f" }}/{{ e.venue.longitude|stringformat:"f" }}"
-               target="_blank" rel="noopener"
-               title="Voir en plein écran"
-               style="position:absolute;bottom:var(--space-2,8px);right:var(--space-2,8px);z-index:10;background:white;border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;display:flex;align-items:center;gap:4px;font-size:.75rem;color:#333;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              OSM
-            </a>
-            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);pointer-events:none;z-index:10">
-              <svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 24 14 24s14-14.25 14-24C28 6.27 21.73 0 14 0z" fill="var(--accent,#c94f3a)"/>
-                <circle cx="14" cy="14" r="6" fill="white"/>
-              </svg>
-            </div>
+          </h2>
+          {% if e.parent %}
+          <div class="event-meta" style="margin-top:.25rem">Dans : {{ e.parent.titre }}</div>
+          {% endif %}
+          {% if e.organisme %}
+          <div class="event-meta">Organisé par {{ e.organisme }}</div>
+          {% endif %}
+          <div class="event-meta">{{ e.lieu_affiche }} · {{ e.horaires_affiches }}</div>
+          {% include "includes/_weather.html" with weather=e.weather %}
+          {% if e.show_contact %}
+          <div class="event-meta" style="margin-top:.35rem">
+            Contact{% if e.contact_nom %} : {{ e.contact_nom }}{% endif %}
+            {% if e.contact_telephone %}
+              · <a href="tel:{{ e.contact_telephone }}" style="color:var(--accent)">{{ e.contact_telephone }}</a>
+            {% endif %}
+            {% if e.contact_email %}
+              · <a href="mailto:{{ e.contact_email }}" style="color:var(--accent)">{{ e.contact_email }}</a>
+            {% endif %}
           </div>
           {% endif %}
+          {% if e.description %}<div class="event-desc">{{ e.description }}</div>{% endif %}
+          <div class="event-card-actions">
+            {% if e.show_nav_go %}
+            {% include "includes/_nav_go_button.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" go_label=e.venue.nom go_text="J'y vais" go_class="event-map__go btn btn-primary btn-sm" %}
+            {% endif %}
+            <a href="{{ e.get_absolute_url }}" class="btn btn-outline btn-sm">Détails</a>
+            {% if e.url_billets %}<a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Billetterie →</a>{% endif %}
+            {% include "includes/_concert_share.html" with event=e %}
+          </div>
+          {% if e.venue.latitude %}
+          {% include "includes/_event_map.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" map_id=e.pk %}
+          {% endif %}
         </div>
-      </div>
+      </article>
       {% endfor %}
     {% else %}
       <p style="color:var(--muted);font-style:italic;padding:2rem 0">Prochains concerts à venir — revenez bientôt !</p>
@@ -74,19 +144,28 @@
     <p class="section-subtitle" style="margin-top:3rem">Passés</p>
     <div class="passes">
       {% for e in passes %}
-      <div class="event-card">
+      <article class="event-card">
         <div class="event-date">
-          <span class="day">{{ e.date_debut|date:"d" }}</span>
-          <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          <time datetime="{{ e.date_debut|date:'c' }}">
+            <span class="day">{{ e.date_debut|date:"d" }}</span>
+            <span class="month">{{ e.date_debut|date:"M" }}<br>{{ e.date_debut|date:"Y" }}</span>
+          </time>
         </div>
         <div>
-          <div class="event-titre">{{ e.titre }}</div>
-          <div class="event-meta">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
+          <h2 class="event-titre">
+            <a class="event-titre-link" href="{{ e.get_absolute_url }}">{{ e.titre }}</a>
+          </h2>
+          {% if e.parent %}<div class="event-meta">Dans : {{ e.parent.titre }}</div>{% endif %}
+          {% if e.organisme %}<div class="event-meta">Organisé par {{ e.organisme }}</div>{% endif %}
+          <div class="event-meta">{{ e.lieu_affiche }}</div>
         </div>
-      </div>
+      </article>
       {% endfor %}
     </div>
     {% endif %}
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'core/event-map.js' %}?v=4"></script>
 {% endblock %}

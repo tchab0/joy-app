@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+{% load page_lead %}
+
+{% block title %}{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %} — Atelier{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+{{ solo_pool|json_script:"solo-pool-data" }}
+{{ solo_selected|json_script:"solo-selected-data" }}
+
+<div class="pl pl--wide">
+  {% include "planning/_module_nav.html" with active="atelier" %}
+  {% if piece %}
+  <div class="pl-nav-context pl-nav-context--staff">
+    <a href="{% url 'repertoire:detail' piece.slug %}">Voir fiche</a>
+  </div>
+  {% endif %}
+
+  <header class="pl-head">
+    <h1>{% if piece %}{{ piece.title }}{% else %}Nouveau morceau{% endif %}</h1>
+    {% page_lead "repertoire.staff_piece_form" class="page-lead--in-head" %}
+      Glissez musiciens / postes vers l’ordre des solos.
+    {% endpage_lead %}
+  </header>
+
+  <form method="post" enctype="multipart/form-data" class="rep-setlist-form" x-data="soloBuilder()">
+    {% csrf_token %}
+    <div class="rep-form-stack rep-form-stack--wide" style="margin-bottom:0">
+      {% for field in form %}
+      {% if field.name != "chorus_order" %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<p class="rep-muted" style="color:var(--accent)">{{ field.errors|striptags }}</p>{% endif %}
+        {% if field.help_text %}<p class="rep-muted">{{ field.help_text }}</p>{% endif %}
+        {% if field.name == "audio_recording" and piece.audio_recording %}
+        <p class="rep-muted" style="margin-top:.35rem">
+          Fichier actuel :
+          <a href="{% url 'repertoire:piece_audio' piece.slug %}" style="color:var(--accent)" target="_blank" rel="noopener">écouter</a>
+        </p>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="rep-builder" aria-label="Ordre des solos">
+      <section class="rep-builder__pane" aria-labelledby="rep-solo-pool-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-solo-pool-title">Musiciens / postes</h2>
+          <span class="rep-muted" x-text="available.length + ' disponible' + (available.length > 1 ? 's' : '')"></span>
+        </div>
+
+        <div class="rep-builder__filters">
+          <label class="rep-sr-only" for="rep-solo-search">Filtrer</label>
+          <input id="rep-solo-search" class="pl-input" type="search"
+                 placeholder="Rechercher…" x-model="query" autocomplete="off">
+        </div>
+
+        <ul class="rep-builder__list"
+            @dragover.prevent="onPoolDragOver($event)"
+            @drop.prevent="onPoolDrop($event)">
+          <template x-for="entry in available" :key="entry.id">
+            <li class="rep-builder__item"
+                draggable="true"
+                @dragstart="onPoolDragStart($event, entry)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <div class="rep-builder__body">
+                <span class="rep-builder__title" x-text="entry.name || entry.poste"></span>
+                <span class="rep-muted" style="font-size:.8rem"
+                      x-show="entry.name && entry.poste"
+                      x-text="entry.poste"></span>
+              </div>
+              <button type="button" class="rep-builder__action"
+                      @click="addEntry(entry)"
+                      @mousedown.stop
+                      :aria-label="'Ajouter ' + entry.title">+</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="available.length === 0" x-cloak>
+            Aucun musicien / poste à afficher.
+          </li>
+        </ul>
+      </section>
+
+      <section class="rep-builder__pane rep-builder__pane--setlist" aria-labelledby="rep-solo-order-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-solo-order-title">Ordre des solos</h2>
+          <span class="rep-muted" x-text="selected.length + ' solo' + (selected.length !== 1 ? 's' : '')"></span>
+        </div>
+        <p class="rep-builder__hint rep-muted">Déposez ici · glissez pour réordonner</p>
+
+        <ul class="rep-builder__list rep-builder__list--set"
+            :class="{ 'is-drag-over': dropTarget === 'set' }"
+            @dragover.prevent="onSetDragOver($event)"
+            @drop.prevent="onSetDrop($event)"
+            @dragleave="onSetDragLeave($event)">
+          <template x-for="(item, index) in selected" :key="item.id">
+            <li class="rep-builder__item rep-builder__item--set"
+                :class="{ 'is-dragging': dragKind === 'set' && dragIndex === index }"
+                draggable="true"
+                @dragstart="onSetDragStart($event, index)"
+                @dragover.prevent="onSetItemDragOver($event, index)"
+                @drop.prevent="onSetDrop($event, index)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__pos" x-text="index + 1"></span>
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <div class="rep-builder__body">
+                <span class="rep-builder__title" x-text="item.name || item.poste || item.title"></span>
+                <span class="rep-muted" style="font-size:.8rem"
+                      x-show="item.name && item.poste"
+                      x-text="item.poste"></span>
+              </div>
+              <button type="button" class="rep-builder__action rep-builder__action--remove"
+                      @click="removeAt(index)"
+                      @mousedown.stop
+                      :aria-label="'Retirer ' + item.title">×</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="selected.length === 0" x-cloak>
+            Glissez des musiciens / postes ici, ou touchez « + ».
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <input type="hidden" name="chorus_order" :value="chorusText">
+
+    <div class="rep-form-actions">
+      <button type="submit" class="pl-btn pl-btn--primary">Enregistrer</button>
+    </div>
+  </form>
+
+  {% if piece %}
+  <section class="pl-section" style="margin-top:2rem">
+    <h2>Partitions existantes</h2>
+    {% with missing=piece.missing_big_band_labels %}
+    {% if missing %}
+    <p class="rep-missing-alert" role="status">
+      <span class="rep-alert-dot" aria-hidden="true"></span>
+      {{ missing|length }} poste{{ missing|length|pluralize }} big band sans partition :
+      {{ missing|join:", " }}.
+    </p>
+    {% endif %}
+    {% endwith %}
+    {% if parts %}
+    <ul class="rep-part-list">
+      {% for part in parts %}
+      <li>
+        <span>
+          <strong>{{ part.get_poste_display }}</strong>
+          {% if part.source_name %}<span class="rep-muted"> · {{ part.source_name }}</span>{% endif %}
+        </span>
+        <span class="rep-part-list__actions">
+          {% include "repertoire/_pdf_preview_icon.html" with part=part title="Aperçu PDF" %}
+          <a href="{% url 'repertoire:part_pdf' part.pk %}">PDF</a>
+          <form method="post" action="{% url 'repertoire:staff_part_delete' part.pk %}" onsubmit="return confirm('Supprimer cette partition ?');">
+            {% csrf_token %}
+            <button type="submit" class="pl-btn pl-btn--no">Suppr.</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="pl-empty">Aucune partition encore.</p>
+    {% endif %}
+  </section>
+
+  <section class="rep-block">
+    <h3>Upload PDF (1 poste)</h3>
+    <form method="post" action="{% url 'repertoire:staff_part_upload' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
+      {% csrf_token %}
+      {% for field in upload_form %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <button type="submit" class="pl-btn pl-btn--primary">Enregistrer le PDF</button>
+    </form>
+  </section>
+
+  <section class="rep-block">
+    <h3>Images JPG/PNG → PDF</h3>
+    <form method="post" action="{% url 'repertoire:staff_part_images' piece.slug %}" enctype="multipart/form-data" class="rep-form-stack">
+      {% csrf_token %}
+      <div>
+        <label for="{{ images_form.poste.id_for_label }}">{{ images_form.poste.label }}</label>
+        {{ images_form.poste }}
+      </div>
+      <div>
+        <label for="id_images">Images (ordre = ordre des pages)</label>
+        <input class="pl-input" type="file" name="images" id="id_images" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple required>
+      </div>
+      <button type="submit" class="pl-btn pl-btn--primary">Fusionner en PDF</button>
+    </form>
+  </section>
+
+  <section class="rep-block">
+    <h3>Découper un PDF multi-parties</h3>
+    <p class="rep-muted" style="margin-bottom:.75rem">
+      Éditeur graphique : miniatures, une plage contiguë par poste, enregistrement groupé.
+    </p>
+    <p class="rep-form-actions" style="margin-top:0">
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_piece_decoupe' piece.slug %}">Ouvrir la découpe</a>
+    </p>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  function readJson(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
+  }
+
+  window.soloBuilder = function () {
+    const initialPool = readJson('solo-pool-data', []);
+    const initialSelected = readJson('solo-selected-data', []);
+    return {
+      pool: initialPool.map(p => ({
+        id: p.id,
+        name: p.name || '',
+        poste: p.poste || '',
+        title: p.title || p.poste || p.name || '',
+      })),
+      selected: initialSelected.map(p => ({
+        id: p.id,
+        name: p.name || '',
+        poste: p.poste || '',
+        title: p.title || p.poste || p.name || '',
+      })),
+      query: '',
+      dragKind: null,
+      dragEntry: null,
+      dragIndex: null,
+      dropTarget: null,
+
+      get selectedIds() {
+        return new Set(this.selected.map(s => s.id));
+      },
+
+      get available() {
+        const q = this.query.trim().toLowerCase();
+        const ids = this.selectedIds;
+        return this.pool.filter(p => {
+          if (ids.has(p.id)) return false;
+          if (!q) return true;
+          const hay = ((p.title || '') + ' ' + (p.name || '') + ' ' + (p.poste || '')).toLowerCase();
+          return hay.includes(q);
+        });
+      },
+
+      get chorusText() {
+        return this.selected
+          .map((item, i) => (i + 1) + '. ' + (item.title || item.name || item.poste || ''))
+          .join('\n');
+      },
+
+      addEntry(entry) {
+        if (this.selectedIds.has(entry.id)) return;
+        this.selected.push({
+          id: entry.id,
+          name: entry.name || '',
+          poste: entry.poste || '',
+          title: entry.title,
+        });
+      },
+
+      removeAt(index) {
+        this.selected.splice(index, 1);
+      },
+
+      onPoolDragStart(event, entry) {
+        this.dragKind = 'pool';
+        this.dragEntry = entry;
+        this.dragIndex = null;
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData('text/plain', String(entry.id));
+      },
+
+      onSetDragStart(event, index) {
+        this.dragKind = 'set';
+        this.dragEntry = this.selected[index];
+        this.dragIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(this.selected[index].id));
+      },
+
+      onDragEnd() {
+        this.dragKind = null;
+        this.dragEntry = null;
+        this.dragIndex = null;
+        this.dropTarget = null;
+      },
+
+      onSetDragOver(event) {
+        this.dropTarget = 'set';
+        event.dataTransfer.dropEffect = this.dragKind === 'pool' ? 'copy' : 'move';
+      },
+
+      onSetDragLeave(event) {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          this.dropTarget = null;
+        }
+      },
+
+      onSetItemDragOver(event, index) {
+        this.dropTarget = 'set';
+        if (this.dragKind !== 'set' || this.dragIndex === null || this.dragIndex === index) return;
+        const item = this.selected.splice(this.dragIndex, 1)[0];
+        this.selected.splice(index, 0, item);
+        this.dragIndex = index;
+      },
+
+      onSetDrop(event, index) {
+        event.stopPropagation();
+        if (this.dragKind === 'pool' && this.dragEntry) {
+          const insertAt = typeof index === 'number' ? index : this.selected.length;
+          if (!this.selectedIds.has(this.dragEntry.id)) {
+            this.selected.splice(insertAt, 0, {
+              id: this.dragEntry.id,
+              name: this.dragEntry.name || '',
+              poste: this.dragEntry.poste || '',
+              title: this.dragEntry.title,
+            });
+          }
+        }
+        this.onDragEnd();
+      },
+
+      onPoolDragOver(event) {
+        if (this.dragKind === 'set') {
+          event.dataTransfer.dropEffect = 'move';
+        }
+      },
+
+      onPoolDrop() {
+        if (this.dragKind === 'set' && this.dragIndex !== null) {
+          this.removeAt(this.dragIndex);
+        }
+        this.onDragEnd();
+      },
+    };
+  };
+})();
+</script>
+{% endblock %}

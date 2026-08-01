@@ -1,0 +1,54 @@
+from django.urls import path
+
+from . import views
+from . import views_push
+from . import views_tour_editor
+
+urlpatterns = [
+    path("connexion/", views.login_view, name="account_login"),
+    path("connexion/code/", views.login_otp_view, name="account_login_otp"),
+    path("connexion/2fa/", views.login_2fa_view, name="account_login_2fa"),
+    path("deconnexion/", views.logout_view, name="account_logout"),
+    path("", views.account_home, name="account_home"),
+    path("guide/terminer/", views.tour_complete, name="account_tour_complete"),
+    path("aides/masquer/", views.page_lead_dismiss, name="account_page_lead_dismiss"),
+    path("guides/", views_tour_editor.admin_tours, name="admin_tours"),
+    path(
+        "guides/enregistrer/",
+        views_tour_editor.admin_tours_save,
+        name="admin_tours_save",
+    ),
+    path("securite/", views.security_view, name="account_security"),
+    path("securite/totp/demarrer/", views.totp_setup_start, name="account_totp_start"),
+    path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),
+    path("securite/totp/desactiver/", views.totp_disable, name="account_totp_disable"),
+    path("adherent/", views.member_area, name="account_member_area"),
+    path(
+        "notifications/",
+        views.account_notifications,
+        name="account_notifications",
+    ),
+    path(
+        "notifications/tout-lu/",
+        views.account_notifications_mark_all_read,
+        name="account_notifications_mark_all_read",
+    ),
+    path(
+        "notifications/<int:pk>/lu/",
+        views.account_notification_mark_read,
+        name="account_notification_mark_read",
+    ),
+    path(
+        "notifications/<int:pk>/repondu/",
+        views.account_notification_mark_responded,
+        name="account_notification_mark_responded",
+    ),
+    path(
+        "notifications/<int:pk>/ouvrir/",
+        views.account_notification_open,
+        name="account_notification_open",
+    ),
+    path("push/vapid-key/", views_push.push_vapid_public_key, name="push_vapid_key"),
+    path("push/subscribe/", views_push.push_subscription, name="push_subscribe"),
+    path("push/status/", views_push.push_status, name="push_status"),
+]

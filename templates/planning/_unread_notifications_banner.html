@@ -1,0 +1,167 @@
+{# Bannière Coulisses : résumé compact des non lus (chat groupé + autres). #}
+{% if show_coulisses_unread_banner and unread_inbox %}
+<style>
+  .pl-notif-banner {
+    margin: 0 auto;
+    max-width: 1100px;
+    padding: .75rem 1rem .85rem;
+    border-bottom: 1px solid rgba(var(--accent-rgb), .14);
+    background: rgba(var(--accent-rgb), .05);
+    color: var(--text);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .pl-notif-banner__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem .75rem;
+  }
+  .pl-notif-banner__title {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0;
+    color: var(--text);
+  }
+  .pl-notif-banner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+  }
+  .pl-notif-banner__actions .btn {
+    min-height: 44px;
+    padding: .45rem .85rem;
+    font-size: .85rem;
+  }
+  .pl-notif-banner__body {
+    margin: .55rem 0 0;
+    font-size: .92rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+  .pl-notif-banner__body a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-notif-banner__body a:hover,
+  .pl-notif-banner__body a:focus-visible {
+    color: var(--accent-h);
+  }
+  .pl-notif-banner__sep {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .pl-notif-banner__chat {
+    margin: .55rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+  .pl-notif-banner__chat li {
+    font-size: .9rem;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .pl-notif-banner__chat a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-notif-banner__chat a:hover,
+  .pl-notif-banner__chat a:focus-visible {
+    color: var(--accent-h);
+  }
+  .pl-notif-banner__preview {
+    display: block;
+    margin-top: .15rem;
+    color: var(--muted);
+    font-size: .85rem;
+    font-weight: 400;
+  }
+  .pl-notif-banner__other {
+    margin: .55rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+  }
+  .pl-notif-banner__other li {
+    font-size: .9rem;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .pl-notif-banner__other a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-notif-banner__other-meta {
+    color: var(--muted);
+    font-size: .82rem;
+  }
+</style>
+<aside class="pl-notif-banner"
+       role="region"
+       aria-label="Notifications non lues">
+  <div class="pl-notif-banner__head">
+    <h2 class="pl-notif-banner__title">
+      {% if unread_inbox_count == 1 %}
+        1 notification non lue
+      {% else %}
+        {{ unread_inbox_count }} notifications non lues
+      {% endif %}
+    </h2>
+    <div class="pl-notif-banner__actions">
+      <form method="post" action="{% url 'account_notifications_mark_all_read' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn btn-outline">Tout marquer lu</button>
+      </form>
+      <a class="btn btn-outline" href="{% url 'account_notifications' %}">Toutes</a>
+    </div>
+  </div>
+
+  {% if unread_inbox_banner.chat_total %}
+  <p class="pl-notif-banner__body">
+    {% if unread_inbox_banner.chat_total == 1 %}
+      1 message non lu
+    {% else %}
+      {{ unread_inbox_banner.chat_total }} messages non lus
+    {% endif %}
+  </p>
+  <ul class="pl-notif-banner__chat">
+    {% for g in unread_inbox_banner.chat_groups %}
+    <li>
+      <a href="{% url 'account_notification_open' g.open_pk %}">{{ g.label }}{% if g.count > 1 %} ({{ g.count }}){% endif %}</a>
+      {% if g.preview %}<span class="pl-notif-banner__preview">{{ g.preview }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if unread_inbox_banner.other %}
+  <ul class="pl-notif-banner__other">
+    {% for item in unread_inbox_banner.other %}
+    <li>
+      {% if item.url %}
+        <a href="{% url 'account_notification_open' item.pk %}">{{ item.title }}</a>
+      {% else %}
+        {{ item.title }}
+      {% endif %}
+      {% if item.requires_response and item.is_unanswered %}
+        <span class="pl-notif-banner__other-meta"> · À répondre</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</aside>
+{% endif %}

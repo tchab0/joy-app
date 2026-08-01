@@ -9,7 +9,21 @@
   label { font-size:.8rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   .field-input { width:100%; padding:.6rem .85rem; border:1.5px solid var(--border); border-radius:var(--r); background:var(--bg); font-family:var(--font-b); font-size:.95rem; color:var(--text); transition:border-color var(--trans); }
   .field-input:focus { outline:none; border-color:var(--accent); }
-  .form-actions { display:flex; gap:1rem; margin-top:1.5rem; }
+  .form-actions { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1.5rem; align-items:center; }
+  .event-share { display:inline-flex; flex-wrap:wrap; gap:.35rem; align-items:center; }
+  .event-share__item { display:inline-flex; align-items:center; gap:.3rem; }
+  .event-share__count {
+    font-size:.72rem; font-weight:600; color:var(--muted); min-width:1ch;
+    font-variant-numeric:tabular-nums; line-height:1;
+  }
+  .btn-sm, .event-share__btn { padding:.35rem .75rem; font-size:.72rem; min-height:36px; display:inline-flex; align-items:center; }
+  button.event-share__btn {
+    appearance:none; -webkit-appearance:none; background:transparent; color:var(--accent);
+    border:1.5px solid var(--accent); font:inherit; letter-spacing:.04em; text-transform:uppercase;
+    font-weight:600; border-radius:var(--r); cursor:pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background:var(--accent); color:#fff; }
+  button.event-share__btn:disabled { opacity:.55; cursor:wait; }
   .errorlist { list-style:none; color:#b43c3c; font-size:.82rem; margin-top:.25rem; }
 </style>
 {% endblock %}
@@ -55,6 +69,16 @@
             {{ form.statut.errors }}
           </div>
           <div class="form-group">
+            <label for="{{ form.parent.id_for_label }}">{{ form.parent.label }}</label>
+            {{ form.parent }}
+            {{ form.parent.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.organisme.id_for_label }}">{{ form.organisme.label }}</label>
+            {{ form.organisme }}
+            {{ form.organisme.errors }}
+          </div>
+          <div class="form-group">
             <label for="{{ form.url_billets.id_for_label }}">{{ form.url_billets.label }}</label>
             {{ form.url_billets }}
             {{ form.url_billets.errors }}
@@ -63,6 +87,28 @@
             <label style="display:flex;align-items:center;gap:.5rem;text-transform:none;font-size:.9rem;cursor:pointer">
               {{ form.public }} Visible sur le site public
             </label>
+            <p style="margin:.35rem 0 0;font-size:.8rem;color:var(--muted);line-height:1.35">
+              Seul endroit pour publier / dépublier. L’effectif (roster) gère organisme et parent.
+            </p>
+          </div>
+          <p class="form-group full" style="margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">
+            Coordonnées du contact
+            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)"> — hors répétitions</span>
+          </p>
+          <div class="form-group">
+            <label for="{{ form.contact_nom.id_for_label }}">{{ form.contact_nom.label }}</label>
+            {{ form.contact_nom }}
+            {{ form.contact_nom.errors }}
+          </div>
+          <div class="form-group">
+            <label for="{{ form.contact_telephone.id_for_label }}">{{ form.contact_telephone.label }}</label>
+            {{ form.contact_telephone }}
+            {{ form.contact_telephone.errors }}
+          </div>
+          <div class="form-group full">
+            <label for="{{ form.contact_email.id_for_label }}">{{ form.contact_email.label }}</label>
+            {{ form.contact_email }}
+            {{ form.contact_email.errors }}
           </div>
           <div class="form-group full">
             <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
@@ -73,6 +119,10 @@
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">{% if instance %}Enregistrer{% else %}Créer le concert{% endif %}</button>
           <a href="{% url 'admin_concerts' %}" class="btn btn-outline">Annuler</a>
+          {% if instance and instance.public and instance.slug %}
+            {% include "includes/_concert_share.html" with event=instance show_share_counts=True %}
+            <a href="{% url 'concert_og_image' instance.slug %}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Prévisualiser l’image</a>
+          {% endif %}
         </div>
       </form>
     </div>

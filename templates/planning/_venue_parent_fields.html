@@ -1,0 +1,113 @@
+{% with p=id_prefix|default:"ev" %}
+<div>
+  <label>Lieu</label>
+  <div class="pl-mode-toggle" role="group" aria-label="Choisir ou créer un lieu">
+    <button type="button" class="pl-mode-toggle__btn"
+            :class="{ 'is-active': venueMode === 'existing' }"
+            @click="venueMode = 'existing'">Existant</button>
+    <button type="button" class="pl-mode-toggle__btn"
+            :class="{ 'is-active': venueMode === 'new' }"
+            @click="venueMode = 'new'">Nouveau</button>
+  </div>
+  <input type="hidden" name="venue_mode" :value="venueMode">
+  <div x-show="venueMode === 'existing'" x-cloak>
+    <label for="{{ p }}_venue" class="visually-hidden">Lieu existant</label>
+    <select name="venue_id" id="{{ p }}_venue" :required="venueMode === 'existing'"
+            @change="window.PlVenueMap && PlVenueMap.onSelect($el.closest('form').querySelector('[data-pl-venue-map=\'{{ p }}\']'), $event.target)">
+      <option value="">Choisir…</option>
+      {% for v in venues %}
+      <option value="{{ v.pk }}"
+              data-lat="{{ v.latitude|default_if_none:'' }}"
+              data-lng="{{ v.longitude|default_if_none:'' }}"
+              data-ville="{{ v.ville }}">{{ v.nom }} — {{ v.ville }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div x-show="venueMode === 'new'" x-cloak style="display:grid;gap:.75rem">
+    <div>
+      <label for="{{ p }}_venue_ville">Ville</label>
+      <input type="text" name="venue_ville" id="{{ p }}_venue_ville"
+             placeholder="ex. La Roche-sur-Yon"
+             :required="venueMode === 'new'"
+             autocomplete="address-level2">
+    </div>
+    <div>
+      <label for="{{ p }}_venue_nom">Nom du lieu</label>
+      <input type="text" name="venue_nom" id="{{ p }}_venue_nom"
+             placeholder="ex. Salle des fêtes"
+             :required="venueMode === 'new'">
+    </div>
+    <div>
+      <label for="{{ p }}_venue_adresse">Adresse <span class="pl-row__meta">(optionnel)</span></label>
+      <input type="text" name="venue_adresse" id="{{ p }}_venue_adresse"
+             placeholder="ex. 12 rue de la Musique"
+             autocomplete="street-address">
+    </div>
+  </div>
+
+  <div class="pl-venue-map-block" data-pl-venue-map="{{ p }}"
+       x-init="
+         const sync = () => $nextTick(() => window.PlVenueMap && PlVenueMap.sync($el, venueMode));
+         $watch('venueMode', sync);
+         if (typeof modalOpen !== 'undefined') {
+           $watch('modalOpen', (open) => { if (open) sync(); });
+         }
+         sync();
+       ">
+    <input type="hidden" name="venue_latitude" id="{{ p }}_venue_lat" value="">
+    <input type="hidden" name="venue_longitude" id="{{ p }}_venue_lng" value="">
+    <p class="pl-row__meta pl-venue-map-hint" data-pl-venue-map-hint style="margin:0">
+      La ville est obligatoire. La carte sert à préciser l’adresse (optionnel).
+    </p>
+    <div class="pl-venue-map-toolbar">
+      <button type="button" class="pl-btn pl-venue-map-geocode"
+              @click="window.PlVenueMap && PlVenueMap.centerOnCity($el.closest('[data-pl-venue-map]'))">
+        Centrer sur la ville
+      </button>
+      <button type="button" class="pl-btn pl-venue-map-clear"
+              style="display:none"
+              data-pl-venue-map-clear
+              @click="window.PlVenueMap && PlVenueMap.clearPrecision($el.closest('[data-pl-venue-map]'))">
+        Retirer la précision
+      </button>
+    </div>
+    <div class="pl-venue-map" id="{{ p }}_venue_map" role="img" aria-label="Carte du lieu (précision optionnelle)"></div>
+    <p class="pl-row__meta pl-venue-map-coords" data-pl-venue-map-coords>Précision non renseignée (optionnel)</p>
+  </div>
+</div>
+
+{% if show_parent|default:True %}
+<div>
+  <label>Événement parent <span class="pl-row__meta">(optionnel)</span></label>
+  <div class="pl-mode-toggle" role="group" aria-label="Événement parent">
+    <button type="button" class="pl-mode-toggle__btn"
+            :class="{ 'is-active': parentMode === 'none' }"
+            @click="parentMode = 'none'">Aucun</button>
+    <button type="button" class="pl-mode-toggle__btn"
+            :class="{ 'is-active': parentMode === 'existing' }"
+            @click="parentMode = 'existing'">Existant</button>
+    <button type="button" class="pl-mode-toggle__btn"
+            :class="{ 'is-active': parentMode === 'new' }"
+            @click="parentMode = 'new'">Nouveau</button>
+  </div>
+  <input type="hidden" name="parent_mode" :value="parentMode">
+  <div x-show="parentMode === 'existing'" x-cloak>
+    <label for="{{ p }}_parent" class="visually-hidden">Événement parent existant</label>
+    <select name="parent_id" id="{{ p }}_parent">
+      <option value="">— Choisir… —</option>
+      {% for p_ev in parent_events %}
+      <option value="{{ p_ev.pk }}">{{ p_ev.titre }} ({{ p_ev.date_debut|date:"d/m/Y" }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div x-show="parentMode === 'new'" x-cloak>
+    <label for="{{ p }}_parent_titre" class="visually-hidden">Titre du nouvel événement parent</label>
+    <input type="text" name="parent_titre" id="{{ p }}_parent_titre"
+           placeholder="ex. Festival Jazz en Ville 2026"
+           :required="parentMode === 'new'">
+  </div>
+</div>
+{% else %}
+<input type="hidden" name="parent_mode" value="none">
+{% endif %}
+{% endwith %}

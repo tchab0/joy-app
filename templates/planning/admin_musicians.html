@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Gestion des musiciens — JOY{% endblock %}
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<style>
+  .admin-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--r); overflow:hidden; }
+  .admin-table th { background:var(--text); color:rgba(255,255,255,.7); font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; text-align:left; }
+  .admin-table td { padding:.85rem 1rem; border-bottom:1px solid var(--border); font-size:.9rem; vertical-align:middle; color:var(--text); }
+  .admin-table tr:last-child td { border-bottom:none; }
+  .admin-table tr:hover td { background:rgba(0,0,0,.02); }
+  .admin-table .muted { color:var(--muted); font-size:.82rem; }
+  .badge { display:inline-block; font-size:.7rem; font-weight:600; letter-spacing:.04em; padding:.2rem .5rem; border-radius:var(--r); margin:.1rem .15rem .1rem 0; }
+  .badge-tit { background:rgba(42,107,60,.12); color:var(--ok); }
+  .badge-rem { background:rgba(184,137,42,.14); color:var(--gold-text); }
+  .badge-off { background:rgba(0,0,0,.06); color:var(--muted); }
+  .row-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .btn-sm { padding:.4rem .85rem; font-size:.78rem; min-height:44px; }
+  .btn-danger { background:transparent; color:#b43c3c; border:1.5px solid #b43c3c; }
+  .btn-danger:hover { background:#b43c3c; color:#fff; }
+  .empty-state { padding:3rem 1.5rem; text-align:center; color:var(--muted); font-style:italic; background:var(--surface); border-radius:var(--r); }
+  @media (max-width:720px) {
+    .admin-table thead { display:none; }
+    .admin-table, .admin-table tbody, .admin-table tr, .admin-table td { display:block; width:100%; }
+    .admin-table tr { border-bottom:1px solid var(--border); padding:.75rem 0; }
+    .admin-table td { border:none; padding:.35rem 1rem; }
+    .admin-table td::before { content:attr(data-label); display:block; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:.15rem; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pl">
+  <header class="pl-head" data-tour="staff-musiciens">
+    <div class="pl-head__row">
+      <div>
+        <h1>Musiciens</h1>
+        {% page_lead "planning.admin_musicians" class="page-lead--in-head" %}
+          Comptes, postes titulaires et remplaçants.
+        {% endpage_lead %}
+      </div>
+      <a href="{% url 'planning:admin_musician_add' %}" class="btn btn-primary">+ Ajouter</a>
+    </div>
+  </header>
+
+  {% include "planning/_module_nav.html" with active="musiciens" %}
+
+  {% if profiles %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Coordonnées</th>
+        <th>Pupitre</th>
+        <th>Rôles</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr>
+        <td data-label="Nom">
+          <strong>{{ p.user.last_name }} {{ p.user.first_name }}</strong>
+          {% if not p.user.is_active %}<span class="badge badge-off">inactif</span>{% endif %}
+        </td>
+        <td data-label="Coordonnées">
+          {% if p.user.email %}<div>{{ p.user.email }}</div>{% endif %}
+          {% if p.user.phone %}<div class="muted">{{ p.user.phone }}</div>{% elif not p.user.email %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td data-label="Pupitre">{{ p.section|default:"—" }}</td>
+        <td data-label="Rôles">
+          {% if p.poste_titulaire %}
+          <span class="badge badge-tit">Tit. {{ p.get_poste_titulaire_display }}</span>
+          {% endif %}
+          {% for label in p.postes_remplacant_display %}
+          <span class="badge badge-rem">Remp. {{ label }}</span>
+          {% endfor %}
+          {% if not p.poste_titulaire and not p.postes_remplacant %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td data-label="">
+          <div class="row-actions">
+            <a href="{% url 'planning:admin_musician_edit' p.pk %}" class="btn btn-outline btn-sm">Modifier</a>
+            <form method="post" action="{% url 'planning:admin_musician_remove' p.pk %}" onsubmit="return confirm('Retirer ce musicien de l’orchestre ?')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Retirer</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">Aucun musicien enregistré. <a href="{% url 'planning:admin_musician_add' %}">Ajouter le premier →</a></div>
+  {% endif %}
+</div>
+{% endblock %}

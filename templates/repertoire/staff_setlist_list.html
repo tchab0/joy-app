@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load page_lead %}
+
+{% block title %}Setlists — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  <header class="pl-head">
+    <div class="pl-head__row">
+      <div>
+        <h1>Setlists</h1>
+        {% page_lead "repertoire.staff_setlists" class="page-lead--in-head" %}
+          Programmes liés aux événements — visibles par les musiciens sur la fiche de l’événement.
+        {% endpage_lead %}
+      </div>
+      <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}">+ Nouvelle</a>
+    </div>
+  </header>
+
+  {% include "planning/_module_nav.html" with active="setlists" %}
+
+  {% if setlists %}
+  <section class="pl-section">
+    {% for s in setlists %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'repertoire:staff_setlist_edit' s.pk %}">{{ s.title }}</a>
+        <p class="pl-row__meta">
+          {% if s.event %}{{ s.event.titre }} · {{ s.event.date_debut|date:"d/m/Y" }}{% else %}Sans événement{% endif %}
+          {% if s.is_active %} · active{% else %} · inactive{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <a class="pl-btn" href="{% url 'repertoire:staff_setlist_edit' s.pk %}">Éditer</a>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% else %}
+  <p class="pl-empty">Aucune setlist.</p>
+  {% endif %}
+</div>
+{% endblock %}

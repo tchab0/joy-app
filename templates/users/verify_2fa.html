@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Double authentification — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .auth-wrap { max-width: 480px; margin: 0 auto; }
+  .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 2rem; margin-bottom: 1.25rem; }
+  .form-group { margin-bottom: 1.1rem; }
+  .form-group label { display: block; font-size: .8rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: .35rem; }
+  .otp-input, .form-group input[type=text] { width: 100%; padding: .75rem; border: 1px solid var(--border); border-radius: var(--r); font-size: 1.3rem; letter-spacing: .2em; text-align: center; background: var(--bg); }
+  .channel-list { list-style: none; }
+  .channel-list li { margin: .4rem 0; }
+  .hint { color: var(--muted); margin-bottom: 1rem; }
+  .messages { margin-bottom: 1rem; }
+  .messages li { list-style: none; padding: .75rem 1rem; border-radius: var(--r); border: 1px solid var(--border); margin-bottom: .5rem; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container auth-wrap">
+    <h1 class="section-title">Double authentification</h1>
+    {% if messages %}<ul class="messages">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+
+    <div class="auth-card">
+      {% if challenge.channel == "app" %}
+        <p class="hint">Ouvrez votre application d’authentification et saisissez le code à 6 chiffres.</p>
+      {% else %}
+        <p class="hint">Code envoyé vers {{ challenge.destination_masked }} ({{ challenge.channel }}).</p>
+      {% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="verify">
+        {{ otp_form.challenge_id }}
+        {{ otp_form.pending_token }}
+        <div class="form-group">
+          <label for="id_code">Code</label>
+          {{ otp_form.code }}
+        </div>
+        <button type="submit" class="btn btn-primary">Valider</button>
+      </form>
+    </div>
+
+    {% if channels|length > 1 %}
+    <div class="auth-card">
+      <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.75rem">Autre canal</h2>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="switch">
+        <ul class="channel-list">
+          {% for radio in channel_form.channel %}
+            <li>{{ radio.tag }} <label for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label></li>
+          {% endfor %}
+        </ul>
+        <button type="submit" class="btn btn-outline">Utiliser ce canal</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

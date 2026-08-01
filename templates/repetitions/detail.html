@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.titre }} — Répétition{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<style>
+  /* Compact notification landing: presence + roadmap in first viewport */
+  .pl.rep-detail { padding-top: .85rem; padding-bottom: 3rem; }
+  .pl.rep-detail .pl-accept__head { margin-bottom: .5rem; }
+  .pl.rep-detail .pl-accept__title {
+    font-size: clamp(1.2rem, 4.5vw, 1.55rem); margin-bottom: .25rem; line-height: 1.2;
+  }
+  .pl.rep-detail .pl-accept__when {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .55rem;
+    margin: 0 0 .25rem;
+  }
+  .pl.rep-detail .pl-accept__day { font-size: .75rem; }
+  .pl.rep-detail .pl-accept__fulldate {
+    font-family: var(--font-d); font-size: clamp(1rem, 3.5vw, 1.2rem); font-weight: 700;
+    line-height: 1.2; text-transform: capitalize;
+  }
+  .pl.rep-detail .pl-accept__time { font-size: 1rem; }
+  .pl.rep-detail .pl-accept__meta { font-size: .85rem; margin: 0; }
+
+  .rep-absence {
+    display: flex; flex-direction: column; gap: .45rem;
+    margin: .55rem 0 .65rem; padding: .7rem .85rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); color: var(--text);
+  }
+  .rep-absence__head {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+    gap: .25rem .75rem;
+  }
+  .rep-absence__head h2 {
+    font-family: var(--font-d); font-size: 1rem; margin: 0;
+  }
+  .rep-absence__row {
+    display: flex; flex-wrap: wrap; gap: .45rem; align-items: center;
+  }
+  .rep-absence__status {
+    font-size: .85rem; font-weight: 600;
+  }
+  .rep-absence__status.is-absent { color: var(--accent); }
+  .rep-absence__status.is-present { color: var(--ok); }
+  .rep-absence__cta {
+    flex: 1 1 auto; min-width: 10rem; min-height: 44px; justify-content: center;
+    font-size: .95rem;
+  }
+
+  .rep-roadmap {
+    margin: 0 0 1rem; padding: .7rem .85rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); color: var(--text);
+  }
+  .rep-roadmap h2 {
+    font-family: var(--font-d); font-size: 1rem; margin: 0 0 .35rem;
+  }
+  .rep-roadmap ol {
+    margin: .35rem 0 0; padding-left: 1.15rem;
+  }
+  .rep-roadmap li {
+    margin-bottom: .35rem; padding: .15rem 0; line-height: 1.35;
+  }
+  .rep-roadmap a {
+    color: var(--accent); font-weight: 600; text-decoration: none;
+  }
+
+  .rep-salon {
+    margin: 0 0 1rem;
+  }
+
+  .rep-staff-block {
+    margin-top: 1.25rem;
+    padding: .85rem .9rem 1rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+    color: var(--text);
+  }
+  .rep-staff-block h2 {
+    font-family: var(--font-d); font-size: 1.15rem; margin: 0 0 .75rem;
+    color: var(--staff);
+  }
+  .rep-absent-row {
+    display: flex; flex-direction: column; gap: .5rem;
+    padding: .75rem 0; border-bottom: 1px solid var(--border);
+  }
+  @media (min-width: 640px) {
+    .rep-absent-row {
+      flex-direction: row; flex-wrap: wrap; align-items: center;
+      justify-content: space-between;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl rep-detail" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
+  {% include "planning/_module_nav.html" with active="repes" %}
+  {% if is_planning_staff %}
+  <div class="pl-nav-context pl-nav-context--staff">
+    <a href="{% url 'repetitions:staff_edit' event.pk %}">Éditer (staff)</a>
+  </div>
+  {% endif %}
+
+  <header class="pl-accept__head">
+    <h1 class="pl-accept__title">{{ event.titre }}</h1>
+    <p class="pl-accept__when">
+      <span class="pl-accept__day">{{ event.date_debut|date:"l" }}</span>
+      <span class="pl-accept__fulldate">{{ event.date_debut|date:"j F Y" }}</span>
+      <span class="pl-accept__time">{{ event.date_debut|date:"H:i" }}{% if event.date_fin %} – {{ event.date_fin|date:"H:i" }}{% endif %}</span>
+    </p>
+    {% if event.venue %}
+    <p class="pl-accept__meta">
+      <span class="pl-accept__venue">{{ event.lieu_affiche }}</span>
+    </p>
+    {% endif %}
+  </header>
+
+  {% if my_sub_offer %}
+  <section class="rep-absence" aria-labelledby="sub-offer-title"
+           x-data="{ busy: false }">
+    <div class="rep-absence__head">
+      <h2 id="sub-offer-title">Remplacement proposé</h2>
+    </div>
+    <p class="pl-row__meta" style="margin:0">
+      À la place de
+      {{ my_sub_offer.participation.user.get_full_name|default:my_sub_offer.participation.user.username }}
+      ({{ my_sub_offer.participation.poste_label }}).
+    </p>
+    <div class="rep-absence__row">
+      <button type="button" class="pl-btn pl-btn--yes rep-absence__cta" :disabled="busy"
+        @click="busy=true; fetch('{% url 'planning:claim_sub' my_sub_offer.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:true})}).then(r=>r.json()).then(d=>{ if(d.ok) location.reload(); else { busy=false; $dispatch('pl-toast', d.error||'Erreur'); } })">
+        J’accepte
+      </button>
+      <button type="button" class="pl-btn pl-btn--no rep-absence__cta" :disabled="busy"
+        @click="busy=true; fetch('{% url 'planning:claim_sub' my_sub_offer.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:false})}).then(r=>r.json()).then(d=>{ if(d.ok) location.reload(); else { busy=false; $dispatch('pl-toast', d.error||'Erreur'); } })">
+        Je décline
+      </button>
+    </div>
+  </section>
+  {% elif participation %}
+  <section class="rep-absence"
+           x-data="absenceToggle('{% url 'repetitions:toggle_absence' event.pk %}', {{ is_absent|yesno:'true,false' }})"
+           aria-labelledby="absence-title">
+    <div class="rep-absence__head">
+      <h2 id="absence-title">Ma présence</h2>
+      <span class="rep-absence__status"
+            :class="absent ? 'is-absent' : 'is-present'"
+            x-text="absent ? 'Absent' : 'Présent'"></span>
+    </div>
+    <div class="rep-absence__row">
+      <button type="button"
+              class="pl-btn rep-absence__cta"
+              :class="absent ? 'pl-btn--yes' : 'pl-btn--no'"
+              :disabled="busy"
+              @click="toggle()">
+        <span x-text="absent ? 'Je serai présent·e' : 'Je serai absent·e'"></span>
+      </button>
+    </div>
+    {% include "planning/_rsvp_invalidate_modal.html" with prefix="rep" %}
+  </section>
+  {% elif not is_planning_staff %}
+  <p class="pl-empty">Vous n’êtes pas inscrit·e à cette répétition.</p>
+  {% endif %}
+
+  <section class="rep-roadmap" aria-labelledby="roadmap-title">
+    <h2 id="roadmap-title">Feuille de route</h2>
+    {% if plan and plan.notes %}
+    <p class="pl-row__meta" style="white-space:pre-wrap;margin:0 0 .35rem">{{ plan.notes }}</p>
+    {% endif %}
+    {% if items %}
+    <ol>
+      {% for item in items %}
+      <li>
+        <a href="{% url 'repertoire:detail' item.piece.slug %}">{{ item.piece.title }}</a>
+        {% if item.note %}<span class="pl-row__meta"> — {{ item.note }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="pl-empty" style="margin:0;padding:.15rem 0">Pas encore de morceaux.</p>
+    {% endif %}
+  </section>
+
+  {% if chat_link or event.chat_room %}
+  <a class="pl-day-events__salon rep-salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
+    <span>Salon « {{ event.titre }} »</span>
+    {% if chat_link.unread %}
+    <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
+    {% endif %}
+  </a>
+  {% endif %}
+
+  {% if is_planning_staff and attendance %}
+  <section class="rep-staff-block" aria-labelledby="staff-att-title">
+    <h2 id="staff-att-title">Présences</h2>
+    <p class="pl-row__meta" style="margin-bottom:.75rem">
+      {{ attendance.n_present }} présent{{ attendance.n_present|pluralize }} ·
+      {{ attendance.n_absent }} absent{{ attendance.n_absent|pluralize }}
+    </p>
+
+    {% for section, parts in attendance.by_section_present.items %}
+    <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:1rem 0 .35rem">{{ section }}</h3>
+    <ul style="list-style:none;margin:0;padding:0">
+      {% for p in parts %}
+      <li style="padding:.35rem 0;min-height:44px;display:flex;align-items:center;gap:.5rem">
+        <span>{{ p.user.get_full_name|default:p.user.username }}</span>
+        <span class="pl-row__meta">{{ p.poste_label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% empty %}
+    <p class="pl-empty">Aucun présent pour l’instant.</p>
+    {% endfor %}
+
+    {% if absent_rows %}
+    <h3 style="font-family:var(--font-d);font-size:1.05rem;margin:1.5rem 0 .5rem">Absents — notifier un remplaçant</h3>
+    {% for row in absent_rows %}
+    <div class="rep-absent-row" x-data="{ candidate: '', busy: false }">
+      <div>
+        <strong>{{ row.participation.user.get_full_name|default:row.participation.user.username }}</strong>
+        <span class="pl-row__meta"> · {{ row.participation.poste_label }}</span>
+        {% if row.participation.comment %}
+        <p class="pl-row__meta" style="margin:.2rem 0 0;color:var(--text)">{{ row.participation.comment }}</p>
+        {% endif %}
+      </div>
+      {% if row.eligible %}
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;width:100%;max-width:28rem">
+        <select x-model="candidate" style="flex:1;min-width:10rem;min-height:44px;padding:.55rem;border:1px solid var(--border);border-radius:var(--r);font:inherit;color:var(--text);background:var(--surface)">
+          <option value="">Remplaçant…</option>
+          {% for sub in row.eligible %}
+          <option value="{{ sub.user_id }}">{{ sub.user.get_full_name|default:sub.user.username }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="pl-btn pl-btn--primary" :disabled="!candidate || busy"
+          @click="busy=true; fetch('{% url 'repetitions:staff_notify_sub' event.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({participation_id: {{ row.participation.pk }}, candidate_id: Number(candidate)})}).then(r=>r.json()).then(d=>{ busy=false; $dispatch('pl-toast', d.ok ? (d.message||'Notifié') : (d.error||'Erreur')); })">
+          Notifier
+        </button>
+      </div>
+      {% else %}
+      <span class="pl-row__meta">Aucun remplaçant éligible.</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+</div>
+
+{% include "planning/_respond_buttons_js.html" %}
+{% endblock %}

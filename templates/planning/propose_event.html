@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load page_lead static %}
+
+{% block title %}Proposer un événement — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+{% endblock %}
+
+{% block content %}
+<div class="pl" x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '' }">
+  <header class="pl-head">
+    <h1>Proposer un événement</h1>
+    {% page_lead "planning.propose_event" class="page-lead--in-head" %}
+      Votre proposition ouvre un salon réservé au staff.
+      Un membre du staff lancera ensuite le sondage de disponibilité.
+    {% endpage_lead %}
+  </header>
+
+  {% include "planning/_module_nav.html" with active="calendrier" %}
+
+  <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}">
+    {% csrf_token %}
+    <div>
+      <label for="prop_titre">Titre</label>
+      <input type="text" name="titre" id="prop_titre" required placeholder="ex. Concert printemps">
+    </div>
+    <div class="pl-form__row pl-form__row--2">
+      <div>
+        <label for="prop_date">Date</label>
+        <input type="date" name="date" id="prop_date" required value="{{ preset_date }}">
+      </div>
+      <div>
+        <label for="prop_time">Heure</label>
+        <input type="time" name="time" id="prop_time" value="20:00" required>
+      </div>
+    </div>
+    <div>
+      <label for="prop_type">Type</label>
+      <select name="type_id" id="prop_type" required
+              @change="typeLabel = $event.target.selectedOptions[0]?.text || ''">
+        <option value="">Choisir…</option>
+        {% for t in event_types %}
+        <option value="{{ t.pk }}">{{ t.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "planning/_venue_parent_fields.html" with id_prefix="prop" show_parent=False %}
+    {% include "planning/_organisme_field.html" with id_prefix="prop" %}
+    <div>
+      <label for="prop_desc">Description <span class="pl-row__meta">(optionnel)</span></label>
+      <textarea name="description" id="prop_desc" rows="3"></textarea>
+    </div>
+    <div>
+      <label for="prop_deadline">Date limite de réponse</label>
+      <input type="date" name="deadline" id="prop_deadline" required>
+      <p class="pl-row__meta" style="margin:.35rem 0 0">
+        Avant cette date, les musiciens devront indiquer leur disponibilité
+        (modifiable ensuite par vous).
+      </p>
+    </div>
+    <button type="submit" class="pl-btn pl-btn--primary">Envoyer la proposition</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'planning/venue_map.js' %}"></script>
+<script src="{% static 'planning/organisme_typeahead.js' %}"></script>
+{% endblock %}

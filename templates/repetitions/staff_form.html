@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% load page_lead %}
+
+{% block title %}{% if creating %}Nouvelle répétition{% else %}{{ event.titre }}{% endif %} — Staff{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+<style>
+  .rep-form-stack input[type="date"],
+  .rep-form-stack input[type="time"],
+  .rep-form-stack input[type="text"],
+  .rep-form-stack select,
+  .rep-form-stack textarea {
+    font: inherit; font-size: .9rem; color: var(--text);
+    padding: .55rem .75rem; border: 1px solid var(--border);
+    border-radius: var(--r); background: var(--surface);
+    min-height: 44px; width: 100%; max-width: 100%;
+    box-sizing: border-box;
+  }
+  .rep-form-stack textarea { min-height: 5rem; }
+  .rep-form-stack .errorlist {
+    color: var(--accent); font-size: .85rem; margin: .25rem 0 0; padding: 0;
+    list-style: none;
+  }
+  .rep-check {
+    display: flex; align-items: center; gap: .5rem; min-height: 44px;
+    color: var(--text);
+  }
+  .rep-check input { width: 1.15rem; height: 1.15rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ builder_pieces|json_script:"builder-pieces-data" }}
+{{ builder_selected|json_script:"builder-selected-data" }}
+
+<div class="pl pl--wide">
+  {% include "planning/_module_nav.html" with active="repes" %}
+
+  <header class="pl-head">
+    <h1>{% if creating %}Nouvelle répétition{% else %}{{ event.titre }}{% endif %}</h1>
+    {% page_lead "repetitions.staff_form" class="page-lead--in-head" %}
+      Date, lieu, feuille de route{% if not creating %} et présences{% endif %}. Glissez les morceaux ou touchez « + ».
+    {% endpage_lead %}
+  </header>
+
+  {% if not creating and event %}
+  <div class="pl-nav-context pl-nav-context--staff">
+    <a href="{% url 'repetitions:detail' event.pk %}">Fiche musicien</a>
+  </div>
+  {% endif %}
+
+  <form method="post" class="rep-setlist-form"
+        x-data="setlistBuilder({
+          venueMode: '{{ form.venue_mode.value|default:'default'|escapejs }}'
+        })">
+    {% csrf_token %}
+
+    <div class="rep-form-stack rep-form-stack--wide">
+      {% for field in form %}
+      {% if field.name == "venue_mode" or field.name == "venue_nom" or field.name == "venue_ville" or field.name == "venue_adresse" %}
+      {% elif field.name == "notify_musicians" %}
+      <div>
+        <label class="rep-check">{{ field }} {{ field.label }}</label>
+        {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% elif field.name == "time_end" %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      <div>
+        <label>Lieu</label>
+        <div class="pl-mode-toggle" role="group" aria-label="Lieu de répétition">
+          <button type="button" class="pl-mode-toggle__btn"
+                  :class="{ 'is-active': venueMode === 'default' }"
+                  @click="venueMode = 'default'">{{ default_rehearsal_venue_nom }}</button>
+          <button type="button" class="pl-mode-toggle__btn"
+                  :class="{ 'is-active': venueMode === 'custom' }"
+                  @click="venueMode = 'custom'">Autre lieu</button>
+        </div>
+        <input type="hidden" name="venue_mode"
+               value="{{ form.venue_mode.value|default:'default' }}"
+               :value="venueMode">
+        <p class="pl-row__meta" x-show="venueMode === 'default'" x-cloak>
+          Lieu habituel des répétitions.
+        </p>
+        <div x-show="venueMode === 'custom'" x-cloak style="display:grid;gap:.75rem;margin-top:.5rem">
+          <div>
+            <label for="{{ form.venue_nom.id_for_label }}">{{ form.venue_nom.label }}</label>
+            {{ form.venue_nom }}
+            {% if form.venue_nom.errors %}<ul class="errorlist">{% for e in form.venue_nom.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+          <div>
+            <label for="{{ form.venue_ville.id_for_label }}">{{ form.venue_ville.label }}</label>
+            {{ form.venue_ville }}
+            {% if form.venue_ville.errors %}<ul class="errorlist">{% for e in form.venue_ville.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+          <div>
+            <label for="{{ form.venue_adresse.id_for_label }}">{{ form.venue_adresse.label }} <span class="pl-row__meta">(optionnel)</span></label>
+            {{ form.venue_adresse }}
+            {% if form.venue_adresse.errors %}<ul class="errorlist">{% for e in form.venue_adresse.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+          </div>
+        </div>
+        {% if form.venue_mode.errors %}<ul class="errorlist">{% for e in form.venue_mode.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% else %}
+      <div>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="rep-builder" aria-label="Feuille de route">
+      <section class="rep-builder__pane" aria-labelledby="rep-pool-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-pool-title">Morceaux</h2>
+          <span class="rep-muted" x-text="available.length + ' disponible' + (available.length > 1 ? 's' : '')"></span>
+        </div>
+
+        <div class="rep-builder__filters">
+          <label class="rep-sr-only" for="rep-piece-search">Filtrer</label>
+          <input id="rep-piece-search" class="pl-input" type="search"
+                 placeholder="Rechercher…" x-model="query" autocomplete="off">
+          <div class="rep-letter-bar" role="group" aria-label="Filtre alphabétique">
+            <button type="button" class="rep-letter"
+                    :class="{ 'is-active': !letter }"
+                    @click="letter = ''">Tous</button>
+            <template x-for="l in letters" :key="l">
+              <button type="button" class="rep-letter"
+                      :class="{ 'is-active': letter === l }"
+                      @click="letter = (letter === l ? '' : l)"
+                      x-text="l"></button>
+            </template>
+          </div>
+        </div>
+
+        <ul class="rep-builder__list"
+            @dragover.prevent="onPoolDragOver($event)"
+            @drop.prevent="onPoolDrop($event)">
+          <template x-for="piece in available" :key="piece.id">
+            <li class="rep-builder__item"
+                :class="{ 'is-dragging': dragKind === 'pool' && dragPiece && dragPiece.id === piece.id }"
+                draggable="true"
+                @dragstart="onPoolDragStart($event, piece)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <span class="rep-builder__title" x-text="piece.title"></span>
+              <button type="button" class="rep-builder__action"
+                      @click="addPiece(piece)"
+                      @mousedown.stop
+                      :aria-label="'Ajouter ' + piece.title">+</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="available.length === 0" x-cloak>
+            Aucun morceau à afficher.
+          </li>
+        </ul>
+      </section>
+
+      <section class="rep-builder__pane rep-builder__pane--setlist" aria-labelledby="rep-set-title">
+        <div class="rep-builder__pane-head">
+          <h2 id="rep-set-title">Feuille de route</h2>
+          <span class="rep-muted" x-text="selected.length + ' morceau' + (selected.length !== 1 ? 'x' : '')"></span>
+        </div>
+        <p class="rep-builder__hint rep-muted">Déposez ici · glissez pour réordonner</p>
+
+        <ul class="rep-builder__list rep-builder__list--set"
+            :class="{ 'is-drag-over': dropTarget === 'set' }"
+            @dragover.prevent="onSetDragOver($event)"
+            @drop.prevent="onSetDrop($event)"
+            @dragleave="onSetDragLeave($event)">
+          <template x-for="(piece, index) in selected" :key="piece.id">
+            <li class="rep-builder__item rep-builder__item--set"
+                :class="{ 'is-dragging': dragKind === 'set' && dragIndex === index }"
+                draggable="true"
+                @dragstart="onSetDragStart($event, index)"
+                @dragover.prevent="onSetItemDragOver($event, index)"
+                @drop.prevent="onSetDrop($event, index)"
+                @dragend="onDragEnd()">
+              <span class="rep-builder__pos" x-text="index + 1"></span>
+              <span class="rep-builder__handle" aria-hidden="true">⋮⋮</span>
+              <div class="rep-builder__body">
+                <span class="rep-builder__title" x-text="piece.title"></span>
+                <input class="pl-input rep-builder__note" type="text"
+                       placeholder="Note (intro, chorus…)"
+                       x-model="piece.note"
+                       @click.stop
+                       @mousedown.stop
+                       maxlength="300">
+              </div>
+              <button type="button" class="rep-builder__action rep-builder__action--remove"
+                      @click="removeAt(index)"
+                      @mousedown.stop
+                      :aria-label="'Retirer ' + piece.title">×</button>
+            </li>
+          </template>
+          <li class="rep-builder__empty" x-show="selected.length === 0" x-cloak>
+            Glissez des morceaux ici, ou touchez « + ».
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="rep-setlist-hidden" aria-hidden="true">
+      <template x-for="piece in selected" :key="'h-' + piece.id">
+        <span>
+          <input type="hidden" name="piece_ids" :value="piece.id">
+          <input type="hidden" :name="'note_' + piece.id" :value="piece.note">
+        </span>
+      </template>
+    </div>
+
+    <div class="rep-form-actions">
+      <button type="submit" class="pl-btn pl-btn--primary">
+        {% if creating %}Créer la répétition{% else %}Enregistrer{% endif %}
+      </button>
+      <a class="pl-btn" href="{% url 'repetitions:staff_list' %}">Annuler</a>
+    </div>
+  </form>
+
+  {% if not creating and attendance %}
+  <section class="pl-section" style="margin-top:2rem" aria-labelledby="att-title">
+    <h2 id="att-title">Présences</h2>
+    <p class="pl-row__meta">
+      {{ attendance.n_present }} présent{{ attendance.n_present|pluralize }} ·
+      {{ attendance.n_absent }} absent{{ attendance.n_absent|pluralize }}
+    </p>
+    {% for section, parts in attendance.by_section_present.items %}
+    <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:1rem 0 .35rem">{{ section }}</h3>
+    <ul style="list-style:none;margin:0;padding:0">
+      {% for p in parts %}
+      <li style="padding:.35rem 0">{{ p.user.get_full_name|default:p.user.username }}
+        <span class="pl-row__meta">· {{ p.poste_label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+
+    {% if absent_rows %}
+    <h3 style="margin:1.5rem 0 .5rem;font-family:var(--font-d);font-size:1.05rem">Absents</h3>
+    {% for row in absent_rows %}
+    <div class="pl-row" x-data="{ candidate: '', busy: false, toast: '' }">
+      <div class="pl-row__main">
+        <span class="pl-row__title">{{ row.participation.user.get_full_name|default:row.participation.user.username }}</span>
+        <p class="pl-row__meta">{{ row.participation.poste_label }}</p>
+      </div>
+      {% if row.eligible %}
+      <div class="pl-row__actions" style="flex-wrap:wrap">
+        <select x-model="candidate" style="min-height:44px;padding:.45rem;border:1px solid var(--border);border-radius:var(--r);font:inherit;color:var(--text);background:var(--surface)">
+          <option value="">Remplaçant…</option>
+          {% for sub in row.eligible %}
+          <option value="{{ sub.user_id }}">{{ sub.user.get_full_name|default:sub.user.username }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="pl-btn pl-btn--primary" :disabled="!candidate || busy"
+          @click="busy=true; fetch('{% url 'repetitions:staff_notify_sub' event.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({participation_id: {{ row.participation.pk }}, candidate_id: Number(candidate)})}).then(r=>r.json()).then(d=>{ busy=false; alert(d.ok ? (d.message||'OK') : (d.error||'Erreur')); })">
+          Notifier
+        </button>
+      </div>
+      {% else %}
+      <span class="pl-row__meta">Aucun remp. éligible</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  function readJson(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
+  }
+
+  window.setlistBuilder = function (opts) {
+    opts = opts || {};
+    const initialPieces = readJson('builder-pieces-data', []);
+    const initialSelected = readJson('builder-selected-data', []);
+    return {
+      venueMode: opts.venueMode === 'custom' ? 'custom' : 'default',
+      pieces: initialPieces.map(p => ({ id: p.id, title: p.title })),
+      selected: initialSelected.map(p => ({
+        id: p.id, title: p.title, note: p.note || '',
+      })),
+      query: '',
+      letter: '',
+      dragKind: null,
+      dragPiece: null,
+      dragIndex: null,
+      dropTarget: null,
+
+      get letters() {
+        const set = new Set();
+        this.pieces.forEach(p => {
+          const raw = (p.title || '').trim().charAt(0).toUpperCase();
+          if (!raw) return;
+          const base = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          set.add(base.charAt(0) || raw);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, 'fr'));
+      },
+
+      get selectedIds() { return new Set(this.selected.map(s => s.id)); },
+
+      get available() {
+        const q = this.query.trim().toLowerCase();
+        const ids = this.selectedIds;
+        return this.pieces.filter(p => {
+          if (ids.has(p.id)) return false;
+          if (this.letter) {
+            const first = (p.title || '').trim().charAt(0).toUpperCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (first !== this.letter) return false;
+          }
+          if (q && !(p.title || '').toLowerCase().includes(q)) return false;
+          return true;
+        });
+      },
+
+      addPiece(piece) {
+        if (this.selectedIds.has(piece.id)) return;
+        this.selected.push({ id: piece.id, title: piece.title, note: '' });
+      },
+      removeAt(index) { this.selected.splice(index, 1); },
+
+      onPoolDragStart(event, piece) {
+        this.dragKind = 'pool'; this.dragPiece = piece; this.dragIndex = null;
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData('text/plain', String(piece.id));
+      },
+      onSetDragStart(event, index) {
+        this.dragKind = 'set'; this.dragPiece = this.selected[index]; this.dragIndex = index;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(this.selected[index].id));
+      },
+      onDragEnd() {
+        this.dragKind = null; this.dragPiece = null; this.dragIndex = null; this.dropTarget = null;
+      },
+      onSetDragOver(event) {
+        this.dropTarget = 'set';
+        event.dataTransfer.dropEffect = this.dragKind === 'pool' ? 'copy' : 'move';
+      },
+      onSetDragLeave(event) {
+        if (!event.currentTarget.contains(event.relatedTarget)) this.dropTarget = null;
+      },
+      onSetItemDragOver(event, index) {
+        this.dropTarget = 'set';
+        if (this.dragKind !== 'set' || this.dragIndex === null || this.dragIndex === index) return;
+        const item = this.selected.splice(this.dragIndex, 1)[0];
+        this.selected.splice(index, 0, item);
+        this.dragIndex = index;
+      },
+      onSetDrop(event, index) {
+        event.stopPropagation();
+        if (this.dragKind === 'pool' && this.dragPiece) {
+          const insertAt = typeof index === 'number' ? index : this.selected.length;
+          if (!this.selectedIds.has(this.dragPiece.id)) {
+            this.selected.splice(insertAt, 0, {
+              id: this.dragPiece.id, title: this.dragPiece.title, note: '',
+            });
+          }
+        }
+        this.onDragEnd();
+      },
+      onPoolDragOver(event) {
+        if (this.dragKind === 'set') event.dataTransfer.dropEffect = 'move';
+      },
+      onPoolDrop() {
+        if (this.dragKind === 'set' && this.dragIndex !== null) this.removeAt(this.dragIndex);
+        this.onDragEnd();
+      },
+    };
+  };
+})();
+</script>
+{% endblock %}

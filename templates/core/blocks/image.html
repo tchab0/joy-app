@@ -1,0 +1,21 @@
+{% load static %}
+<section class="section page-block-image">
+  <div class="container">
+    <figure class="page-block-image__fig">
+      {% if block.render.image_url %}
+      <img src="{{ block.render.image_url }}"
+           alt="{{ block.render.image_alt }}"
+           loading="lazy"
+           decoding="async">
+      {% elif block.render.image_static %}
+      <img src="{% static block.render.image_static %}"
+           alt="{{ block.render.image_alt }}"
+           loading="lazy"
+           decoding="async">
+      {% endif %}
+      {% if block.render.caption %}
+      <figcaption>{{ block.render.caption }}</figcaption>
+      {% endif %}
+    </figure>
+  </div>
+</section>

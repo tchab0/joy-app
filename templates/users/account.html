@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Mon compte — JOY{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container account-page">
+    <h1 class="section-title">Mon compte</h1>
+
+    <div class="account-block">
+      <p class="account-greeting">Bonjour <strong>{{ request.user.get_full_name|default:request.user.username }}</strong>.</p>
+      {% if roles %}
+      <p class="account-roles">Rôles : {{ roles|join:", " }}</p>
+      {% endif %}
+      {% if request.user.email %}
+      <p class="account-meta">{{ request.user.email }}</p>
+      {% endif %}
+    </div>
+
+    {% if can_members %}
+    <div class="account-block">
+      <h2 class="account-heading">Adhésion</h2>
+      <p class="account-desc">Accès à l’espace réservé aux adhérents.</p>
+      <a class="btn btn-outline" href="{% url 'account_member_area' %}">Espace adhérent</a>
+    </div>
+    {% endif %}
+
+    <div class="account-block">
+      <h2 class="account-heading">Réglages</h2>
+      <div class="account-actions" data-tour="account-replay">
+        <a class="btn btn-outline" href="{% url 'account_security' %}">Sécurité &amp; 2FA</a>
+        <a class="btn btn-outline" href="{% url 'account_notifications' %}">Mes notifications{% if unread_notifications %} ({{ unread_notifications }}){% endif %}</a>
+        {% if can_planning %}
+        <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Notifications chat</a>
+        {% endif %}
+        {% if can_replay_musician_tour %}
+        <a class="btn btn-outline" href="{% url 'account_home' %}?tour=musician"
+           onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide musicien</a>
+        {% endif %}
+        {% if can_replay_staff_tour %}
+        <a class="btn btn-outline" href="{% url 'account_home' %}?tour=staff"
+           onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide staff</a>
+        {% endif %}
+        {% if request.user.is_staff or request.user.is_superuser %}
+        <a class="btn btn-outline" href="{% url 'admin_tours' %}">Éditer les guides</a>
+        {% endif %}
+      </div>
+      {% if staff_notify_form %}
+      <form method="post" action="{% url 'account_home' %}" class="account-staff-notify" style="margin-top:1.25rem">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="staff_notify">
+        <label class="account-check">
+          {{ staff_notify_form.notify_contact_messages }}
+          <span>
+            <strong>{{ staff_notify_form.notify_contact_messages.label }}</strong>
+            <span class="account-desc" style="display:block;margin:0">{{ staff_notify_form.notify_contact_messages.help_text }}</span>
+          </span>
+        </label>
+        <button type="submit" class="btn btn-outline" style="margin-top:.85rem;min-height:44px">Enregistrer</button>
+      </form>
+      {% endif %}
+      {% if dismissed_leads %}
+      <div class="account-leads" style="margin-top:1.25rem">
+        <p class="account-desc" style="margin-bottom:.65rem">
+          Textes d’aide masqués ({{ dismissed_leads|length }}) :
+          {% for key, label in dismissed_leads %}{{ label }}{% if not forloop.last %} · {% endif %}{% endfor %}.
+        </p>
+        <form method="post" action="{% url 'account_home' %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="restore_page_leads">
+          <button type="submit" class="btn btn-outline" style="min-height:44px">Réafficher les textes d’aide</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+
+    {% include "feedback/_account_feedback.html" %}
+
+    <div class="account-block account-logout">
+      <form method="post" action="{% url 'account_logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline">Déconnexion</button>
+      </form>
+    </div>
+  </div>
+</section>
+<style>
+  .account-page { max-width: 720px; }
+  .account-block { margin-bottom: 2rem; }
+  .account-greeting { margin-bottom: .35rem; }
+  .account-roles, .account-meta, .account-desc {
+    color: var(--muted); margin-bottom: .75rem; font-size: .95rem;
+  }
+  .account-heading {
+    font-family: var(--font-d); font-size: 1.25rem; margin-bottom: .5rem;
+    color: var(--text);
+  }
+  .account-actions {
+    display: flex; flex-wrap: wrap; gap: .75rem;
+  }
+  .account-check {
+    display: flex; align-items: flex-start; gap: .75rem;
+    color: var(--text); cursor: pointer;
+  }
+  .account-check input {
+    width: 1.25rem; height: 1.25rem; margin-top: .15rem; flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+  .account-check strong { display: block; margin-bottom: .2rem; }
+  .account-actions .btn,
+  .account-block > .btn,
+  .account-logout .btn {
+    min-height: 44px;
+  }
+  .account-logout {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+</style>
+{% endblock %}

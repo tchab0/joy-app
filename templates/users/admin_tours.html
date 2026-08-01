@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load static page_lead %}
+{% block title %}Éditer les guides — JOY{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'users/tour_editor.css' %}?v=1">
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container tour-ed" id="tour-editor-root"
+       data-audience="{{ initial_audience }}">
+    <header class="tour-ed__head">
+      <div>
+        <h1 class="section-title">Guides d’aide</h1>
+        {% page_lead "users.admin_tours" class="page-lead--in-head" %}
+          Timeline des bulles (musicien / staff) : prévisualisez, réordonnez,
+          ajoutez ou supprimez des diapos, puis éditez le texte.
+        {% endpage_lead %}
+      </div>
+    </header>
+
+    <div class="tour-ed__tabs" role="tablist" aria-label="Audience du guide">
+      <button type="button" class="tour-ed__tab" role="tab" data-aud="musician"
+              aria-selected="false">Musicien</button>
+      <button type="button" class="tour-ed__tab" role="tab" data-aud="staff"
+              aria-selected="false">Staff</button>
+    </div>
+
+    <div class="tour-ed__meta">
+      <label class="tour-ed__field">
+        <span>Titre du guide</span>
+        <input type="text" id="tour-ed-title" maxlength="120" autocomplete="off">
+      </label>
+      <label class="tour-ed__field tour-ed__field--sm">
+        <span>Version</span>
+        <input type="number" id="tour-ed-version" min="1" step="1">
+      </label>
+      <label class="tour-ed__check">
+        <input type="checkbox" id="tour-ed-active">
+        <span>Guide actif</span>
+      </label>
+      <label class="tour-ed__check">
+        <input type="checkbox" id="tour-ed-bump">
+        <span>Incrémenter la version à l’enregistrement</span>
+      </label>
+    </div>
+
+    <div class="tour-ed__toolbar">
+      <p class="tour-ed__hint" id="tour-ed-count"></p>
+      <div class="tour-ed__toolbar-actions">
+        <button type="button" class="btn btn-outline" id="tour-ed-add">+ Diapo</button>
+        <button type="button" class="btn btn-primary" id="tour-ed-save">Enregistrer</button>
+      </div>
+    </div>
+
+    <p class="tour-ed__status" id="tour-ed-status" hidden></p>
+
+    <div class="tour-ed__timeline-wrap">
+      <ol class="tour-ed__timeline" id="tour-ed-timeline" aria-label="Timeline des diapos"></ol>
+    </div>
+
+    <section class="tour-ed__panel" id="tour-ed-panel" hidden>
+      <div class="tour-ed__panel-head">
+        <h2 class="tour-ed__panel-title" id="tour-ed-panel-title">Éditer la diapo</h2>
+        <div class="tour-ed__panel-actions">
+          <button type="button" class="btn btn-outline" id="tour-ed-prev" title="Diapo précédente">←</button>
+          <button type="button" class="btn btn-outline" id="tour-ed-next" title="Diapo suivante">→</button>
+          <button type="button" class="btn btn-outline tour-ed__danger" id="tour-ed-delete">Supprimer</button>
+        </div>
+      </div>
+
+      <div class="tour-ed__preview-row">
+        <div class="tour-ed__bubble" id="tour-ed-bubble" aria-hidden="true">
+          <div class="tour-ed__bubble-title" id="tour-ed-bubble-title"></div>
+          <div class="tour-ed__bubble-body" id="tour-ed-bubble-body"></div>
+          <div class="tour-ed__bubble-foot">
+            <span class="tour-ed__bubble-progress" id="tour-ed-bubble-progress"></span>
+            <span class="tour-ed__bubble-btns">
+              <span class="tour-ed__bubble-btn tour-ed__bubble-btn--ghost">Précédent</span>
+              <span class="tour-ed__bubble-btn tour-ed__bubble-btn--pri">Suivant</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tour-ed__form">
+        <label class="tour-ed__field">
+          <span>Titre de la bulle</span>
+          <input type="text" id="tour-ed-step-title" maxlength="160" autocomplete="off">
+        </label>
+        <label class="tour-ed__field">
+          <span>Texte de la bulle</span>
+          <textarea id="tour-ed-step-body" rows="5"></textarea>
+        </label>
+        <label class="tour-ed__field">
+          <span>Ancre (cible sur la page)</span>
+          <select id="tour-ed-step-anchor"></select>
+        </label>
+        <label class="tour-ed__field">
+          <span>Page à ouvrir avant l’étape</span>
+          <select id="tour-ed-step-page"></select>
+        </label>
+        <div class="tour-ed__checks">
+          <label class="tour-ed__check">
+            <input type="checkbox" id="tour-ed-step-nav">
+            <span>Ouvrir le menu mobile</span>
+          </label>
+          <label class="tour-ed__check">
+            <input type="checkbox" id="tour-ed-step-footer">
+            <span>Défiler vers le pied de page</span>
+          </label>
+          <label class="tour-ed__check">
+            <input type="checkbox" id="tour-ed-step-active" checked>
+            <span>Diapo active</span>
+          </label>
+        </div>
+        <details class="tour-ed__manual">
+          <summary>Édition manuelle avancée</summary>
+          <p class="tour-ed__hint">
+            Ancre ou chemin personnalisé si absents de la liste
+            (valeur exacte de <code>data-tour</code> / URL).
+          </p>
+          <label class="tour-ed__field">
+            <span>Ancre libre</span>
+            <input type="text" id="tour-ed-step-anchor-manual" maxlength="64"
+                   placeholder="ex. nav-coulisses" autocomplete="off">
+          </label>
+          <label class="tour-ed__field">
+            <span>Chemin libre</span>
+            <input type="text" id="tour-ed-step-page-manual" maxlength="200"
+                   placeholder="ex. /planning/" autocomplete="off">
+          </label>
+        </details>
+      </div>
+    </section>
+  </div>
+</section>
+{{ tour_editor_config|json_script:"joy-tour-editor-config" }}
+<script src="{% static 'users/tour_editor.js' %}?v=1" defer></script>
+{% endblock %}

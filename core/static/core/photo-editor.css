@@ -1,0 +1,735 @@
+/* JOY Photo Editor — thème tokens base.html, mobile-first, plein écran */
+.joy-pe-open { overflow: hidden; }
+
+.joy-pe {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #1a1714;
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.joy-pe-sheet {
+  background: var(--surface);
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 0;
+}
+
+.joy-pe-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.joy-pe-editor[hidden],
+.joy-pe-compare[hidden] {
+  display: none !important;
+}
+
+.joy-pe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.4rem 0.55rem;
+  padding-top: max(0.4rem, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.joy-pe-title {
+  font-family: var(--font-d);
+  font-style: italic;
+  font-size: 0.98rem;
+  color: var(--text);
+}
+
+.joy-pe-btn {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-b);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.joy-pe-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.joy-pe-save:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.joy-pe-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 32vh;
+  background: #1a1714;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.joy-pe-mode-color .joy-pe-stage {
+  min-height: 40vh;
+}
+
+.joy-pe-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+.joy-pe-crop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.joy-pe-crop-box {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.joy-pe-handle {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.joy-pe-handle.nw { left: -14px; top: -14px; }
+.joy-pe-handle.ne { right: -14px; top: -14px; }
+.joy-pe-handle.sw { left: -14px; bottom: -14px; }
+.joy-pe-handle.se { right: -14px; bottom: -14px; }
+
+/* Zone contrôles : scrollable + boutons monter/descendre */
+.joy-pe-controls-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  max-height: 52dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.joy-pe-mode-color .joy-pe-controls-wrap {
+  max-height: 44dvh;
+}
+
+.joy-pe-controls {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+  padding-right: 2.6rem; /* place pour la nav ▲▼ */
+  scrollbar-gutter: stable;
+}
+
+.joy-pe-mode-color .joy-pe-controls {
+  max-height: none;
+}
+
+.joy-pe-controls-nav {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.joy-pe-scroll-btn {
+  pointer-events: auto;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.joy-pe-scroll-btn:active {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.joy-pe-presets {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.45rem 0.65rem 0.25rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.joy-pe-mode-color .joy-pe-presets {
+  padding-top: 0.3rem;
+  padding-bottom: 0.15rem;
+}
+
+.joy-pe-preset-strength {
+  padding: 0 0.65rem 0.35rem;
+  margin: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.joy-pe-mode-color .joy-pe-preset-strength {
+  padding-bottom: 0.25rem;
+}
+
+.joy-pe-preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0 0.65rem 0.3rem;
+  flex-shrink: 0;
+}
+
+.joy-pe-preset-form {
+  padding: 0 0.65rem 0.4rem;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.joy-pe-preset-form[hidden] {
+  display: none !important;
+}
+
+.joy-pe-preset-form-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.joy-pe-preset-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.joy-pe-preset-name {
+  flex: 1 1 120px;
+  min-height: 40px;
+  padding: 0.35rem 0.6rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-b);
+  font-size: 0.88rem;
+}
+
+.joy-pe-preset-name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.joy-pe-preset-custom {
+  border-style: dashed;
+}
+
+.joy-pe-preset-wrap {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 0;
+}
+
+.joy-pe-preset-wrap .joy-pe-preset {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.joy-pe-preset-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 36px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--r) var(--r) 0;
+  border-style: dashed;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.joy-pe-preset-wrap .joy-pe-preset.active + .joy-pe-preset-del,
+.joy-pe-preset-wrap:has(.joy-pe-preset.active) .joy-pe-preset-del {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.joy-pe-preset-del:hover,
+.joy-pe-preset-del:focus-visible {
+  background: rgba(var(--accent-rgb), 0.12);
+  outline: none;
+}
+
+.joy-pe-preset-strength input:disabled {
+  opacity: 0.4;
+}
+
+.joy-pe-preset {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.joy-pe-preset.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.joy-pe-chip[hidden],
+.joy-pe-btn[hidden] {
+  display: none !important;
+}
+
+.joy-pe-chip-danger {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.joy-pe-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 0.65rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.joy-pe-tab {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: var(--font-b);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.joy-pe-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.joy-pe-panel {
+  padding: 0.55rem 0.65rem 0.75rem;
+  flex-shrink: 0;
+}
+
+.joy-pe-mode-color .joy-pe-panel[data-panel="color"] {
+  padding: 0.35rem 0.65rem 0.55rem;
+}
+
+.joy-pe-row {
+  margin-bottom: 0.55rem;
+}
+
+.joy-pe-mode-color .joy-pe-row {
+  margin-bottom: 0.28rem;
+}
+
+.joy-pe-row label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.joy-pe-mode-color .joy-pe-row label {
+  font-size: 0.7rem;
+  margin-bottom: 0;
+}
+
+.joy-pe-row input[type="range"] {
+  width: 100%;
+  height: 40px;
+  accent-color: var(--accent);
+}
+
+.joy-pe-mode-color .joy-pe-row input[type="range"] {
+  height: 32px;
+}
+
+.joy-pe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.joy-pe-chip {
+  min-height: 36px;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Choix original / version éditée */
+.joy-pe-chooser {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(26, 23, 20, 0.72);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: var(--text);
+}
+
+.joy-pe-chooser-sheet {
+  background: var(--surface);
+  border-radius: var(--r) var(--r) 0 0;
+  padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  max-height: min(94dvh, 960px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.joy-pe-chooser-title {
+  font-family: var(--font-d);
+  font-style: italic;
+  font-size: 1.15rem;
+  margin: 0 0 0.35rem;
+  color: var(--text);
+}
+
+.joy-pe-chooser-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.joy-pe-chooser-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.joy-pe-chooser-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-b);
+  cursor: pointer;
+  text-align: center;
+  min-height: 44px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.joy-pe-chooser-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.joy-pe-chooser-option--edited {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.15);
+}
+
+.joy-pe-chooser-preview {
+  display: block;
+  width: 100%;
+  background: #1a1714;
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.joy-pe-chooser-preview img {
+  width: 100%;
+  height: auto;
+  max-height: min(42vh, 360px);
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  background: #1a1714;
+}
+
+/* Original : plein format — plus haut, image entière à la largeur dispo */
+.joy-pe-chooser-option--original .joy-pe-chooser-preview img {
+  max-height: min(62vh, 560px);
+}
+
+.joy-pe-chooser-option-label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0 0.1rem;
+  color: var(--text);
+}
+
+.joy-pe-chooser-option--edited .joy-pe-chooser-option-label {
+  color: var(--accent);
+}
+
+.joy-pe-chooser-cancel {
+  width: 100%;
+  min-height: 48px;
+  text-align: center;
+}
+
+@media (min-width: 720px) {
+  .joy-pe-chooser {
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+  }
+  .joy-pe-chooser-sheet {
+    border-radius: var(--r);
+    max-width: 1100px;
+    width: min(1100px, 96vw);
+    padding: 1.25rem 1.25rem 1.1rem;
+  }
+  .joy-pe-chooser-previews {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .joy-pe-chooser-option {
+    flex: 1;
+    min-width: 0;
+  }
+  /* Original occupe davantage d’espace (plein format) */
+  .joy-pe-chooser-option--original {
+    flex: 1.35;
+  }
+  .joy-pe-chooser-preview img {
+    max-height: min(58vh, 520px);
+  }
+  .joy-pe-chooser-option--original .joy-pe-chooser-preview img {
+    max-height: min(72vh, 680px);
+  }
+}
+
+/* Comparaison avant / après */
+.joy-pe-compare {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  color: var(--text);
+}
+
+.joy-pe-compare-hint {
+  margin: 0;
+  padding: 0.5rem 0.85rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.joy-pe-compare-stage {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  margin: 0.5rem 0.65rem;
+  background: #1a1714;
+  border-radius: var(--r);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.joy-pe-compare-before,
+.joy-pe-compare-after {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.joy-pe-compare-after-clip {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.joy-pe-compare-after {
+  max-width: none;
+  left: 0;
+  right: auto;
+}
+
+.joy-pe-compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.joy-pe-compare-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.joy-pe-compare-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  z-index: 3;
+  touch-action: none;
+}
+
+.joy-pe-compare-label {
+  position: absolute;
+  bottom: 0.6rem;
+  z-index: 2;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(26, 23, 20, 0.65);
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--r);
+  pointer-events: none;
+}
+
+.joy-pe-compare-label-before { left: 0.6rem; }
+.joy-pe-compare-label-after { right: 0.6rem; }
+
+.joy-pe-compare-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem max(0.75rem, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+
+.joy-pe-compare-actions .joy-pe-btn {
+  flex: 1;
+}
+
+@media (min-width: 720px) {
+  .joy-pe-controls-wrap {
+    max-height: 42vh;
+  }
+  .joy-pe-mode-color .joy-pe-controls-wrap {
+    max-height: 38vh;
+  }
+  .joy-pe-stage {
+    min-height: 45vh;
+  }
+}

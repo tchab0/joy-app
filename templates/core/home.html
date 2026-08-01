@@ -1,61 +1,136 @@
 {% extends "base.html" %}
-{% block title %}JOY — Jazz Orchestra Yonnais{% endblock %}
+{% load static %}
+{% block title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
+{% block og_title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
+{% block twitter_title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
+{% block meta_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations pour mariages, galas et entreprises.{% endif %}{% endblock %}
+{% block og_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations.{% endif %}{% endblock %}
+{% block twitter_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations.{% endif %}{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
 <style>
   .hero {
     background: var(--text);
     color: #fff;
-    padding: 5rem 0 4rem;
+    padding: 1.5rem 0 1.75rem;
     text-align: center;
-    animation: hero-in .6s ease forwards;
+    animation: hero-in .6s ease both;
+  }
+  .hero-title {
+    font-family: var(--font-d);
+    font-style: italic;
+    font-size: clamp(2.25rem, 6vw, 4.5rem);
+    line-height: 1.1;
+    margin: 0 0 .65rem;
+    color: #fff;
+  }
+  .hero-title span {
+    color: var(--accent);
   }
   .hero-tag {
     font-size: .75rem;
     letter-spacing: .15em;
     text-transform: uppercase;
     color: var(--accent);
-    margin-bottom: 1rem;
+    margin-bottom: .85rem;
     font-weight: 600;
-  }
-  .hero-title {
-    font-family: var(--font-d);
-    font-style: italic;
-    font-size: clamp(2.5rem, 6vw, 5rem);
-    line-height: 1.1;
-    margin-bottom: 1.5rem;
-  }
-  .hero-title span {
-    color: var(--accent);
   }
   .hero-sub {
     color: rgba(255,255,255,.65);
     max-width: 520px;
-    margin: 0 auto 2rem;
+    margin: 0 auto 1.25rem;
     font-size: 1.05rem;
+    font-weight: 400;
+    font-family: var(--font-b);
+    line-height: 1.6;
   }
-  .hero-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
+  .hero-photo {
+    max-width: 760px;
+    margin: 0 auto 1rem;
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .hero-photo img {
+    display: block;
+    width: 100%;
+    height: auto;
   }
   .hero-video {
-    margin-top: 3rem;
+    max-width: 760px;
+    margin: 0 auto;
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--r);
+    overflow: hidden;
+    background: #111;
+  }
+  .hero-video__facade {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    background: #111;
+    color: #fff;
+    min-height: 44px;
+  }
+  .hero-video__facade:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .hero-video__thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hero-video__play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .45);
+    border: 1.5px solid rgba(255, 255, 255, .7);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+    pointer-events: none;
+    transition: background var(--trans), border-color var(--trans);
+  }
+  .hero-video__play::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 54%;
+    transform: translate(-50%, -50%);
+    border-style: solid;
+    border-width: .55rem 0 .55rem .9rem;
+    border-color: transparent transparent transparent rgba(255, 255, 255, .92);
+  }
+  .hero-video__facade:hover .hero-video__play,
+  .hero-video__facade:focus-visible .hero-video__play {
+    background: rgba(0, 0, 0, .6);
+    border-color: #fff;
   }
   .hero-video iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
     border: none;
-    border-radius: var(--r);
   }
-.hero-video iframe {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  border: none;
-  border-radius: var(--r);
-}
-  .concerts-home {
+  .concerts-home.section {
     background: var(--surface);
+    padding: 2rem 0 1.5rem;
+  }
+  .concerts-home .section-title {
+    margin-bottom: 1.25rem;
+  }
+  .concerts-home__more {
+    margin-top: 1.5rem;
+    text-align: center;
   }
   .event-list {
     display: flex;
@@ -68,12 +143,54 @@
   .event-item {
     background: var(--surface);
     display: grid;
-    grid-template-columns: 80px 1fr auto;
-    align-items: center;
+    grid-template-columns: 80px 1fr;
+    align-items: start;
     gap: 1.5rem;
     padding: 1.25rem 1.5rem;
     animation: event-in .4s ease forwards;
   }
+  .event-card-actions {
+    margin-top: .75rem;
+    width: 80%;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: .35rem;
+  }
+  .event-share {
+    display: contents;
+  }
+  .event-share__btn,
+  .event-card-actions .btn-sm,
+  .event-card-actions .event-map__go {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: .35rem .4rem;
+    font-size: .65rem;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  button.event-share__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    font: inherit;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: var(--r);
+    cursor: pointer;
+  }
+  button.event-share__btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+  button.event-share__btn:disabled { opacity: .55; cursor: wait; }
   .event-date {
     font-family: var(--font-d);
     text-align: center;
@@ -108,8 +225,8 @@
     letter-spacing: .08em;
     padding: .15rem .5rem;
     border-radius: var(--r);
-    background: rgba(var(--accent-rgb, 180,140,60), .12);
-    color: var(--accent);
+    background: rgba(184,137,42,.12);
+    color: var(--gold-text);
     margin-left: .5rem;
     vertical-align: middle;
   }
@@ -131,9 +248,7 @@
     color: var(--muted);
     margin-top: .1rem;
   }
-  .event-map-mini { margin-top:.85rem; width:80%; height:260px; border-radius:var(--r); border:1px solid var(--border); overflow:hidden; grid-column:1/-1; position:relative; }
-  .event-map-mini iframe { height:calc(100% + 30px); margin-bottom:-30px; }
-  @media(max-width:600px){ .event-map-mini { width:100%; border-radius:0; } }
+  .event-map-wrap--mini { margin-top:.85rem; width:80%; }
   .empty {
     color: var(--muted);
     font-style: italic;
@@ -143,179 +258,347 @@
   .about {
     background: var(--bg);
   }
-  .about-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4rem;
-    align-items: center;
+  .about-text {
+    max-width: 640px;
   }
   .about-text p {
     color: var(--muted);
     margin-bottom: 1rem;
   }
-  .about-photo {
-    border-radius: var(--r);
-    overflow: hidden;
-    position: relative;
+  .about-cta {
+    margin-top: .5rem;
   }
-  .about-photo img {
+  .page-block-text .about-text p {
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .page-block-text .about-text a:not(.btn) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .page-block-text .about-cta .btn-primary {
+    color: #fff;
+  }
+  .page-block-text .about-cta .btn-primary:hover {
+    color: #fff;
+  }
+  .page-block-text .about-text strong { color: var(--text); font-weight: 600; }
+  .page-block-text .about-text em { font-style: italic; }
+  .page-block-text .about-text code {
+    font-size: .9em;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: .1rem .35rem;
+    color: var(--gold-text);
+  }
+  .page-block-text .about-text ul {
+    margin: 0 0 1rem 1.1rem;
+    padding: 0;
+    color: var(--muted);
+  }
+  .page-block-text .about-text li { margin-bottom: .35rem; }
+  .page-block-text .about-text h3,
+  .page-block-text .about-text h4 {
+    font-family: var(--font-d);
+    font-style: italic;
+    color: var(--text);
+    margin: 1.25rem 0 .65rem;
+  }
+  .page-block-text .about-text h3 { font-size: 1.35rem; }
+  .page-block-text .about-text h4 { font-size: 1.15rem; }
+  .page-block-image__fig {
+    margin: 0 auto;
+    max-width: 760px;
+    text-align: center;
+  }
+  .page-block-image__fig img {
+    display: block;
     width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    transform: scale(1.02);
-    transition: transform .8s cubic-bezier(.16,1,.3,1);
+    height: auto;
+    border-radius: var(--r);
   }
-  .about-photo:hover img {
-    transform: scale(1.06) translateX(-4px);
+  .page-block-image__fig figcaption {
+    margin-top: .65rem;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+  .page-block-video__player,
+  .page-block-video__file {
+    max-width: 760px;
+    margin: 0 auto;
+    display: block;
+    width: 100%;
+    border-radius: var(--r);
+  }
+  .page-block-video__file {
+    background: #111;
+  }
+
+  .concerts-home {
+    scroll-margin-top: 4.5rem;
+  }
+
+  .home-scroll-cue {
+    position: fixed;
+    z-index: 40;
+    left: 50%;
+    bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 44px;
+    padding: .65rem 1.15rem;
+    border-radius: var(--r);
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-b);
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .28);
+    transition: opacity var(--trans), transform var(--trans), background var(--trans), visibility var(--trans);
+  }
+  .home-scroll-cue:hover,
+  .home-scroll-cue:focus-visible {
+    background: var(--accent-h);
+    color: #fff;
+  }
+  .home-scroll-cue:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+  .home-scroll-cue svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    animation: scroll-cue-bounce 1.4s ease-in-out infinite;
+  }
+  .home-scroll-cue.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(.5rem);
   }
 
   @keyframes hero-in {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: .96; transform: translateY(10px); }
     to   { opacity: 1; transform: none; }
   }
 
   @keyframes event-in {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: .96; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
   }
 
+  @keyframes scroll-cue-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero,
+    .event-card {
+      animation: none;
+    }
+    .home-scroll-cue svg {
+      animation: none;
+    }
+  }
+
   @media (max-width: 768px) {
-    .about-grid { grid-template-columns: 1fr; }
-    .event-item { grid-template-columns: 60px 1fr; }
-    .event-item .btn { display: none; }
+    .concerts-home.section {
+      padding: 1.25rem 0 1rem;
+    }
+    .concerts-home .section-title {
+      font-size: 1.5rem;
+      margin-bottom: .75rem;
+    }
+    .concerts-home__more {
+      margin-top: 1rem;
+    }
+    .event-item {
+      grid-template-columns: 52px 1fr;
+      gap: .75rem 1rem;
+      padding: .85rem 1rem;
+    }
+    .event-date .day {
+      font-size: 1.4rem;
+    }
+    .event-card-actions {
+      margin-left: calc(-52px - 1rem);
+      width: calc(100% + 52px + 1rem);
+      gap: .3rem;
+    }
+    .event-share__btn,
+    .event-card-actions .btn-sm,
+    .event-card-actions .event-map__go {
+      min-height: 40px;
+      padding: .3rem .25rem;
+      font-size: .6rem;
+      letter-spacing: .02em;
+    }
+    .about-cta {
+      display: flex;
+      justify-content: center;
+    }
+    .home-scroll-cue {
+      left: 1rem;
+      right: 1rem;
+      width: auto;
+      max-width: none;
+      transform: none;
+      justify-content: center;
+    }
+    .home-scroll-cue.is-hidden {
+      transform: translateY(.5rem);
+    }
   }
 </style>
-{# Animations d’apparition inspirées des patterns d’intersection/scroll modernes[cite:540] #}
 {% endblock %}
 
 {% block content %}
-
+{% if use_cms %}
+  {% for block in blocks %}
+    {% if block.type == "hero" %}
+      {% include "core/blocks/hero.html" with block=block %}
+    {% elif block.type == "concerts" %}
+      {% include "core/blocks/concerts.html" with block=block %}
+    {% elif block.type == "text" %}
+      {% include "core/blocks/text.html" with block=block %}
+    {% elif block.type == "image" %}
+      {% include "core/blocks/image.html" with block=block %}
+    {% elif block.type == "video" %}
+      {% include "core/blocks/video.html" with block=block %}
+    {% endif %}
+  {% endfor %}
+  {% if has_concerts_block and prochains %}
+  <a href="#prochains-concerts" class="home-scroll-cue" id="home-scroll-cue">
+    <span>Prochains concerts</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  </a>
+  {% endif %}
+{% else %}
+{# Fallback si la page CMS n’est pas encore migrée #}
 <section class="hero">
   <div class="container">
-    <p class="hero-tag">Big Band · La Roche-sur-Yon</p>
     <h1 class="hero-title"><span>J.O.Y</span><br>Jazz Orchestra Yonnais</h1>
+    <p class="hero-tag">Big Band · La Roche-sur-Yon</p>
+    <div class="hero-photo">
+      <img src="{% static 'core/Joy-Cyel-home.jpg' %}"
+           alt="Le Jazz Orchestra Yonnais sur scène"
+           width="960"
+           height="346"
+           loading="eager"
+           fetchpriority="high"
+           decoding="async">
+    </div>
     <p class="hero-sub">
       Un Big Band associatif qui fait vibrer la Vendée au rythme du jazz et du swing.
     </p>
-    <div class="hero-actions">
-      <a href="{% url 'concerts' %}" class="btn btn-primary">Nos concerts</a>
-      <a href="{% url 'contact' %}" class="btn btn-outline"
-         style="border-color:rgba(255,255,255,.4);color:#fff">
-        Nous contacter
-      </a>
+    <div class="hero-video" data-yt-embed="https://www.youtube-nocookie.com/embed/49LYaGwuXZc?rel=0">
+      <button type="button" class="hero-video__facade" aria-label="Lire la vidéo Jazz Orchestra Yonnais">
+        <img
+          class="hero-video__thumb"
+          src="https://i.ytimg.com/vi/49LYaGwuXZc/maxresdefault.jpg"
+          alt=""
+          width="1280"
+          height="720"
+          loading="lazy"
+          decoding="async">
+        <span class="hero-video__play" aria-hidden="true"></span>
+      </button>
     </div>
-    <div class="hero-video">
-  <div style="max-width:760px;margin:0 auto">
-    <iframe
-      width="760"
-      height="428"
-      src="https://www.youtube-nocookie.com/embed/49LYaGwuXZc?rel=0"
-      title="Jazz Orchestra Yonnais sur YouTube"
-      loading="lazy"
-      referrerpolicy="strict-origin-when-cross-origin"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-      allowfullscreen>
-    </iframe>
-    <p style="margin-top:.75rem;color:rgba(255,255,255,.65);font-size:.9rem">
-      Si la vidéo ne s’affiche pas, la regarder directement sur
-      <a href="https://www.youtube.com/watch?v=49LYaGwuXZc" target="_blank" rel="noopener" style="color:#fff">
-        YouTube
-      </a>.
-    </p>
   </div>
-</div> </div>
 </section>
 
-<section class="concerts-home section">
+<section class="concerts-home section" id="prochains-concerts">
   <div class="container">
     <h2 class="section-title">Prochains concerts</h2>
-    {% if prochains %}
-    <div class="event-list">
-      {% for e in prochains %}
-      <div class="event-item">
-        <div class="event-date">
-          <span class="day">{{ e.date_debut|date:"d" }}</span>
-          <span class="month">{{ e.date_debut|date:"M Y" }}</span>
-        </div>
-        <div>
-          <div class="event-titre">
-            {{ e.titre }}
-            {% if e.statut == 'tentative' %}<span class="badge-tentative">Date à confirmer</span>{% endif %}
-            {% if e.statut == 'annule' %}<span class="badge-annule">Annulé</span>{% endif %}
-          </div>
-          <div class="event-lieu">{{ e.venue.nom }} — {{ e.venue.ville }}</div>
-          {% if e.date_debut %}<div class="event-heure">{{ e.date_debut|date:"H\hi" }}</div>{% endif %}
-        </div>
-        {% if e.url_billets %}
-        <a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary">Billets</a>
-        {% else %}
-        <a href="{% url 'concerts' %}" class="btn btn-outline">Détails</a>
-        {% endif %}
-        {% if e.venue.latitude %}
-        <div class="event-map-mini">
-          <div style="position:relative;width:100%;height:100%">
-            <iframe
-              src="https://www.openstreetmap.org/export/embed.html?bbox={{ e.bbox }}&layer=mapnik&mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}"
-              style="width:100%;height:100%;border:0"
-              loading="lazy"
-              title="Carte du lieu"
-              referrerpolicy="no-referrer-when-downgrade">
-            </iframe>
-            <a href="https://www.openstreetmap.org/?mlat={{ e.venue.latitude|stringformat:"f" }}&mlon={{ e.venue.longitude|stringformat:"f" }}#map=15/{{ e.venue.latitude|stringformat:"f" }}/{{ e.venue.longitude|stringformat:"f" }}"
-               target="_blank" rel="noopener"
-               title="Voir en plein écran"
-               style="position:absolute;bottom:var(--space-2,8px);right:var(--space-2,8px);z-index:10;background:white;border:1px solid var(--border);border-radius:var(--r);padding:4px 7px;display:flex;align-items:center;gap:4px;font-size:.75rem;color:#333;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,.15)">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              OSM
-            </a>
-            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);pointer-events:none;z-index:10">
-              <svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 24 14 24s14-14.25 14-24C28 6.27 21.73 0 14 0z" fill="#c94f3a"/>
-                <circle cx="14" cy="14" r="6" fill="white"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="empty">Prochains concerts à venir — revenez bientôt !</p>
-    {% endif %}
-    <div style="margin-top:1.5rem">
-      <a href="{% url 'concerts' %}" class="btn btn-primary">Voir tous les concerts</a>
-    </div>
+    {% include "core/blocks/_concerts_list.html" %}
   </div>
 </section>
+
+{% if prochains %}
+<a href="#prochains-concerts" class="home-scroll-cue" id="home-scroll-cue">
+  <span>Prochains concerts</span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+</a>
+{% endif %}
 
 <hr class="divider">
 
 <section class="about section">
   <div class="container">
-    <div class="about-grid">
-      <div class="about-text">
-        <h2 class="section-title">Le Big Band</h2>
-        <p>
-          JOY ou Jazz Orchestra Yonnais est un Big Band associatif basé à La Roche-sur-Yon,
-          en Vendée. Passionné.e.s de jazz et de swing, nos musicien.ne.s partagent leur amour
-          de la musique lors de concerts, festivals et événements privés.
-        </p>
-        <p>
-          Mariages, cocktails dinatoires, soirées de gala, animations d'entreprise —
-          le JOY met l'ambiance à chaque prestation.
-        </p>
-        <a href="{% url 'contact' %}" class="btn btn-primary" style="margin-top:.5rem">
-          Demande de prestation
-        </a>
-      </div>
-      <div class="about-photo">
-        <img src="https://picsum.photos/seed/jazz/800/600"
-             alt="Le Jazz Orchestra Yonnais sur scène"
-             loading="lazy">
+    <div class="about-text">
+      <h2 class="section-title">Le Big Band</h2>
+      <p>
+        JOY ou Jazz Orchestra Yonnais est un Big Band associatif basé à La Roche-sur-Yon,
+        en Vendée. Passionné.e.s de jazz et de swing, nos musicien.ne.s partagent leur amour
+        de la musique lors de concerts, festivals et événements privés.
+      </p>
+      <p>
+        Mariages, cocktails dinatoires, soirées de gala, animations d'entreprise —
+        le JOY met l'ambiance à chaque prestation.
+      </p>
+      <div class="about-cta">
+          <a href="{% url 'contact' %}?mode=prestation" class="btn btn-primary">
+            Demande de prestation
+          </a>
       </div>
     </div>
   </div>
 </section>
+{% endif %}
+{% endblock %}
 
+{% block extra_js %}
+<script src="{% static 'core/event-map.js' %}?v=4"></script>
+<script>
+(function () {
+  document.querySelectorAll(".hero-video[data-yt-embed]").forEach(function (wrap) {
+    var btn = wrap.querySelector(".hero-video__facade");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var embed = wrap.getAttribute("data-yt-embed");
+      if (!embed || wrap.classList.contains("is-playing")) return;
+      wrap.classList.add("is-playing");
+      var sep = embed.indexOf("?") >= 0 ? "&" : "?";
+      var iframe = document.createElement("iframe");
+      iframe.src = embed + sep + "autoplay=1&playsinline=1";
+      iframe.title = "Jazz Orchestra Yonnais sur YouTube";
+      iframe.setAttribute(
+        "allow",
+        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      );
+      iframe.allowFullscreen = true;
+      iframe.loading = "eager";
+      iframe.referrerPolicy = "strict-origin-when-cross-origin";
+      wrap.replaceChildren(iframe);
+    });
+  });
+
+  var cue = document.getElementById("home-scroll-cue");
+  var target = document.getElementById("prochains-concerts");
+  if (!cue || !target || !("IntersectionObserver" in window)) return;
+
+  var observer = new IntersectionObserver(
+    function (entries) {
+      entries.forEach(function (entry) {
+        cue.classList.toggle("is-hidden", entry.isIntersecting);
+      });
+    },
+    { rootMargin: "-10% 0px -35% 0px", threshold: 0.05 }
+  );
+  observer.observe(target);
+})();
+</script>
 {% endblock %}

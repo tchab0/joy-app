@@ -1,0 +1,236 @@
+{# Bannière globale : sondages de dates avec vote Oui / Peut-être / Non inline. #}
+{% if pending_polls %}
+<style>
+  .pl-poll-banner {
+    margin: 0 auto;
+    max-width: 1100px;
+    padding: .65rem 1rem .75rem;
+    border-bottom: 1px solid rgba(var(--accent-rgb), .14);
+    background: rgba(var(--accent-rgb), .05);
+    color: var(--text);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .pl-poll-banner__title {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0 0 .4rem;
+    color: var(--text);
+  }
+  .pl-poll-banner__poll {
+    padding: .45rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .pl-poll-banner__poll:first-of-type { border-top: none; padding-top: 0; }
+  .pl-poll-banner__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .2rem .55rem;
+    margin-bottom: .35rem;
+  }
+  .pl-poll-banner__name {
+    font-weight: 600;
+    font-size: .92rem;
+    color: var(--gold-text);
+    text-decoration: none;
+  }
+  .pl-poll-banner__name:hover { filter: brightness(.92); }
+  .pl-poll-banner__meta {
+    font-size: .75rem;
+    color: var(--muted);
+    margin: 0;
+  }
+  .pl-poll-banner__options {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    width: 100%;
+  }
+  /* Mobile-first : date + boutons — 2 lignes max, pleine largeur */
+  .pl-poll-banner__option {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: .3rem;
+    width: 100%;
+    padding: .35rem 0;
+    border-top: 1px solid rgba(0,0,0,.06);
+    box-sizing: border-box;
+  }
+  .pl-poll-banner__option:first-child { border-top: none; padding-top: 0; }
+  .pl-poll-banner__when {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .15rem .4rem;
+    align-items: baseline;
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.25;
+    color: var(--text);
+    min-width: 0;
+  }
+  .pl-poll-banner__day { font-weight: 600; text-transform: capitalize; }
+  .pl-poll-banner__label {
+    font-size: .75rem;
+    color: var(--muted);
+  }
+  .pl-poll-banner__counts {
+    margin: 0;
+    font-size: .75rem;
+    line-height: 1.3;
+    color: var(--muted);
+  }
+  .pl-poll-banner__actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .35rem;
+    align-items: stretch;
+    width: 100%;
+  }
+  .pl-poll-banner .pl-btn {
+    appearance: none;
+    border: 1.5px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    font-family: var(--font-b);
+    font-size: .78rem;
+    font-weight: 600;
+    padding: .35rem .5rem;
+    border-radius: var(--r);
+    cursor: pointer;
+    letter-spacing: .02em;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .pl-poll-banner .pl-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pl-poll-banner .pl-btn--yes { border-color: var(--ok); color: var(--ok); }
+  .pl-poll-banner .pl-btn--yes.is-active,
+  .pl-poll-banner .pl-btn--yes:hover { background: var(--ok); color: #fff; }
+  .pl-poll-banner .pl-btn--maybe { border-color: var(--gold); color: var(--gold-text); }
+  .pl-poll-banner .pl-btn--maybe.is-active,
+  .pl-poll-banner .pl-btn--maybe:hover { background: var(--gold); color: #fff; }
+  .pl-poll-banner .pl-btn--no { border-color: var(--accent); color: var(--accent); }
+  .pl-poll-banner .pl-btn--no.is-active,
+  .pl-poll-banner .pl-btn--no:hover { background: var(--accent); color: #fff; }
+  .pl-poll-banner__toast {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    padding: .65rem 1.1rem;
+    border-radius: var(--r);
+    font-size: .85rem;
+    z-index: 150;
+    box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  }
+  /* Dès ~480px : date et boutons sur une seule ligne */
+  @media (min-width: 480px) {
+    .pl-poll-banner__option {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem .75rem;
+    }
+    .pl-poll-banner__when {
+      flex: 1 1 auto;
+    }
+    .pl-poll-banner__counts {
+      flex: 1 1 100%;
+      order: 3;
+    }
+    .pl-poll-banner__actions {
+      flex: 0 0 auto;
+      width: auto;
+      max-width: 100%;
+    }
+    .pl-poll-banner .pl-btn {
+      flex: 0 0 auto;
+      min-width: 4.75rem;
+      padding: .35rem .7rem;
+    }
+  }
+</style>
+<aside class="pl-poll-banner"
+       role="region"
+       aria-label="Sondages de dates à répondre"
+       x-data="{ remaining: {{ pending_polls|length }} }"
+       x-show="remaining > 0"
+       @poll-complete="remaining = Math.max(0, remaining - 1)">
+  <h2 class="pl-poll-banner__title">
+    {% if pending_polls_count == 1 %}Sondage de dates à répondre{% else %}Sondages de dates à répondre{% endif %}
+  </h2>
+  {% for poll in pending_polls %}
+  <div class="pl-poll-banner__poll"
+       x-data="pollVotes({
+         open: true,
+         csrf: '{{ csrf_token }}',
+         choices: {
+           {% for item in poll.banner_options %}
+           {{ item.option.pk }}: '{{ item.my_vote|default:'' }}'{% if not forloop.last %},{% endif %}
+           {% endfor %}
+         },
+         counts: {
+           {% for item in poll.banner_options %}
+           {{ item.option.pk }}: {{ item.counts_json }}{% if not forloop.last %},{% endif %}
+           {% endfor %}
+         },
+         urls: {
+           {% for item in poll.banner_options %}
+           {{ item.option.pk }}: '{% url 'planning:vote_option' item.option.pk %}'{% if not forloop.last %},{% endif %}
+           {% endfor %}
+         }
+       })"
+       x-show="!complete"
+       x-transition.opacity.duration.200ms
+       @pl-toast.window="onToast($event.detail)">
+    <div class="pl-poll-banner__head">
+      <a class="pl-poll-banner__name" href="{% url 'planning:poll_detail' poll.pk %}">{{ poll.title }}</a>
+      <p class="pl-poll-banner__meta">
+        {{ poll.banner_options|length }} option{{ poll.banner_options|length|pluralize }}
+        {% if poll.deadline %} · avant le {{ poll.deadline|date:"d/m" }}{% endif %}
+        {% if poll.launched_at %} · {{ poll.launched_at|date:"d/m" }}{% endif %}
+      </p>
+    </div>
+    <div class="pl-poll-banner__options">
+      {% for item in poll.banner_options %}
+      <div class="pl-poll-banner__option">
+        <p class="pl-poll-banner__when">
+          <span class="pl-poll-banner__day">{{ item.option.starts_at|date:"D" }}</span>
+          <span>{{ item.option.starts_at|date:"d/m/Y" }}</span>
+          <span>{{ item.option.starts_at|date:"H:i" }}{% if item.option.ends_at %}–{{ item.option.ends_at|date:"H:i" }}{% endif %}</span>
+          {% if item.option.label %}<span class="pl-poll-banner__label">· {{ item.option.label }}</span>{% endif %}
+        </p>
+        <p class="pl-poll-banner__counts"
+           x-text="countsLabel({{ item.option.pk }})">{{ item.counts_label }}</p>
+        <div class="pl-poll-banner__actions">
+          <button type="button" class="pl-btn pl-btn--yes"
+                  :class="choiceOf({{ item.option.pk }}) === 'yes' && 'is-active'"
+                  :disabled="isBusy({{ item.option.pk }})"
+                  @click="vote({{ item.option.pk }}, 'yes')">Oui</button>
+          <button type="button" class="pl-btn pl-btn--maybe"
+                  :class="choiceOf({{ item.option.pk }}) === 'maybe' && 'is-active'"
+                  :disabled="isBusy({{ item.option.pk }})"
+                  @click="vote({{ item.option.pk }}, 'maybe')">Peut-être</button>
+          <button type="button" class="pl-btn pl-btn--no"
+                  :class="choiceOf({{ item.option.pk }}) === 'no' && 'is-active'"
+                  :disabled="isBusy({{ item.option.pk }})"
+                  @click="vote({{ item.option.pk }}, 'no')">Non</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="pl-poll-banner__toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+  </div>
+  {% endfor %}
+</aside>
+{% include "planning/_poll_votes_js.html" %}
+{% endif %}

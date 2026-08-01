@@ -1,0 +1,61 @@
+# Nextcloud — cloud.jazz-orchestra-yonnais.fr
+# Installé par deploy/nextcloud/install.sh
+
+upstream joy_nextcloud {
+    server 127.0.0.1:8088;
+    keepalive 8;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name cloud.jazz-orchestra-yonnais.fr;
+
+    client_max_body_size 512M;
+
+    access_log /var/log/nginx/joy-nextcloud.access.log;
+    error_log /var/log/nginx/joy-nextcloud.error.log;
+
+    # Headers recommandés Nextcloud
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Permitted-Cross-Domain-Policies "none" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location = /.well-known/carddav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+    location = /.well-known/caldav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+
+    location / {
+        proxy_pass http://joy_nextcloud;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+        client_body_timeout 3600;
+    }
+
+    ssl_certificate /etc/letsencrypt/live/cloud.jazz-orchestra-yonnais.fr/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cloud.jazz-orchestra-yonnais.fr/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name cloud.jazz-orchestra-yonnais.fr;
+    return 301 https://$host$request_uri;
+}

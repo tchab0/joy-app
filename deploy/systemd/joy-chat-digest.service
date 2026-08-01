@@ -1,0 +1,10 @@
+[Unit]
+Description=JOY — digest alertes chat (push/e-mail)
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/srv/jazz-orchestra-yonnais/repo
+EnvironmentFile=/srv/jazz-orchestra-yonnais/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+ExecStart=/srv/jazz-orchestra-yonnais/.venv/bin/python manage.py chat_send_digests

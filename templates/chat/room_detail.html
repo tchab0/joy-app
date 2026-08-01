@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ room.title }} — Chat JOY{% endblock %}
+{% block extra_head %}
+<script defer src="{% static 'chat/room.js' %}?v=1"></script>
+{% endblock %}
+{% block extra_css %}
+{% include "chat/_room_styles.html" %}
+{% endblock %}
+{% block content %}
+{{ messages_data|json_script:messages_script_id }}
+{{ mention_members|json_script:mention_members_script_id }}
+{{ read_cursors|json_script:read_cursors_script_id }}
+{# cache-bust mentions v2 — liste orchestre entière #}
+<div class="chat-room"
+     x-data="chatRoom({
+       messagesScriptId: '{{ messages_script_id|escapejs }}',
+       membersScriptId: '{{ mention_members_script_id|escapejs }}',
+       readCursorsScriptId: '{{ read_cursors_script_id|escapejs }}',
+       currentUserId: {{ current_user_id }},
+       wsUrl: '{{ ws_url|escapejs }}',
+       apiSendUrl: '{{ api_send_url|escapejs }}',
+       apiReactUrl: '{{ api_react_url|escapejs }}',
+       apiEditUrl: '{{ api_edit_url|escapejs }}',
+       apiMembersUrl: '{{ api_members_url|escapejs }}',
+       apiReadUrl: '{{ api_read_url|escapejs }}',
+       csrfToken: '{{ csrf_token }}',
+       initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
+       embedded: false
+     })"
+     x-init="init()"
+     @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
+  {% include "chat/_room_chrome.html" %}
+
+  {% if is_planning_staff and room.event %}
+  {% include "chat/_room_staff_panel.html" %}
+  {% endif %}
+
+  {% if show_leave_hint %}
+  <div class="chat-leave-hint">
+    <strong>Vous êtes indisponible pour cet événement</strong>
+    Vous pouvez suivre les messages, ou quitter le salon pour ne plus le voir dans votre liste.
+    <form method="post" class="chat-leave-cta" onsubmit="return confirm('Quitter ce salon ?');">
+      {% csrf_token %}<input type="hidden" name="action" value="leave">
+      <button type="submit">Quitter le salon</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% include "chat/_room_thread_composer.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ piece.title }} — Répertoire{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% include "repertoire/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl">
+  {% include "planning/_module_nav.html" with active="repertoire" %}
+
+  <header class="pl-head">
+    <div class="pl-head__row">
+      <h1>{{ piece.title }}</h1>
+      {% if is_planning_staff %}
+      <a class="pl-btn pl-btn--staff" href="{% url 'repertoire:staff_piece_edit' piece.slug %}" style="min-height:44px;display:inline-flex;align-items:center">Éditer</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <form class="rep-filter" method="get" action="">
+    <label for="poste">Poste</label>
+    <select id="poste" name="poste" onchange="this.form.submit()">
+      <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
+      {% for value, label in poste_choices %}
+      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if piece.remarks %}
+  <section class="rep-block" aria-label="Remarques">
+    <h2>Remarques</h2>
+    <pre>{{ piece.remarks }}</pre>
+  </section>
+  {% endif %}
+
+  {% if piece.chorus_order %}
+  <section class="rep-block" aria-label="Ordre des chorus">
+    <h2>Ordre des chorus</h2>
+    <pre>{{ piece.chorus_order }}</pre>
+    {% if piece.chorus_order_updated_at %}
+    <p class="rep-muted" style="margin-top:.5rem">Mis à jour le {{ piece.chorus_order_updated_at|date:"d/m/Y H:i" }}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if piece.audio_recording or piece.youtube_videos %}
+  <section class="rep-block" aria-label="Écoute">
+    <h2>Écoute</h2>
+    {% if piece.audio_recording %}
+    <p class="rep-muted" style="margin-bottom:.4rem">Enregistrement propre</p>
+    <audio class="rep-audio" controls preload="metadata" src="{% url 'repertoire:piece_audio' piece.slug %}">
+      Votre navigateur ne lit pas l’audio.
+    </audio>
+    {% endif %}
+    {% if piece.youtube_videos %}
+    <p class="rep-muted" style="margin:{% if piece.audio_recording %}1rem{% else %}0{% endif %} 0 .55rem">Références YouTube</p>
+    {% include "repertoire/_youtube_thumbs.html" with videos=piece.youtube_videos %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>Partitions</h2>
+    {% if parts %}
+    <ul class="rep-part-list">
+      {% for part in parts %}
+      <li>
+        <span>{{ part.get_poste_display }}</span>
+        <span class="rep-part-list__actions">
+          {% include "repertoire/_pdf_preview_icon.html" with part=part title="Aperçu PDF" %}
+          <a href="{% url 'repertoire:part_pdf' part.pk %}">PDF</a>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="pl-empty">Aucune partition{% if selected_poste != 'all' %} pour ce poste{% endif %}.</p>
+    {% endif %}
+  </section>
+
+  <section class="pl-section">
+    <h2>Salon de discussion</h2>
+    {% if chat_room %}
+    <a class="pl-btn pl-btn--primary" href="{% url 'chat:room' chat_room.pk %}">Ouvrir le salon</a>
+    {% else %}
+    <p class="rep-muted" style="margin-bottom:.75rem">Pas encore de salon pour ce morceau.</p>
+    <form method="post" action="{% url 'repertoire:create_salon' piece.slug %}">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--primary">Créer le salon</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

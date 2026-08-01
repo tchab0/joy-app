@@ -1,0 +1,42 @@
+{% if prochains %}
+<div class="event-list">
+  {% for e in prochains %}
+  <div class="event-item">
+    <div class="event-date">
+      <span class="day">{{ e.date_debut|date:"d" }}</span>
+      <span class="month">{{ e.date_debut|date:"M Y" }}</span>
+    </div>
+    <div>
+      <div class="event-titre">
+        <a href="{{ e.get_absolute_url }}" style="color:inherit;text-decoration:none">{{ e.titre }}</a>
+        {% if e.statut == 'tentative' %}<span class="badge-tentative">Date à confirmer</span>{% endif %}
+        {% if e.statut == 'annule' %}<span class="badge-annule">Annulé</span>{% endif %}
+      </div>
+      {% if e.parent %}<div class="event-lieu">Dans : {{ e.parent.titre }}</div>{% endif %}
+      {% if e.organisme %}<div class="event-lieu">Organisé par {{ e.organisme }}</div>{% endif %}
+      <div class="event-lieu">{{ e.lieu_affiche }}</div>
+      {% if e.date_debut %}<div class="event-heure">{{ e.horaires_affiches }}</div>{% endif %}
+      <div class="event-card-actions">
+        {% if e.show_nav_go %}
+        {% include "includes/_nav_go_button.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" go_label=e.venue.nom go_text="J'y vais" go_class="event-map__go btn btn-primary btn-sm" %}
+        {% endif %}
+        {% if e.url_billets %}
+        <a href="{{ e.url_billets }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Billets</a>
+        {% else %}
+        <a href="{{ e.get_absolute_url }}" class="btn btn-outline btn-sm">Détails</a>
+        {% endif %}
+        {% include "includes/_concert_share.html" with event=e %}
+      </div>
+    </div>
+    {% if e.venue.latitude %}
+    {% include "includes/_event_map.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" map_id=e.pk mini=True %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">Prochains concerts à venir — revenez bientôt !</p>
+{% endif %}
+<div class="concerts-home__more">
+  <a href="{% url 'concerts' %}" class="btn btn-primary">Voir tous les concerts</a>
+</div>

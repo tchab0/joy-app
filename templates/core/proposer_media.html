@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% load page_lead %}
+{% load static %}
 {% block title %}Proposer un média — JOY{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/photo-editor.css' %}">
 <style>
 .upload-form { max-width: 600px; margin: 0 auto; }
 .form-group { margin-bottom: 1.5rem; }
@@ -12,8 +15,12 @@
 .drop-zone { border:2px dashed var(--border); border-radius:var(--r); padding:2rem; text-align:center; cursor:pointer; transition:border-color var(--trans),background var(--trans); }
 .drop-zone:hover, .drop-zone.drag-over { border-color:var(--accent); background:rgba(201,79,58,.04); }
 .drop-zone input[type=file] { display:none; }
-.file-preview { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.75rem; justify-content:center; }
-.file-thumb { width:72px; height:54px; object-fit:cover; border-radius:var(--r); border:1px solid var(--border); }
+.file-preview { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; text-align:left; }
+.file-preview-item { display:flex; align-items:center; gap:.75rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r); padding:.5rem .65rem; }
+.file-thumb { width:72px; height:54px; object-fit:cover; border-radius:var(--r); border:1px solid var(--border); flex-shrink:0; }
+.file-preview-meta { flex:1; min-width:0; font-size:.82rem; color:var(--muted); }
+.file-preview-meta strong { display:block; color:var(--text); font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-preview-item .btn { flex-shrink:0; font-size:.75rem; padding:.4rem .7rem; min-height:40px; }
 .ev-separator { display:flex; align-items:center; gap:.75rem; margin:.75rem 0; color:var(--muted); font-size:.8rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
 .ev-separator::before, .ev-separator::after { content:''; flex:1; height:1px; background:var(--border); }
 [x-cloak] { display:none!important; }
@@ -23,28 +30,25 @@
 <section class="section">
   <div class="container">
     <h1 class="section-title">Proposer un média</h1>
-    <p style="color:var(--muted);margin-bottom:2rem;max-width:55ch">Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier.</p>
+    {% if planning_event %}
+    <p style="background:rgba(42,107,60,.08);border:1px solid rgba(42,107,60,.28);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:1.25rem;color:var(--text);max-width:55ch">
+      Merci de partager vos photos et vidéos de
+      <strong>{{ planning_event.titre }}</strong>
+      ({{ planning_event.date_debut|date:"j F Y" }}).
+      L’événement est déjà sélectionné ci-dessous — il ne reste qu’à envoyer vos fichiers.
+    </p>
+    {% else %}
+    {% page_lead "core.proposer_media" %}
+      Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.
+    {% endpage_lead %}
+    {% endif %}
 
-    <form class="upload-form" method="post" enctype="multipart/form-data"
-      x-data="{
-        type: '{{ form.type.value|default:'photo' }}',
-        nouvel_ev: false,
-        previews: [],
-        uploading: false,
-        handleFiles(files) {
-          this.previews = [];
-          Array.from(files).forEach(f => {
-            if (f.type.startsWith('image/')) {
-              const r = new FileReader();
-              r.onload = e => this.previews.push(e.target.result);
-              r.readAsDataURL(f);
-            }
-          });
-        }
-      }"
-      @submit="uploading=true">
+    <form class="upload-form" method="post" enctype="multipart/form-data" id="media-submit-form"
+      x-data="proposerPhotos()"
+      @submit="onSubmit($event)">
 
       {% csrf_token %}
+      {% if planning_event %}<input type="hidden" name="event" value="{{ planning_event.pk }}">{% endif %}
 
       {% if form.non_field_errors %}
       <div style="background:rgba(201,79,58,.08);border:1px solid rgba(201,79,58,.3);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:1.5rem;color:var(--accent);font-size:.9rem;">
@@ -52,13 +56,11 @@
       </div>
       {% endif %}
 
-      <!-- Type -->
       <div class="form-group">
         <label class="form-label">{{ form.type.label }}</label>
         {{ form.type }}
       </div>
 
-      <!-- Événement -->
       <div class="form-group">
         <label class="form-label">Événement associé</label>
         <div x-show="!nouvel_ev">
@@ -85,30 +87,35 @@
         {% if form.evenement_nouveau.errors %}<p class="form-error">{{ form.evenement_nouveau.errors.0 }}</p>{% endif %}
       </div>
 
-      <!-- Photos -->
       <div class="form-group" x-show="type === 'photo'" x-cloak>
         <label class="form-label">{{ form.fichiers_multiples.label }}</label>
         <div class="drop-zone"
           @click="$refs.photos.click()"
           @dragover.prevent="$el.classList.add('drag-over')"
           @dragleave="$el.classList.remove('drag-over')"
-          @drop.prevent="$el.classList.remove('drag-over'); $refs.photos.files=$event.dataTransfer.files; handleFiles($event.dataTransfer.files)">
+          @drop.prevent="$el.classList.remove('drag-over'); handleFiles($event.dataTransfer.files)">
           <input type="file" name="fichiers_multiples" accept="image/*" multiple x-ref="photos"
             @change="handleFiles($event.target.files)">
           <div style="color:var(--muted);font-size:.9rem">
             Cliquez ou glissez-déposez vos photos ici<br>
             <span style="font-size:.8rem">JPG, PNG, WebP — sélection multiple possible</span>
           </div>
-          <div class="file-preview" x-show="previews.length > 0">
-            <template x-for="src in previews" :key="src">
-              <img :src="src" class="file-thumb" alt="">
-            </template>
-          </div>
+        </div>
+        <div class="file-preview" x-show="items.length > 0">
+          <template x-for="(item, idx) in items" :key="item.key">
+            <div class="file-preview-item">
+              <img :src="item.preview" class="file-thumb" alt="">
+              <div class="file-preview-meta">
+                <strong x-text="item.name"></strong>
+                <span x-text="item.edited ? 'Version améliorée prête' : 'Original'"></span>
+              </div>
+              <button type="button" class="btn btn-outline" @click.stop="editPhoto(idx)">Améliorer</button>
+            </div>
+          </template>
         </div>
         {% if form.fichiers_multiples.errors %}<p class="form-error">{{ form.fichiers_multiples.errors.0 }}</p>{% endif %}
       </div>
 
-      <!-- Vidéo -->
       <div class="form-group" x-show="type === 'video'" x-cloak>
         <label class="form-label">{{ form.url_externe.label }}</label>
         {{ form.url_externe }}
@@ -117,7 +124,6 @@
         {% if form.url_externe.errors %}<p class="form-error">{{ form.url_externe.errors.0 }}</p>{% endif %}
       </div>
 
-      <!-- Audio / PDF -->
       <div class="form-group" x-show="type === 'audio' || type === 'pdf'" x-cloak>
         <label class="form-label">{{ form.fichier.label }}</label>
         {{ form.fichier }}
@@ -126,7 +132,6 @@
         {% if form.fichier.errors %}<p class="form-error">{{ form.fichier.errors.0 }}</p>{% endif %}
       </div>
 
-      <!-- Identité -->
       <div class="form-group">
         <label class="form-label">{{ form.soumis_par_nom.label }}</label>
         {{ form.soumis_par_nom }}
@@ -143,4 +148,92 @@
     </form>
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'core/photo-editor.js' %}"></script>
+<script>
+function proposerPhotos() {
+  return {
+    type: '{{ form.type.value|default:"photo" }}',
+    nouvel_ev: false,
+    uploading: false,
+    items: [],
+    handleFiles(fileList) {
+      const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+      this.items = files.map((file, i) => ({
+        key: file.name + '-' + file.size + '-' + i,
+        name: file.name,
+        file,
+        edited: null,
+        preview: URL.createObjectURL(file),
+      }));
+      // Resync input for progressive enhancement / non-JS fallbacks
+      if (this.$refs.photos) {
+        const dt = new DataTransfer();
+        files.forEach(f => dt.items.add(f));
+        this.$refs.photos.files = dt.files;
+      }
+    },
+    editPhoto(idx) {
+      const item = this.items[idx];
+      if (!item) return;
+      const launch = (src) => {
+        if (!src) return;
+        JoyPhotoEditor.open({
+          source: src,
+          onSave: (editedFile) => {
+            if (item.preview) URL.revokeObjectURL(item.preview);
+            item.edited = editedFile;
+            item.preview = URL.createObjectURL(editedFile);
+            this.items = [...this.items];
+          },
+        });
+      };
+      if (item.edited) {
+        JoyPhotoEditor.chooseSource({
+          original: item.file,
+          edited: item.edited,
+          hint: 'Une version améliorée existe déjà pour cette photo.',
+        }).then(launch);
+      } else {
+        launch(item.file);
+      }
+    },
+    onSubmit(e) {
+      if (this.type !== 'photo') {
+        this.uploading = true;
+        return;
+      }
+      e.preventDefault();
+      if (!this.items.length) {
+        alert('Sélectionnez au moins une photo.');
+        return;
+      }
+      this.uploading = true;
+      const form = e.target;
+      const fd = new FormData(form);
+      fd.delete('fichiers_multiples');
+      this.items.forEach((item, i) => {
+        fd.append('fichiers_multiples', item.file, item.file.name);
+        if (item.edited) {
+          fd.append('fichier_edite_' + i, item.edited, item.edited.name || ('edite_' + i + '.jpg'));
+        }
+      });
+      fetch(form.action || window.location.href, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      }).then(async (r) => {
+        const html = await r.text();
+        document.open();
+        document.write(html);
+        document.close();
+      }).catch(() => {
+        this.uploading = false;
+        alert('Échec de l’envoi.');
+      });
+    },
+  };
+}
+</script>
 {% endblock %}

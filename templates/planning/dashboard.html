@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% load page_lead %}
+
+{% block title %}Planning — JOY{% endblock %}
+
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
+  <header class="pl-head">
+    <h1>Planning</h1>
+    {% page_lead "planning.dashboard" class="page-lead--in-head" %}
+      Prochaines dates, réponses et matériel — l’essentiel, rien de plus.
+    {% endpage_lead %}
+  </header>
+
+  {% include "planning/_module_nav.html" with active="mes_dates" %}
+
+  {% if pending %}
+  <section class="pl-section pl-section--panel pl-section--pending" data-tour="rsvp-actions">
+    <h2>À répondre</h2>
+    {% for p in pending %}
+    <div class="pl-row"
+         x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
+         x-show="true"
+         x-transition.opacity.duration.200ms>
+      <div class="pl-row__main">
+        <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+        <p class="pl-row__meta">
+          {{ p.event.date_debut|date:"D d/m H:i" }}
+          {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
+          {% if p.poste %} · {{ p.poste_label }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
+        <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
+        <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+        <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy" @click="respond('no')">Non</button>
+      </div>
+      {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
+      {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=p.pk %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if sub_offers %}
+  <section class="pl-section">
+    <h2>Remplacements proposés</h2>
+    {% for s in sub_offers %}
+    <div class="pl-row" x-data="{ busy: false }">
+      <div class="pl-row__main">
+        <a class="pl-row__title{% if s.participation.event.is_rehearsal %} is-rehearsal{% elif s.participation.event.statut == 'tentative' %} is-proposal{% elif s.participation.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
+        <p class="pl-row__meta">
+          Remplacer {{ s.participation.user.get_full_name|default:s.participation.user.username }}
+          · {{ s.participation.event.date_debut|date:"d/m H:i" }}
+          {% if s.participation.poste %} · {{ s.participation.poste_label }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <button type="button" class="pl-btn pl-btn--yes" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:claim_sub' s.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:true})}).then(r=>r.json()).then(d=>{ if(d.ok){ $dispatch('pl-toast', 'Remplacement accepté'); location.reload(); } else { busy=false; $dispatch('pl-toast', d.error||'Erreur'); } })">
+          Accepter
+        </button>
+        <button type="button" class="pl-btn pl-btn--no" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:claim_sub' s.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({accept:false})}).then(r=>r.json()).then(d=>{ if(d.ok){ location.reload(); } else { busy=false; } })">
+          Refuser
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section pl-section--panel pl-section--upcoming"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
+    <h2>Prochaines dates</h2>
+    {% if upcoming %}
+      {% for p in upcoming %}
+      <div class="pl-row{% if p.status.code == 'invited' or p.status.code == 'maybe' %} pl-row--needs-response{% endif %}"
+           {% if p.event.is_rehearsal %}
+           x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
+           {% else %}
+           x-data="respondButtons({{ p.pk }}, '{{ p.status.code }}', { eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
+           {% endif %}>
+        <div class="pl-row__main">
+          <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
+          <p class="pl-row__meta">
+            {{ p.event.date_debut|date:"D d/m/Y H:i" }}
+            {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
+            · {{ p.event.type.nom }}
+            {% if p.poste %} · {{ p.poste_label }}{% endif %}
+          </p>
+        </div>
+        <div class="pl-row__actions">
+          {% if p.event.is_rehearsal %}
+          <span class="pl-badge {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}pl-badge--danger{% else %}pl-badge--success{% endif %}"
+                :class="{ 'pl-badge--danger': absent, 'pl-badge--success': !absent }"
+                x-text="absent ? 'Absent' : 'Présent'">
+            {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}Absent{% else %}Présent{% endif %}
+          </span>
+          <button type="button"
+                  class="pl-btn {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}pl-btn--yes{% else %}pl-btn--no{% endif %}"
+                  :class="{ 'pl-btn--yes': absent, 'pl-btn--no': !absent }"
+                  :disabled="busy"
+                  @click="toggle()">
+            <span x-text="absent ? 'Annuler l’absence' : 'Signaler absence'">
+              {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}Annuler l’absence{% else %}Signaler absence{% endif %}
+            </span>
+          </button>
+          {% else %}
+          <span class="pl-badge pl-badge--{{ p.status.color_token|default:'neutral' }}" x-text="label">{{ p.status.label }}</span>
+          <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
+          <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+          <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy" @click="respond('no')">Non</button>
+          {% endif %}
+        </div>
+        {% include "planning/_rsvp_invalidate_modal.html" with prefix=p.pk %}
+        {% if not p.event.is_rehearsal %}
+        {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=p.pk %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="pl-empty">Aucune date à venir pour vous.</p>
+    {% endif %}
+  </section>
+
+  {% if my_gear %}
+  <section class="pl-section">
+    <h2>À apporter</h2>
+    {% for g in my_gear %}
+    <div class="pl-row" x-data="{ status: '{{ g.status }}', busy: false }">
+      <div class="pl-row__main">
+        <span class="pl-row__title">{{ g.item.name }}</span>
+        <p class="pl-row__meta">{{ g.event.titre }} · {{ g.event.date_debut|date:"d/m" }}</p>
+      </div>
+      <div class="pl-row__actions">
+        <button type="button" class="pl-btn" :class="status === 'ok' && 'pl-btn--yes is-active'" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'ok'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='ok'; $dispatch('pl-toast','Noté'); } })">
+          OK
+        </button>
+        <button type="button" class="pl-btn" :class="status === 'missing' && 'pl-btn--no is-active'" :disabled="busy"
+          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'missing'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='missing'; } })">
+          Manque
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
+</div>
+
+{% include "planning/_respond_buttons_js.html" %}
+{% endblock %}

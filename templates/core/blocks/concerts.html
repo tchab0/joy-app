@@ -1,0 +1,6 @@
+<section class="concerts-home section" id="prochains-concerts">
+  <div class="container">
+    <h2 class="section-title">{{ block.render.titre|default:"Prochains concerts" }}</h2>
+    {% include "core/blocks/_concerts_list.html" with prochains=block.prochains %}
+  </div>
+</section>

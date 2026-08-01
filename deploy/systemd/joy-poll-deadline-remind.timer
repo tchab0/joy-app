@@ -1,0 +1,10 @@
+[Unit]
+Description=JOY — rappel deadline sondage J−7 (quotidien 10h30)
+
+[Timer]
+OnCalendar=*-*-* 10:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

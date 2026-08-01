@@ -1,0 +1,74 @@
+{# Styles chip météo — à inclure une fois (extra_css / _styles) #}
+<style>
+  .wx {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .45rem .65rem;
+    margin-top: .55rem;
+    padding: .55rem .7rem;
+    min-height: 44px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: .85rem;
+    box-sizing: border-box;
+  }
+  .wx--compact {
+    margin: 0;
+    padding: .25rem 0;
+    border: 0;
+    background: transparent;
+    min-height: 0;
+    gap: .4rem .5rem;
+  }
+  .wx__icon {
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: calc(var(--r) - 2px);
+    background: rgba(201, 79, 58, .1);
+    color: var(--accent);
+  }
+  .wx--compact .wx__icon {
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 4px;
+  }
+  .wx__icon svg { width: 1.15rem; height: 1.15rem; display: block; }
+  .wx--compact .wx__icon svg { width: 1rem; height: 1rem; }
+  .wx__icon--sun { background: rgba(184, 137, 42, .14); color: var(--gold-text); }
+  .wx__icon--cloud-sun { background: rgba(184, 137, 42, .12); color: var(--gold-text); }
+  .wx__icon--rain,
+  .wx__icon--storm { background: rgba(201, 79, 58, .12); color: var(--accent); }
+  .wx__icon--snow { background: rgba(60, 100, 140, .1); color: #3a5f7a; }
+  .wx__icon--fog,
+  .wx__icon--cloud { background: rgba(0, 0, 0, .05); color: var(--muted); }
+  .wx__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .15rem .45rem;
+    min-width: 0;
+  }
+  .wx__temp { font-weight: 700; color: var(--text); }
+  .wx__label { color: var(--muted); }
+  .wx__meta {
+    color: var(--muted);
+    font-size: .8rem;
+  }
+  .wx__meta::before {
+    content: "·";
+    margin-right: .35rem;
+    opacity: .7;
+  }
+  .wx__note {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: .72rem;
+    color: var(--gold-text);
+  }
+</style>

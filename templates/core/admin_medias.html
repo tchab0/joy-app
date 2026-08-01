@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Gestion des médias — JOY{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'core/photo-editor.css' %}">
 <style>
 .tab-bar { display:flex; gap:.25rem; margin-bottom:2rem; border-bottom:1px solid var(--border); }
 .tab-btn { padding:.5rem 1.2rem; font-size:.82rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; border:none; background:none; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color var(--trans),border-color var(--trans); text-decoration:none; display:inline-block; }
@@ -11,10 +13,10 @@
 .media-meta { font-size:.8rem; color:var(--muted); margin-top:.3rem; }
 .media-actions { display:flex; flex-direction:column; gap:.5rem; min-width:130px; }
 .badge { display:inline-block; padding:.2rem .6rem; border-radius:2px; font-size:.75rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
-.badge-attente { background:rgba(184,137,42,.15); color:var(--gold); }
-.badge-publie  { background:rgba(50,140,80,.15); color:#328c50; }
-.badge-refuse  { background:rgba(201,79,58,.12); color:var(--accent); }
-.badge-cours   { background:rgba(0,100,200,.1); color:#0064c8; }
+.badge-attente { background:rgba(184,137,42,.15); color:var(--gold-text); }
+.badge-publie  { background:rgba(42,107,60,.12); color:var(--ok); }
+.badge-refuse  { background:rgba(var(--accent-rgb),.12); color:var(--accent); }
+.badge-cours   { background:rgba(184,137,42,.12); color:var(--gold-text); }
 .rattach-form { margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border); font-size:.82rem; }
 .rattach-form select { font-size:.82rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:var(--r); background:var(--bg); color:var(--text); width:100%; margin-top:.25rem; }
 @media(max-width:600px){ .media-card { grid-template-columns:1fr; } }
@@ -39,11 +41,11 @@
     {% endif %}
 
     {% for m in medias %}
-    <div class="media-card" x-data="{ open_rattach: false, saving: false }">
+    <div class="media-card" x-data="{ open_rattach: false, saving: false, editing: false }">
 
       <div class="media-thumb">
-        {% if m.type == "photo" and m.fichier %}
-          <img src="{{ m.fichier.url }}" alt="{{ m.titre }}">
+        {% if m.type == "photo" and m.fichier_actif %}
+          <img src="{{ m.url_affichage }}" alt="{{ m.titre }}" id="thumb-{{ m.pk }}">
         {% elif m.type == "video" %}<span>🎬</span>
         {% elif m.type == "audio" %}<span>🎵</span>
         {% else %}<span>📄</span>
@@ -58,10 +60,13 @@
           {% if m.soumis_par_nom %}&middot; <strong>{{ m.soumis_par_nom }}</strong>{% endif %}
           {% if m.soumis_par_email %}&lt;{{ m.soumis_par_email }}&gt;{% endif %}
         </div>
-        {% if m.fichier %}
+        {% if m.fichier or m.fichier_edite %}
         <div class="media-meta">
-          <a href="{{ m.fichier.url }}" target="_blank" style="color:var(--accent)">Fichier original ↗</a>
-          {% if m.url_compressee %}&nbsp;·&nbsp;<a href="{{ m.url_compressee }}" target="_blank" style="color:#328c50">Compressé ✓</a>{% elif m.est_compresse %}&nbsp;·&nbsp;<span style="color:#328c50">Compressé ✓</span>{% endif %}
+          {% if m.fichier %}
+          <a href="{{ m.fichier.url }}" target="_blank" style="color:var(--accent)">Original ↗</a>
+          {% endif %}
+          {% if m.fichier_edite %}{% if m.fichier %}&nbsp;·&nbsp;{% endif %}<a href="{{ m.fichier_edite.url }}" target="_blank" style="color:var(--ok)">Édité ✓</a>{% endif %}
+          {% if m.url_compressee %}{% if not m.fichier or m.fichier.url != m.url_compressee %}&nbsp;·&nbsp;<a href="{{ m.url_compressee }}" target="_blank" style="color:var(--ok)">Compressé ✓</a>{% endif %}{% elif m.est_compresse %}&nbsp;·&nbsp;<span style="color:var(--ok)">Compressé ✓</span>{% endif %}
         </div>
         {% endif %}
         {% if m.url_externe %}
@@ -87,7 +92,6 @@
           </span>
         </div>
 
-        <!-- Rattachement à une page -->
         <div class="rattach-form" x-show="open_rattach" x-cloak>
           <label style="font-weight:600">Rattacher à une page</label>
           <select x-ref="page_{{ m.pk }}">
@@ -113,6 +117,44 @@
       </div>
 
       <div class="media-actions">
+        {% if m.type == "photo" and m.fichier %}
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem;min-height:44px" :disabled="editing"
+          @click="
+            {% if m.statut == 'publie' %}
+            if (!confirm('Cette photo est déjà publiée. La modifier remplacera la version visible sur le site (la compression sera relancée). Continuer ?')) return;
+            {% endif %}
+            editing=true;
+            const originalUrl = '{% if m.fichier %}{{ m.fichier.url|escapejs }}{% endif %}';
+            const editedUrl = '{% if m.fichier_edite %}{{ m.fichier_edite.url|escapejs }}{% endif %}';
+            const launch = (src) => {
+              if (!src) { editing=false; return; }
+              JoyPhotoEditor.open({
+                source: src,
+                onSave: async (file) => {
+                  const fd = new FormData();
+                  fd.append('fichier_edite', file, file.name);
+                  const r = await fetch('{% url 'admin_media_edit' m.pk %}', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    body: fd
+                  });
+                  editing=false;
+                  if (r.ok) {
+                    const u = new URL(location.href);
+                    u.searchParams.set('statut', '{{ m.statut }}');
+                    location.assign(u.toString());
+                  } else alert('Échec de l’enregistrement');
+                },
+                onCancel: () => { editing=false; }
+              });
+            };
+            if (editedUrl && originalUrl && editedUrl !== originalUrl) {
+              JoyPhotoEditor.chooseSource({ original: originalUrl, edited: editedUrl }).then(launch);
+            } else {
+              launch(editedUrl || originalUrl);
+            }
+          ">{% if m.statut == 'publie' %}Modifier{% else %}Améliorer{% endif %}</button>
+        {% endif %}
         {% if m.statut != 'publie' %}
         <button class="btn btn-primary" style="font-size:.78rem;padding:.4rem .9rem"
           @click="fetch('{% url 'admin_media_action' m.pk %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},body:'action=publier'}).then(()=>location.reload())">
@@ -123,11 +165,14 @@
           @click="fetch('{% url 'admin_media_action' m.pk %}',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/x-www-form-urlencoded'},body:'action=refuser'}).then(()=>location.reload())">
           Refuser</button>
         {% endif %}
-        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem;border-color:var(--gold);color:var(--gold)"
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.4rem .9rem;border-color:var(--gold);color:var(--gold-text)"
           @click="open_rattach=!open_rattach">Rattacher…</button>
       </div>
     </div>
     {% endfor %}
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'core/photo-editor.js' %}"></script>
 {% endblock %}

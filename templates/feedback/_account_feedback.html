@@ -1,0 +1,40 @@
+{% if show_page_feedback_responses %}
+<section class="fb-account-block">
+  <h2>Réponses à vos retours</h2>
+  {% for item in page_feedback_responses %}
+  <article class="fb-account-card">
+    <p class="fb-badge {{ item.category_css_class }}">{{ item.category_label }}</p>
+    <p>{{ item.response_message }}</p>
+    <p class="fb-muted">Votre message : {{ item.message|truncatechars:120 }}</p>
+    <form method="post" action="{% url 'dismiss_page_feedback_response' item.id %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline">Masquer</button>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if show_page_feedback_vote_requests %}
+<section class="fb-account-block">
+  <h2>Votes en cours</h2>
+  {% for item in page_feedback_vote_requests %}
+  <article class="fb-account-card">
+    <p class="fb-badge {{ item.category_css_class }}">{{ item.category_label }}</p>
+    <p>{{ item.formulation }}</p>
+    <div class="fb-vote-actions">
+      <form method="post" action="{% url 'submit_page_feedback_vote' item.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="choice" value="FOR">
+        <button type="submit" class="btn btn-primary">Pour</button>
+      </form>
+      <form method="post" action="{% url 'submit_page_feedback_vote' item.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="choice" value="AGAINST">
+        <button type="submit" class="btn btn-outline">Contre</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}

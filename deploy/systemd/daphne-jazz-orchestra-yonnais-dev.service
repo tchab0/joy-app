@@ -1,0 +1,24 @@
+[Unit]
+Description=Daphne ASGI (WebSockets) for jazz-orchestra-yonnais (dev)
+After=network.target redis-server.service
+Wants=redis-server.service
+
+[Service]
+User=deploy
+Group=www-data
+WorkingDirectory=/srv/jazz-orchestra-yonnais/repo
+EnvironmentFile=/srv/jazz-orchestra-yonnais/.env.dev
+Environment=DJANGO_SETTINGS_MODULE=config.settings.dev
+RuntimeDirectory=daphne-jazz-orchestra-yonnais-dev
+RuntimeDirectoryMode=0755
+ExecStart=/srv/jazz-orchestra-yonnais/.venv/bin/daphne \
+    --proxy-headers \
+    -u /run/daphne-jazz-orchestra-yonnais-dev/daphne.sock \
+    --access-log - \
+    --websocket_timeout 86400 \
+    config.asgi:application
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

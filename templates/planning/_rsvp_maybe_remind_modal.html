@@ -1,0 +1,42 @@
+{# Modal : quand renvoyer la question après un « Peut-être ». #}
+<div class="pl-modal-root" x-show="showMaybeRemind" x-cloak
+     x-transition.opacity
+     role="dialog" aria-modal="true" aria-labelledby="pl-maybe-remind-title-{{ prefix|default:'rsvp' }}">
+  <div class="pl-modal-backdrop" @click="closeMaybeRemind()"></div>
+  <div class="pl-modal" @click.stop>
+    <header class="pl-modal__head">
+      <h2 id="pl-maybe-remind-title-{{ prefix|default:'rsvp' }}">Quand vous relancer&nbsp;?</h2>
+      <button type="button" class="pl-btn" @click="closeMaybeRemind()" aria-label="Fermer" style="min-height:44px;min-width:44px">✕</button>
+    </header>
+    <p class="pl-row__meta" style="margin:0 0 .85rem;line-height:1.45;color:var(--text)">
+      Indiquez une date pour renvoyer la question, ou «&nbsp;Je ne sais pas&nbsp;» pour une relance chaque semaine.
+      <span x-show="eventDateLabel">
+        Événement&nbsp;: <strong style="font-weight:600;color:var(--text)" x-text="eventDateLabel"></strong><span x-show="posteLabel" x-text="' — ' + posteLabel"></span>.
+      </span>
+    </p>
+    <div class="pl-form" style="border-top:none;margin:0;padding:0">
+      <div>
+        <label for="pl-maybe-remind-date-{{ prefix|default:'rsvp' }}">Date de relance</label>
+        <input type="date"
+               id="pl-maybe-remind-date-{{ prefix|default:'rsvp' }}"
+               x-model="maybeRemindDate"
+               :min="todayISO"
+               :max="eventDateISO || undefined"
+               style="min-height:44px;width:100%;color:var(--text)">
+      </div>
+      <p class="pl-row__meta" x-show="maybeRemindError" x-text="maybeRemindError"
+         style="color:var(--accent);margin:0"></p>
+      <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem;margin-top:.25rem">
+        <button type="button" class="pl-btn" :disabled="busy" @click="confirmMaybeRemindWeekly()" style="min-height:44px;flex:1 1 8rem">
+          Je ne sais pas
+        </button>
+        <button type="button" class="pl-btn pl-btn--primary" :disabled="busy || !maybeRemindDate" @click="confirmMaybeRemindDate()" style="min-height:44px;flex:1 1 8rem">
+          <span x-text="busy ? 'Envoi…' : 'Enregistrer'">Enregistrer</span>
+        </button>
+      </div>
+      <p class="pl-row__meta" style="margin:.5rem 0 0;line-height:1.4;color:var(--muted)">
+        «&nbsp;Je ne sais pas&nbsp;» = relance toutes les semaines jusqu’à l’événement.
+      </p>
+    </div>
+  </div>
+</div>

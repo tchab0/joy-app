@@ -1,0 +1,13 @@
+<section class="about section page-block-text">
+  <div class="container">
+    <div class="about-text">
+      {% if block.render.titre %}<h2 class="section-title">{{ block.render.titre }}</h2>{% endif %}
+      {% if block.render.body_html %}{{ block.render.body_html|safe }}{% endif %}
+      {% if block.render.cta_label and block.render.cta_url %}
+      <div class="about-cta">
+        <a href="{{ block.render.cta_url }}" class="btn btn-primary">{{ block.render.cta_label }}</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>

@@ -2,7 +2,8 @@ from .base import *
 import os
 
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
-DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
+# Never enable DEBUG in production (even if DJANGO_DEBUG is set by mistake).
+DEBUG = False
 
 ALLOWED_HOSTS = ["jazz-orchestra-yonnais.fr", "www.jazz-orchestra-yonnais.fr"]
 
@@ -31,6 +32,8 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+SESSION_CACHE_ALIAS = "default"
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -42,3 +45,37 @@ SECURE_REFERRER_POLICY = "same-origin"
 SECURE_HSTS_SECONDS = 3600
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = False
+
+# Shared cache across gunicorn/daphne workers (Channels stays on REDIS_URL /0).
+_redis_cache_url = os.environ.get("REDIS_CACHE_URL") or os.environ.get(
+    "REDIS_URL", "redis://127.0.0.1:6379/0"
+)
+if _redis_cache_url.rstrip("/").endswith("/0"):
+    _redis_cache_url = _redis_cache_url.rstrip("/")[:-1] + "1"
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _redis_cache_url,
+        "TIMEOUT": 300,
+    }
+}
+
+# Compile et met en cache les templates une fois par worker en production.
+TEMPLATES = [
+    {
+        **TEMPLATES[0],
+        "APP_DIRS": False,
+        "OPTIONS": {
+            **TEMPLATES[0]["OPTIONS"],
+            "loaders": [
+                (
+                    "django.template.loaders.cached.Loader",
+                    [
+                        "django.template.loaders.filesystem.Loader",
+                        "django.template.loaders.app_directories.Loader",
+                    ],
+                )
+            ],
+        },
+    }
+]

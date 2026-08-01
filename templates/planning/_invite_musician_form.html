@@ -1,0 +1,84 @@
+{# Formulaire d’invitation : musicien + poste (titulaire présélectionné). #}
+{# Attendu : invite_musicians (liste dict), form_action, optional next_path, id_prefix #}
+{# Optionnel : inline_submit=True pour bouton sur la même ligne (desktop) #}
+{% with prefix=id_prefix|default:"invite" %}
+{% with data_id=prefix|add:"-musicians-data" %}
+{{ invite_musicians|json_script:data_id }}
+<form class="pl-form invite-musician-form{% if inline_submit %} invite-musician-form--inline{% endif %}"
+      method="post"
+      action="{{ form_action }}"
+      x-data="inviteMusicianForm(JSON.parse(document.getElementById('{{ data_id }}').textContent))">
+  {% csrf_token %}
+  {% if next_path %}<input type="hidden" name="next" value="{{ next_path }}">{% endif %}
+  <input type="hidden" name="invite_slot" :value="slotValue">
+  <div class="pl-form__row{% if inline_submit %} pl-form__row--invite{% else %} pl-form__row--2{% endif %}">
+    <div>
+      <label for="{{ prefix }}_user">Musicien</label>
+      <select id="{{ prefix }}_user" x-model="userId" @change="onMusicianChange()" required>
+        <option value="">Choisir un musicien…</option>
+        <template x-for="m in musicians" :key="m.user_id">
+          <option :value="String(m.user_id)" x-text="m.name"></option>
+        </template>
+      </select>
+    </div>
+    <div x-show="slots.length > 0" x-cloak>
+      <label for="{{ prefix }}_poste">Poste</label>
+      <select id="{{ prefix }}_poste" x-model="poste" :disabled="!slots.length">
+        <template x-for="s in slots" :key="s.poste">
+          <option :value="s.poste" x-text="s.label"></option>
+        </template>
+      </select>
+      {% if not inline_submit %}
+      <p class="help" style="margin-top:.35rem;color:var(--muted);font-size:.8rem">
+        Titulaire par défaut ; choisissez un autre poste pour convoquer en remplaçant.
+      </p>
+      {% endif %}
+    </div>
+    {% if inline_submit %}
+    <div class="pl-form__submit">
+      <button type="submit" class="{{ submit_class|default:'pl-btn pl-btn--primary' }}" :disabled="!userId">
+        {{ submit_label|default:"Inviter" }}
+      </button>
+    </div>
+    {% endif %}
+  </div>
+  {% if not inline_submit %}
+  <div style="margin-top:.75rem">
+    <button type="submit" class="{{ submit_class|default:'pl-btn pl-btn--primary' }}" :disabled="!userId">
+      {{ submit_label|default:"Inviter" }}
+    </button>
+  </div>
+  {% elif inline_submit %}
+  <p class="help invite-musician-form__hint">
+    Titulaire par défaut ; choisissez un autre poste pour convoquer en remplaçant.
+  </p>
+  {% endif %}
+</form>
+{% endwith %}
+{% endwith %}
+{% if not invite_form_js_loaded %}
+<script>
+window.inviteMusicianForm = window.inviteMusicianForm || function inviteMusicianForm(musicians) {
+  return {
+    musicians: musicians || [],
+    userId: '',
+    poste: '',
+    get current() {
+      const id = Number(this.userId);
+      return this.musicians.find(m => m.user_id === id) || null;
+    },
+    get slots() {
+      return (this.current && this.current.slots) || [];
+    },
+    get slotValue() {
+      if (!this.userId) return '';
+      return this.userId + ':' + (this.poste || '');
+    },
+    onMusicianChange() {
+      const m = this.current;
+      this.poste = m ? (m.default_poste || (m.slots[0] && m.slots[0].poste) || '') : '';
+    },
+  };
+};
+</script>
+{% endif %}

@@ -1,0 +1,31 @@
+{% comment %}
+Formulaire staff : valider une option de sondage → événement confirmé.
+Attend : proposal (ouvert), options (iterable de DateOption), id_prefix (optionnel).
+{% endcomment %}
+<form class="pl-form pl-confirm-poll" method="post" action="{% url 'planning:lock_poll' proposal.pk %}">
+  {% csrf_token %}
+  {% with opts=options %}
+  {% if opts|length == 1 %}
+  <input type="hidden" name="option_id" value="{{ opts.0.pk }}">
+  <p class="pl-row__meta" style="margin:0 0 .75rem">
+    Date retenue :
+    <strong style="color:var(--text)">
+      {{ opts.0.starts_at|date:"l j F Y · H:i" }}{% if opts.0.label %} — {{ opts.0.label }}{% endif %}
+    </strong>
+  </p>
+  {% else %}
+  <label for="{{ id_prefix|default:'lock' }}_option">Date à confirmer</label>
+  <select name="option_id" id="{{ id_prefix|default:'lock' }}_option" required>
+    <option value="">Choisir la date…</option>
+    {% for opt in opts %}
+    <option value="{{ opt.pk }}">
+      {{ opt.starts_at|date:"D d/m/Y H:i" }}{% if opt.label %} — {{ opt.label }}{% endif %}
+    </option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  {% endwith %}
+  <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;width:100%">
+    Confirmer l’événement
+  </button>
+</form>

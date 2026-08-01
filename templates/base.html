@@ -1,14 +1,45 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}JOY — Jazz Orchestra Yonnais{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <meta name="description" content="{% block meta_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <link rel="canonical" href="{% block canonical %}{{ SITE_URL }}{{ request.path }}{% endblock %}">
+  <meta name="robots" content="{% block robots %}{% if SEO_NOINDEX %}noindex, nofollow{% else %}index, follow{% endif %}{% endblock %}">
+  {% if GOOGLE_SITE_VERIFICATION %}
+  <meta name="google-site-verification" content="{{ GOOGLE_SITE_VERIFICATION }}">
+  {% endif %}
+  <link rel="manifest" href="{% url 'web_manifest' %}">
+  <meta name="theme-color" content="#1a1714">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JOY">
+  <link rel="icon" href="/static/users/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/users/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/users/icons/icon-180.png">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  <meta property="og:site_name" content="Jazz Orchestra Yonnais">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:title" content="{% block og_title %}JOY — Jazz Orchestra Yonnais{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <meta property="og:url" content="{% block og_url %}{{ SITE_URL }}{{ request.path }}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ SITE_URL }}/static/users/icons/og-image.jpg{% endblock %}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block twitter_title %}JOY — Jazz Orchestra Yonnais{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Jazz Orchestra Yonnais (JOY) — Big Band associatif à La Roche-sur-Yon (Vendée). Concerts jazz &amp; swing, festivals et prestations.{% endblock %}">
+  <meta name="twitter:image" content="{% block twitter_image %}{{ SITE_URL }}/static/users/icons/og-image.jpg{% endblock %}">
+  {% if json_ld %}
+  <script type="application/ld+json">{{ json_ld|safe }}</script>
+  {% endif %}
+  {% block extra_head %}{% endblock %}
+  <link rel="preload" href="{% static 'core/fonts/playfair-display-latin-700-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{% static 'core/fonts/work-sans-latin-400-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'core/fonts/fonts.css' %}?v=1">
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
 <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -19,7 +50,13 @@
       --muted:    #6b6560;
       --accent:   #c94f3a;
       --accent-h: #a83c2a;
+      --accent-rgb: 201, 79, 58;
       --gold:     #b8892a;
+      --gold-text: #8a6a1a;
+      --ok:       #2a6b3c;
+      /* Coulisses staff — slate froid, distinct du terracotta musicien */
+      --staff:    #3d5a6c;
+      --staff-rgb: 61, 90, 108;
       --font-d:   'Playfair Display', Georgia, serif;
       --font-b:   'Work Sans', 'Helvetica Neue', sans-serif;
       --r:        4px;
@@ -27,18 +64,59 @@
     }
     html { scroll-behavior: smooth; }
     body { font-family: var(--font-b); font-size: 1rem; color: var(--text); background: var(--bg); line-height: 1.6; }
+    a { color: var(--accent); }
 
-    /* NAV */
-    nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
+    /* NAV — scoped to the site chrome only (not in-page <nav class="pl-nav"> etc.) */
+    body > nav { position: sticky; top: 0; z-index: 100; background: var(--text); }
     .nav-inner { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
-        .nav-logo { font-family: var(--font-d); font-style: normal; font-weight: 900; font-size: 1.2rem; color: #fff; text-decoration: none; letter-spacing: .06em; text-transform: uppercase; }
-    .nav-logo span { color: var(--accent); }
-    .nav-links { display: flex; gap: 0; list-style: none; }
-    .nav-links a { display: block; padding: .75rem 1rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); }
+    .nav-logo {
+      display: flex; align-items: center; gap: .65rem;
+      color: #fff; text-decoration: none; min-width: 0;
+    }
+    .nav-logo-img {
+      display: block;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .nav-logo-text {
+      display: none;
+      font-family: var(--font-d); font-style: normal; font-weight: 900;
+      font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase;
+      color: #fff; line-height: 1.15; white-space: nowrap;
+    }
+    .nav-logo-text .nav-logo-joy { color: var(--accent); }
+    .nav-logo-rest { display: none; }
+    /* Compact brand (J.O.Y) once there's room beside the logo */
+    @media (min-width: 400px) {
+      .nav-logo-text { display: block; }
+    }
+    /* Full name only when horizontal nav fits (avoids half-screen clash) */
+    @media (min-width: 1100px) {
+      .nav-logo-img { width: 48px; height: 48px; }
+      .nav-logo-text { font-size: 1.15rem; }
+      .nav-logo-rest { display: inline; }
+    }
+    .nav-links { display: flex; gap: 0; list-style: none; flex-shrink: 0; }
+    .nav-links a { display: block; padding: .75rem .7rem; font-size: .85rem; font-weight: 500; color: rgba(255,255,255,.75); text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: color var(--trans); white-space: nowrap; }
+    @media (min-width: 1200px) {
+      .nav-links a { padding: .75rem 1rem; }
+    }
     .nav-links a:hover, .nav-links a.active { color: #fff; }
     .nav-links a.active { border-bottom: 2px solid var(--accent); }
-    .nav-fb { color: rgba(255,255,255,.6); text-decoration: none; font-size: .8rem; transition: color var(--trans); }
-    .nav-fb:hover { color: #fff; }
+    /* Coulisses — lettres slate, clairement distinctes du blanc des autres liens */
+    .nav-links a[data-tour="nav-coulisses"],
+    .nav-links a[data-tour="nav-coulisses"]:visited {
+      color: #7eb4cc;
+      font-weight: 600;
+    }
+    .nav-links a[data-tour="nav-coulisses"]:hover,
+    .nav-links a[data-tour="nav-coulisses"].active {
+      color: #a8d4e8;
+    }
+    .nav-links a[data-tour="nav-coulisses"].active {
+      border-bottom-color: #7eb4cc;
+    }
     .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
     .nav-burger span { display: block; width: 22px; height: 2px; background: #fff; margin: 5px 0; transition: var(--trans); }
     .nav-burger span { transition: transform var(--trans), opacity var(--trans); }
@@ -46,15 +124,94 @@
     /* MAIN */
     main { min-height: calc(100vh - 56px - 160px); }
 
-    /* FOOTER */
-    footer { background: var(--text); color: rgba(255,255,255,.5); text-align: center; padding: 2rem 1.5rem; font-size: .8rem; }
-    footer a { color: rgba(255,255,255,.5); text-decoration: none; margin: 0 .75rem; transition: color var(--trans); }
-    footer a:hover { color: #fff; }
+    /* FOOTER — liens chrome uniquement (pas les overlays/modales imbriqués) */
+    footer { background: var(--text); color: rgba(255,255,255,.65); text-align: center; padding: 2rem 1.5rem; font-size: .8rem; }
+    footer > div > a,
+    footer > p a {
+      color: rgba(255,255,255,.65); text-decoration: none; margin: 0 .75rem;
+      transition: color var(--trans);
+    }
+    footer > div > a:hover,
+    footer > p a:hover { color: #fff; }
+    .footer-staff {
+      margin-top: 1.25rem; padding-top: 1rem;
+      border-top: 1px solid rgba(255,255,255,.12);
+      max-width: 1100px; margin-left: auto; margin-right: auto;
+    }
+    .footer-staff-label {
+      display: block; margin-bottom: .5rem;
+      font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+      color: rgba(255,255,255,.4);
+    }
+    .footer-staff-links {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem .5rem;
+    }
+    .footer-staff a {
+      color: rgba(255,255,255,.55) !important; font-size: .75rem; letter-spacing: .06em;
+      display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .65rem;
+      margin: 0 !important;
+    }
+    .footer-staff a:hover { color: #fff !important; }
+    .footer-staff-icon {
+      gap: .4rem;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: var(--r);
+      color: rgba(255,255,255,.7) !important;
+    }
+    .footer-staff-icon:hover {
+      color: #fff !important;
+      border-color: rgba(255,255,255,.4);
+      background: rgba(255,255,255,.06);
+    }
+    .footer-staff-icon svg {
+      width: 1rem; height: 1rem; flex-shrink: 0;
+    }
 
     /* UTILS */
     .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
     .section { padding: 4rem 0; }
     .section-title { font-family: var(--font-d); font-style: italic; font-size: clamp(1.8rem, 3vw, 2.5rem); color: var(--text); margin-bottom: 2rem; }
+
+    /* Aides de page (carte effaçable) — fond blanc pour contraster le cream */
+    .page-lead {
+      position: relative;
+      display: block;
+      max-width: 36rem;
+      margin: .5rem 0 1.25rem;
+      padding: .9rem 1.1rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--r);
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .page-lead--dismissible { padding-right: 3rem; }
+    .page-lead--center { margin-left: auto; margin-right: auto; text-align: left; }
+    .page-lead--in-head { margin-bottom: 0; margin-top: .45rem; }
+    .page-lead__text {
+      color: var(--muted);
+      font-size: .95rem;
+      line-height: 1.45;
+      margin: 0;
+    }
+    .page-lead__dismiss {
+      position: absolute;
+      top: .15rem; right: .15rem;
+      width: 44px; height: 44px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: none; background: transparent;
+      color: var(--muted); font-size: 1.5rem; line-height: 1;
+      cursor: pointer; border-radius: var(--r);
+      transition: color var(--trans), background var(--trans);
+    }
+    .page-lead__dismiss:hover,
+    .page-lead__dismiss:focus-visible {
+      color: var(--text);
+      background: rgba(0,0,0,.06);
+      outline: none;
+    }
+
     .btn { display: inline-block; padding: .65rem 1.5rem; border-radius: var(--r); font-family: var(--font-b); font-size: .875rem; font-weight: 600; text-decoration: none; letter-spacing: .04em; text-transform: uppercase; transition: background var(--trans), color var(--trans); cursor: pointer; border: none; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-h); }
@@ -107,9 +264,10 @@
     .fb-star-row { display:flex; gap:.15rem; }
     .fb-star { background:none; border:none; cursor:pointer; font-size:1.6rem; color:#d6d3d1; line-height:1; padding:.1rem; }
     .fb-star.is-on { color:var(--gold); }
+    .fb-modal a { color: var(--accent); }
     .fb-modal textarea {
       width:100%; padding:.65rem .75rem; border:1px solid var(--border); border-radius:var(--r);
-      font:inherit; resize:vertical; background:#fff;
+      font:inherit; resize:vertical; background:#fff; color:var(--text);
     }
     .fb-account-block { margin:1.5rem 0; }
     .fb-account-block h2 { font-family:var(--font-d); font-size:1.35rem; margin-bottom:.75rem; }
@@ -118,13 +276,27 @@
       padding:1rem; margin-bottom:.75rem; display:flex; flex-direction:column; gap:.65rem;
     }
     .fb-vote-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .fb-cat, .fb-badge {
+      display:inline-flex; align-items:center; padding:.2rem .55rem; border-radius:var(--r);
+      font-size:.75rem; font-weight:600; border:1px solid var(--border);
+      background:var(--bg); color:var(--text);
+    }
+    .fb-cat-bug { background:rgba(var(--accent-rgb),.1); color:var(--accent-h); border-color:rgba(var(--accent-rgb),.28); }
+    .fb-cat-comfort { background:rgba(184,137,42,.12); color:var(--gold-text); border-color:rgba(184,137,42,.35); }
+    .fb-cat-feature { background:rgba(26,23,20,.06); color:var(--text); border-color:var(--border); }
+    .fb-badge-new { background:rgba(var(--accent-rgb),.1); color:var(--accent); border-color:rgba(var(--accent-rgb),.28); }
+    .fb-badge-progress { background:rgba(184,137,42,.12); color:var(--gold-text); border-color:rgba(184,137,42,.35); }
+    .fb-badge-snooze { background:rgba(107,101,96,.1); color:var(--muted); border-color:var(--border); }
+    .fb-badge-done { background:rgba(42,107,60,.12); color:var(--ok); border-color:rgba(42,107,60,.28); }
+    .fb-badge-vote { background:rgba(var(--accent-rgb),.08); color:var(--accent-h); border-color:rgba(var(--accent-rgb),.22); }
 
-    /* RESPONSIVE NAV */
-    @media (max-width: 768px) {
+    /* RESPONSIVE NAV — burger until ~half desktop so brand + links never overlap */
+    @media (max-width: 1099px) {
+      .nav-inner { height: 56px; gap: .5rem; }
       .nav-links { display: none; flex-direction: column; position: absolute; top: 56px; left: 0; right: 0; background: var(--text); padding: .5rem 0 1rem; }
       .nav-links.open { display: flex; }
       .nav-links a { padding: .75rem 1.5rem; }
-      .nav-burger { display: block; }
+      .nav-burger { display: block; flex-shrink: 0; }
     }
   </style>
   {% block extra_css %}{% endblock %}
@@ -132,7 +304,10 @@
 <body>
 <nav x-data="{ open: false }">
   <div class="nav-inner">
-    <a class="nav-logo" href="{% url 'home' %}"><span>J.O.Y</span> Jazz Orchestra Yonnais</a>
+    <a class="nav-logo" href="{% url 'home' %}" aria-label="J.O.Y — Jazz Orchestra Yonnais">
+      <img class="nav-logo-img" src="{% static 'users/icons/logo-joy.webp' %}" alt="" width="48" height="48" decoding="async">
+      <span class="nav-logo-text"><span class="nav-logo-joy">J.O.Y</span><span class="nav-logo-rest"> Jazz Orchestra Yonnais</span></span>
+    </a>
     <button class="nav-burger" aria-label="Menu" @click="open = !open" :aria-expanded="open.toString()">
       <span :style="open ? 'transform:rotate(45deg) translate(5px,5px)' : ''"></span>
       <span :style="open ? 'opacity:0' : ''"></span>
@@ -142,14 +317,18 @@
       <li><a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' %}class="active"{% endif %}>Accueil</a></li>
       <li><a href="{% url 'concerts' %}" {% if request.resolver_match.url_name == 'concerts' %}class="active"{% endif %}>Concerts</a></li>
       <li><a href="{% url 'medias' %}" {% if request.resolver_match.url_name == 'medias' %}class="active"{% endif %}>Médias</a></li>
+      {% if not show_musician_nav %}
       <li><a href="{% url 'contact' %}" {% if request.resolver_match.url_name == 'contact' %}class="active"{% endif %}>Contact</a></li>
+      {% endif %}
+      {% if show_musician_nav %}
+      <li><a href="{% url 'planning:dashboard' %}" data-tour="nav-coulisses" {% if request.resolver_match.namespace == 'planning' or request.resolver_match.namespace == 'repertoire' or request.resolver_match.namespace == 'repetitions' or request.resolver_match.namespace == 'chat' %}class="active"{% endif %}>Coulisses</a></li>
+      {% endif %}
       {% if request.user.is_authenticated %}
-      <li><a href="{% url 'account_home' %}" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' %}class="active"{% endif %}>{{ request.user.get_full_name|default:request.user.username }}</a></li>
+      <li><a href="{% url 'account_home' %}" data-tour="nav-account" {% if request.resolver_match.url_name == 'account_home' or request.resolver_match.url_name == 'account_security' or request.resolver_match.url_name == 'account_member_area' %}class="active"{% endif %}>Mon compte</a></li>
       {% else %}
       <li><a href="{% url 'account_login' %}">Mon compte</a></li>
       {% endif %}
     </ul>
-    <a class="nav-fb" href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook ↗</a>
   </div>
 </nav>
 <main>
@@ -160,25 +339,167 @@
     {% endfor %}
   </div>
   {% endif %}
+  {% if show_coulisses_unread_banner %}
+  {% include "planning/_unread_notifications_banner.html" %}
+  {% endif %}
+  {% if show_musician_nav and pending_polls and not hide_pending_polls_banner %}
+  {% include "planning/_pending_polls_banner.html" %}
+  {% endif %}
   {% block content %}{% endblock %}
 </main>
 <footer>
   <div>
-    <a href="{% url 'contact' %}">Contact</a>
-    <a href="#">Mentions légales</a>
+    <a href="{% url 'mentions_legales' %}">Mentions légales</a>
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
     {% include "includes/_page_feedback_footer.html" %}
   </div>
   <p style="margin-top:.75rem">© {% now "Y" %} Jazz Orchestra Yonnais — La Roche-sur-Yon</p>
-  {% if request.user.is_staff %}
-  <p style="margin-top:.5rem">
-    <a href="{% url 'admin_feedback' %}" style="color:rgba(255,255,255,.35);font-size:.75rem;letter-spacing:.06em">⚙ Retours</a>
-    <a href="/admin-concerts/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Concerts</a>
-    <a href="/admin-lieux/" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Lieux</a>
-    <a href="/admin/" style="color:rgba(255,255,255,.15);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">Django admin</a>
-    <a href="{% url 'planning:admin' %}" style="color:rgba(255,255,255,.25);font-size:.75rem;letter-spacing:.06em;margin-left:1rem">⚙ Planning</a>
-  </p>
+  {% if show_staff_nav %}
+  <div class="footer-staff" data-tour="footer-admin">
+    <span class="footer-staff-label">Administration</span>
+    <div class="footer-staff-links">
+      <a href="{% url 'admin_page_edit' 'accueil' %}" class="footer-staff-icon" title="Éditeur de pages" aria-label="Éditeur de pages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 20h9"/>
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+        <span>Éditeur</span>
+      </a>
+      <a href="{% url 'admin_hub' %}">Tableau de bord</a>
+      <a href="{% url 'admin_feedback' %}">Retours</a>
+      <a href="{% url 'admin_concerts' %}">CMS concerts</a>
+      <a href="{% url 'planning:admin' %}">Admin planning</a>
+      <a href="{% url 'repertoire:staff_list' %}">Atelier partitions</a>
+      <a href="/admin/">Django admin</a>
+    </div>
+  </div>
   {% endif %}
 </footer>
+{% if GA_MEASUREMENT_ID %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ GA_MEASUREMENT_ID }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '{{ GA_MEASUREMENT_ID }}', { anonymize_ip: true });
+</script>
+{% endif %}
+{% if product_tour_config %}
+  {{ product_tour_config|json_script:"joy-tour-config" }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
+  <link rel="stylesheet" href="{% static 'users/tour.css' %}?v=10">
+  <script defer src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
+  <script src="{% static 'users/tour.js' %}?v=10" defer></script>
+{% endif %}
+{% block extra_js %}{% endblock %}
+<script>
+window.joyTrackShare = function (el, network) {
+  if (!el || !network) return;
+  var root = el.closest ? el.closest(".event-share") : null;
+  var trackUrl = root && root.getAttribute("data-share-track");
+  if (!trackUrl) return;
+  try {
+    fetch(trackUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ network: network }),
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(function () {});
+  } catch (e) { /* ignore */ }
+};
+
+document.addEventListener("click", function (e) {
+  var a = e.target && e.target.closest ? e.target.closest("a[data-share-network]") : null;
+  if (!a || !a.closest(".event-share")) return;
+  window.joyTrackShare(a, a.getAttribute("data-share-network"));
+}, true);
+
+window.joyShareInstagram = async function (btn) {
+  if (!btn || btn.dataset.igBusy === "1") return false;
+  var imageUrl = btn.getAttribute("data-ig-image");
+  var pageUrl = btn.getAttribute("data-ig-url");
+  var title = btn.getAttribute("data-ig-title") || "Concert JOY";
+  var text = title + " — Jazz Orchestra Yonnais\n" + pageUrl;
+  var label = btn.textContent;
+  var tracked = false;
+  function trackOnce() {
+    if (tracked) return;
+    tracked = true;
+    window.joyTrackShare(btn, "instagram");
+  }
+  btn.dataset.igBusy = "1";
+  btn.disabled = true;
+  btn.textContent = "…";
+
+  function reset() {
+    btn.dataset.igBusy = "0";
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+
+  function toast(msg) {
+    var el = document.getElementById("joy-ig-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "joy-ig-toast";
+      el.setAttribute("role", "status");
+      el.style.cssText = "position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#1a1714;color:#fff;padding:.85rem 1.1rem;border-radius:4px;font:600 .85rem/1.35 Work Sans,system-ui,sans-serif;max-width:min(92vw,26rem);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25)";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    window.clearTimeout(el._t);
+    el._t = window.setTimeout(function () { el.remove(); }, 4500);
+  }
+
+  async function fallback() {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(pageUrl);
+      }
+    } catch (e) { /* ignore */ }
+    var a = document.createElement("a");
+    a.href = imageUrl + (imageUrl.indexOf("?") >= 0 ? "&" : "?") + "download=1";
+    a.setAttribute("download", "joy-concert.jpg");
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.open("https://www.instagram.com/", "_blank", "noopener");
+    toast("Lien copié. Publiez l’image téléchargée sur Instagram et collez le lien en légende.");
+    trackOnce();
+    window.setTimeout(reset, 800);
+  }
+
+  try {
+    var res = await fetch(imageUrl, { credentials: "same-origin" });
+    if (!res.ok) throw new Error("image");
+    var blob = await res.blob();
+    var file = new File([blob], "joy-concert.jpg", { type: blob.type || "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: title, text: text, url: pageUrl });
+      trackOnce();
+      reset();
+      return false;
+    }
+    if (typeof navigator.share === "function") {
+      await navigator.share({ title: title, text: text, url: pageUrl });
+      trackOnce();
+      reset();
+      return false;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      reset();
+      return false;
+    }
+  }
+  await fallback();
+  return false;
+};
+</script>
 </body>
 </html>

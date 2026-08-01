@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Connexion — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .auth-wrap { max-width: 520px; margin: 0 auto; }
+  .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 2rem; margin-bottom: 1.5rem; }
+  .auth-card h2 { font-family: var(--font-d); font-size: 1.35rem; margin-bottom: .5rem; }
+  .auth-card p.lead { color: var(--muted); margin-bottom: 1.25rem; font-size: .95rem; }
+  .form-group { margin-bottom: 1.1rem; }
+  .form-group label { display: block; font-size: .8rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: .35rem; }
+  .form-group input[type=text], .form-group input[type=password], .form-group input[type=email] {
+    width: 100%; padding: .65rem .9rem; border: 1px solid var(--border); border-radius: var(--r);
+    font-family: var(--font-b); font-size: 1rem; background: var(--bg); color: var(--text);
+  }
+  .form-group input:focus { outline: none; border-color: var(--accent); }
+  .form-errors { background: color-mix(in srgb, #b00020 8%, var(--surface)); border: 1px solid var(--border); border-radius: var(--r); padding: .85rem 1rem; margin-bottom: 1rem; }
+  .field-error { color: #b00020; font-size: .9rem; margin-top: .3rem; }
+  .channel-list { list-style: none; display: flex; gap: 1rem; margin: .5rem 0 1rem; }
+  .channel-list label { font-size: .95rem; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--text); }
+  .messages { margin-bottom: 1.25rem; }
+  .messages li { list-style: none; padding: .75rem 1rem; border-radius: var(--r); border: 1px solid var(--border); margin-bottom: .5rem; background: var(--surface); }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container auth-wrap">
+    <h1 class="section-title">Connexion</h1>
+    <p style="color:var(--muted);margin-bottom:1.5rem">Espace musiciens et adhérents de l’association.</p>
+
+    {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="auth-card">
+      <h2>Mot de passe</h2>
+      <p class="lead">Connexion classique. Si la double authentification est activée, un second code vous sera demandé.</p>
+      {% if password_form.non_field_errors %}
+        <div class="form-errors">{{ password_form.non_field_errors }}</div>
+      {% endif %}
+      <form method="post" action="{% url 'account_login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="password">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <div class="form-group">
+          <label for="id_username">{{ password_form.username.label }}</label>
+          {{ password_form.username }}
+          {% for e in password_form.username.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="form-group">
+          <label for="id_password">Mot de passe</label>
+          {{ password_form.password }}
+          {% for e in password_form.password.errors %}<div class="field-error">{{ e }}</div>{% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+      </form>
+    </div>
+
+    <div class="auth-card">
+      <h2>Code par e-mail ou notification</h2>
+      <p class="lead">Connexion sans mot de passe : recevez un code à usage unique.</p>
+      {% if otp_form.non_field_errors %}
+        <div class="form-errors">{{ otp_form.non_field_errors }}</div>
+      {% endif %}
+      <form method="post" action="{% url 'account_login' %}">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="otp">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <div class="form-group">
+          <label for="id_identifier">{{ otp_form.identifier.label }}</label>
+          {{ otp_form.identifier }}
+        </div>
+        <div class="form-group">
+          <label>Recevoir le code par</label>
+          <ul class="channel-list">
+            {% for radio in otp_form.channel %}
+              <li>{{ radio.tag }} <label for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label></li>
+            {% endfor %}
+          </ul>
+        </div>
+        <button type="submit" class="btn btn-outline">Envoyer un code</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

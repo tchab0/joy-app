@@ -1,82 +1,391 @@
 {% extends "base.html" %}
+{% load page_lead %}
 {% block title %}Contact — JOY{% endblock %}
+{% block og_title %}Contact — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Contact — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Contactez le Jazz Orchestra Yonnais pour une prestation, un concert ou une information — big band à La Roche-sur-Yon (Vendée).{% endblock %}
+{% block og_description %}Contactez le Jazz Orchestra Yonnais pour une prestation, un concert ou une information — big band à La Roche-sur-Yon (Vendée).{% endblock %}
+{% block twitter_description %}Contactez le Jazz Orchestra Yonnais pour une prestation, un concert ou une information — big band à La Roche-sur-Yon (Vendée).{% endblock %}
 {% block extra_css %}
 <style>
-  .contact-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 2.5rem; max-width: 640px; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .form-group { margin-bottom: 1.25rem; }
-  .form-group label { display: block; font-size: .85rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: .4rem; }
-  .form-group input, .form-group textarea { width: 100%; padding: .65rem .9rem; border: 1px solid var(--border); border-radius: var(--r); font-family: var(--font-b); font-size: 1rem; background: var(--bg); color: var(--text); transition: border-color 180ms; }
-  .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+  .section:has(.contact-page) { padding: 1.75rem 0 2.5rem; }
+  .contact-page { max-width: 720px; }
+  .contact-page .section-title { margin-bottom: .75rem; }
+  .contact-lead {
+    color: var(--muted); max-width: 540px;
+    margin: 0 0 1rem; font-size: .95rem; line-height: 1.45;
+  }
+  .contact-modes {
+    display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem;
+  }
+  .contact-mode {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 1 1 auto; min-height: 44px; padding: .5rem .85rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--surface); color: var(--text); text-decoration: none;
+    font-weight: 600; font-size: .9rem; text-align: center;
+  }
+  .contact-mode.active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .contact-form {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 1rem;
+  }
+  .form-section { margin-bottom: 1.15rem; }
+  .form-section:last-of-type { margin-bottom: .65rem; }
+  .form-section-title {
+    font-family: var(--font-d); font-size: 1.05rem; color: var(--text);
+    margin: 0 0 .55rem; padding-bottom: .3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-row {
+    display: grid; grid-template-columns: 1fr; gap: 0;
+    align-items: stretch;
+  }
+  .form-group {
+    display: flex; flex-direction: column; gap: .3rem;
+    margin-bottom: .75rem; min-width: 0;
+  }
+  .form-group > label {
+    display: block;
+    font-size: .78rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); line-height: 1.25;
+  }
+  .form-group input.form-input,
+  .form-group textarea.form-input,
+  .form-group select.form-select {
+    width: 100%; box-sizing: border-box;
+    min-height: 44px; padding: .55rem .75rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    font-family: var(--font-b); font-size: 1rem; line-height: 1.3;
+    background: var(--bg); color: var(--text);
+  }
+  .form-group select.form-select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: 2rem;
+  }
+  .form-group textarea.form-input {
+    min-height: 5rem; resize: vertical;
+  }
+  .form-group input.form-input:focus,
+  .form-group textarea.form-input:focus,
+  .form-group select.form-select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .form-check-row {
+    display: flex; align-items: flex-start; gap: .65rem;
+    margin-bottom: .75rem;
+  }
+  .form-check-row input.form-check {
+    width: 1.25rem; height: 1.25rem; margin-top: .15rem; flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+  .form-check-row label {
+    font-size: .9rem; color: var(--text); text-transform: none;
+    letter-spacing: 0; font-weight: 500; margin: 0; line-height: 1.35;
+  }
+  .form-note {
+    font-size: .85rem; color: var(--muted); margin: 0 0 .85rem;
+  }
   .form-errors, .form-success {
-    margin-bottom: 1.25rem;
-    padding: 1rem 1.1rem;
-    border-radius: var(--r);
-    border: 1px solid var(--border);
+    margin-bottom: .85rem; padding: .75rem .9rem;
+    border-radius: var(--r); border: 1px solid var(--border);
+    color: var(--text); font-size: .95rem;
   }
   .form-errors {
     background: color-mix(in srgb, #b00020 8%, var(--surface));
-    color: var(--text);
   }
   .form-success {
-    background: color-mix(in srgb, #0a7a32 10%, var(--surface));
-    color: var(--text);
+    background: color-mix(in srgb, var(--ok) 12%, var(--surface));
   }
-  .field-error { margin-top: .35rem; color: #b00020; font-size: .92rem; }
-  @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+  .field-error { margin-top: .2rem; color: #b00020; font-size: .85rem; }
+  .contact-submit { min-height: 44px; width: 100%; }
+  @media (min-width: 640px) {
+    .section:has(.contact-page) { padding: 4rem 0; }
+    .contact-page .section-title { margin-bottom: 2rem; }
+    .contact-lead { margin-bottom: 1.5rem; font-size: 1rem; }
+    .contact-modes { gap: .5rem; margin-bottom: 1.5rem; }
+    .contact-mode { flex: 0 0 auto; padding: .65rem 1rem; font-size: .95rem; }
+    .contact-form { padding: 2.5rem; }
+    .form-section { margin-bottom: 1.75rem; }
+    .form-section:last-of-type { margin-bottom: 1rem; }
+    .form-section-title { font-size: 1.15rem; margin: 0 0 .85rem; padding-bottom: .4rem; }
+    .form-row { grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { gap: .4rem; margin-bottom: 1.15rem; }
+    .form-group > label {
+      display: flex; align-items: flex-end;
+      min-height: 2.5rem; font-size: .85rem;
+    }
+    .form-group input.form-input,
+    .form-group textarea.form-input,
+    .form-group select.form-select { padding: .65rem .9rem; }
+    .form-group textarea.form-input { min-height: 6.5rem; }
+    .form-group .field-error { min-height: 1.25rem; }
+    .form-check-row { gap: .75rem; margin-bottom: 1.15rem; }
+    .form-check-row label { font-size: .95rem; }
+    .form-note { font-size: .9rem; margin: 0 0 1.25rem; }
+    .form-errors, .form-success { margin-bottom: 1.25rem; padding: 1rem 1.1rem; font-size: 1rem; }
+    .field-error { margin-top: .35rem; font-size: .92rem; }
+    .contact-submit { width: auto; min-width: 12rem; }
+  }
 </style>
 {% endblock %}
 {% block content %}
 <section class="section">
-  <div class="container">
+  <div class="container contact-page">
     <h1 class="section-title">Contact</h1>
-    <p style="color:var(--muted);max-width:540px;margin-bottom:2rem">Vous souhaitez nous solliciter pour une prestation musicale ? Envoyez-nous votre demande, elle sera transmise directement à l'administration de JOY.</p>
+    {% page_lead "core.contact" %}
+      {% if mode == "prestation" %}
+        Demande de prestation pour le Jazz Orchestra Yonnais (big band).
+        Envoi sans engagement — nous vous répondons après étude de votre projet.
+      {% else %}
+        Une question, une demande presse ou autre sujet&nbsp;? Écrivez-nous.
+        Pour une prestation musicale, utilisez l’onglet dédié.
+      {% endif %}
+    {% endpage_lead %}
+
+    <div class="contact-modes" role="tablist" aria-label="Type de demande">
+      <a href="{% url 'contact' %}?mode=contact"
+         class="contact-mode {% if mode == 'contact' %}active{% endif %}"
+         role="tab" aria-selected="{% if mode == 'contact' %}true{% else %}false{% endif %}">
+        Message
+      </a>
+      <a href="{% url 'contact' %}?mode=prestation"
+         class="contact-mode {% if mode == 'prestation' %}active{% endif %}"
+         role="tab" aria-selected="{% if mode == 'prestation' %}true{% else %}false{% endif %}">
+        Demande de prestation
+      </a>
+    </div>
 
     <div class="contact-form">
       {% if success %}
-        <div class="form-success">Votre message a bien été envoyé.</div>
+        <div class="form-success">
+          {% if mode == "prestation" %}
+            Votre demande de prestation a bien été envoyée. Merci&nbsp;!
+          {% else %}
+            Votre message a bien été envoyé.
+          {% endif %}
+        </div>
       {% endif %}
 
       {% if send_error %}
         <div class="form-errors">Une erreur technique est survenue pendant l'envoi. Merci de réessayer dans quelques instants.</div>
       {% endif %}
 
-      {% if form.non_field_errors %}
-        <div class="form-errors">
-          {{ form.non_field_errors }}
-        </div>
+      {% if mode == "prestation" %}
+        {% with form=prestation_form %}
+          {% if form.non_field_errors %}
+            <div class="form-errors">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <form method="post" action="{% url 'contact' %}?mode=prestation">
+            {% csrf_token %}
+            <input type="hidden" name="mode" value="prestation">
+
+            <div class="form-section">
+              <h2 class="form-section-title">Qui êtes-vous</h2>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.nom.id_for_label }}">{{ form.nom.label }} *</label>
+                  {{ form.nom }}
+                  {% for error in form.nom.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.organisation.id_for_label }}">{{ form.organisation.label }}</label>
+                  {{ form.organisation }}
+                  {% for error in form.organisation.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.email.id_for_label }}">{{ form.email.label }} *</label>
+                  {{ form.email }}
+                  {% for error in form.email.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.telephone.id_for_label }}">{{ form.telephone.label }} *</label>
+                  {{ form.telephone }}
+                  {% for error in form.telephone.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="{{ form.profil.id_for_label }}">{{ form.profil.label }} *</label>
+                {{ form.profil }}
+                {% for error in form.profil.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h2 class="form-section-title">L’événement</h2>
+              <div class="form-group">
+                <label for="{{ form.type_evenement.id_for_label }}">{{ form.type_evenement.label }} *</label>
+                {{ form.type_evenement }}
+                {% for error in form.type_evenement.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.date_souhaitee.id_for_label }}">{{ form.date_souhaitee.label }} *</label>
+                  {{ form.date_souhaitee }}
+                  {% for error in form.date_souhaitee.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.date_alternative.id_for_label }}">{{ form.date_alternative.label }}</label>
+                  {{ form.date_alternative }}
+                  {% for error in form.date_alternative.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-check-row">
+                {{ form.date_flexible }}
+                <label for="{{ form.date_flexible.id_for_label }}">{{ form.date_flexible.label }}</label>
+              </div>
+              {% for error in form.date_flexible.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              <div class="form-group">
+                <label for="{{ form.ville.id_for_label }}">{{ form.ville.label }} *</label>
+                {{ form.ville }}
+                {% for error in form.ville.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.lieu_nom.id_for_label }}">{{ form.lieu_nom.label }}</label>
+                  {{ form.lieu_nom }}
+                  {% for error in form.lieu_nom.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.lieu_type.id_for_label }}">{{ form.lieu_type.label }} *</label>
+                  {{ form.lieu_type }}
+                  {% for error in form.lieu_type.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="{{ form.lieu_adresse.id_for_label }}">{{ form.lieu_adresse.label }}</label>
+                {{ form.lieu_adresse }}
+                {% for error in form.lieu_adresse.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.heure_debut.id_for_label }}">{{ form.heure_debut.label }} *</label>
+                  {{ form.heure_debut }}
+                  {% for error in form.heure_debut.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.heure_fin.id_for_label }}">{{ form.heure_fin.label }}</label>
+                  {{ form.heure_fin }}
+                  {% for error in form.heure_fin.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="{{ form.duree_jeu.id_for_label }}">{{ form.duree_jeu.label }} *</label>
+                  {{ form.duree_jeu }}
+                  {% for error in form.duree_jeu.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.jauge.id_for_label }}">{{ form.jauge.label }} *</label>
+                  {{ form.jauge }}
+                  {% for error in form.jauge.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="{{ form.role_ambiance.id_for_label }}">{{ form.role_ambiance.label }} *</label>
+                {{ form.role_ambiance }}
+                {% for error in form.role_ambiance.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h2 class="form-section-title">Technique &amp; précisions</h2>
+              <div class="form-group">
+                <label for="{{ form.sono.id_for_label }}">{{ form.sono.label }} *</label>
+                {{ form.sono }}
+                {% for error in form.sono.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.scene_details.id_for_label }}">{{ form.scene_details.label }}</label>
+                {{ form.scene_details }}
+                {% for error in form.scene_details.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.acces_logistique.id_for_label }}">{{ form.acces_logistique.label }}</label>
+                {{ form.acces_logistique }}
+                {% for error in form.acces_logistique.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.budget.id_for_label }}">{{ form.budget.label }} *</label>
+                {{ form.budget }}
+                {% for error in form.budget.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.message.id_for_label }}">{{ form.message.label }}</label>
+                {{ form.message }}
+                {% for error in form.message.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.source.id_for_label }}">{{ form.source.label }}</label>
+                {{ form.source }}
+                {% for error in form.source.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <div class="form-check-row">
+              {{ form.rgpd }}
+              <label for="{{ form.rgpd.id_for_label }}">{{ form.rgpd.label }} *</label>
+            </div>
+            {% for error in form.rgpd.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+
+            <p class="form-note">L’envoi de ce formulaire ne constitue pas une réservation.</p>
+            <button type="submit" class="btn btn-primary contact-submit">Envoyer la demande</button>
+          </form>
+        {% endwith %}
+      {% else %}
+        {% with form=contact_form %}
+          {% if form.non_field_errors %}
+            <div class="form-errors">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <form method="post" action="{% url 'contact' %}?mode=contact">
+            {% csrf_token %}
+            <input type="hidden" name="mode" value="contact">
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="{{ form.nom.id_for_label }}">{{ form.nom.label }} *</label>
+                {{ form.nom }}
+                {% for error in form.nom.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="form-group">
+                <label for="{{ form.telephone.id_for_label }}">{{ form.telephone.label }}</label>
+                {{ form.telephone }}
+                {% for error in form.telephone.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="{{ form.email.id_for_label }}">{{ form.email.label }} *</label>
+              {{ form.email }}
+              {% for error in form.email.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+            </div>
+
+            <div class="form-group">
+              <label for="{{ form.message.id_for_label }}">{{ form.message.label }} *</label>
+              {{ form.message }}
+              {% for error in form.message.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+            </div>
+
+            <div class="form-check-row">
+              {{ form.rgpd }}
+              <label for="{{ form.rgpd.id_for_label }}">{{ form.rgpd.label }} *</label>
+            </div>
+            {% for error in form.rgpd.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+
+            <button type="submit" class="btn btn-primary contact-submit">Envoyer</button>
+          </form>
+        {% endwith %}
       {% endif %}
-
-      <form method="post" action="{% url 'contact' %}">
-        {% csrf_token %}
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="{{ form.nom.id_for_label }}">{{ form.nom.label }}</label>
-            {{ form.nom }}
-            {% for error in form.nom.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
-          </div>
-          <div class="form-group">
-            <label for="{{ form.telephone.id_for_label }}">{{ form.telephone.label }}</label>
-            {{ form.telephone }}
-            {% for error in form.telephone.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="{{ form.email.id_for_label }}">{{ form.email.label }} *</label>
-          {{ form.email }}
-          {% for error in form.email.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
-        </div>
-
-        <div class="form-group">
-          <label for="{{ form.message.id_for_label }}">{{ form.message.label }} *</label>
-          {{ form.message }}
-          {% for error in form.message.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
-        </div>
-
-        <button type="submit" class="btn btn-primary">Envoyer</button>
-      </form>
     </div>
   </div>
 </section>

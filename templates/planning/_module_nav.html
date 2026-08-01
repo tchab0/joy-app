@@ -1,0 +1,60 @@
+{% comment %}
+Nav commune Coulisses (planning, répertoire, chat, répés).
+Usage : {% include "planning/_module_nav.html" with active="calendrier" %}
+active : calendrier | mes_dates | repertoire | chat | chat_staff | repes | admin | musiciens | atelier | setlists
+{% endcomment %}
+<nav class="pl-nav" aria-label="Coulisses — planning, répertoire et chat">
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Planning</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'planning:dashboard' %}" data-tour="module-calendrier"{% if active == "calendrier" %} class="is-active" aria-current="page"{% endif %}>Calendrier</a>
+      <a href="{% url 'planning:my_board' %}" data-tour="module-mes-dates"{% if active == "mes_dates" %} class="is-active" aria-current="page"{% endif %}>Mes dates</a>
+      {% if is_planning_staff or request.user.is_staff or request.user.is_superuser %}
+      <a href="{% url 'repetitions:staff_list' %}" data-tour="staff-repes"{% if active == "repes" %} class="is-active" aria-current="page"{% endif %}>Répés</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Répertoire</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'repertoire:list' %}" data-tour="module-repertoire"{% if active == "repertoire" %} class="is-active" aria-current="page"{% endif %}>Morceaux</a>
+    </div>
+  </div>
+
+  <div class="pl-nav__group">
+    <span class="pl-nav__label">Chat</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'chat:list' %}" data-tour="module-chat"{% if active == "chat" %} class="is-active" aria-current="page"{% endif %}>Salons</a>
+    </div>
+  </div>
+
+  {% if is_planning_staff or request.user.is_staff or request.user.is_superuser %}
+  <div class="pl-nav__group pl-nav__group--staff" data-tour="module-staff">
+    <span class="pl-nav__label">Staff</span>
+    <div class="pl-nav__links">
+      <a href="{% url 'planning:admin' %}" data-tour="staff-admin"{% if active == "admin" %} class="is-active" aria-current="page"{% endif %}>Admin planning</a>
+      <a href="{% url 'planning:admin_musicians' %}" data-tour="staff-musiciens"{% if active == "musiciens" %} class="is-active" aria-current="page"{% endif %}>Musiciens</a>
+      <a href="{% url 'repertoire:staff_list' %}" data-tour="staff-atelier"{% if active == "atelier" %} class="is-active" aria-current="page"{% endif %}>Atelier partitions</a>
+      <a href="{% url 'repertoire:staff_setlist_list' %}" data-tour="staff-setlists"{% if active == "setlists" %} class="is-active" aria-current="page"{% endif %}>Setlists</a>
+      <a href="{% url 'chat:staff' %}" data-tour="staff-chat"{% if active == "chat_staff" %} class="is-active" aria-current="page"{% endif %}>Chat Staff</a>
+    </div>
+  </div>
+  {% endif %}
+</nav>
+<script>
+(function () {
+  var nav = document.currentScript && document.currentScript.previousElementSibling;
+  if (!nav || !nav.classList.contains('pl-nav')) nav = document.querySelector('.pl-nav');
+  if (!nav) return;
+  var active = nav.querySelector('a.is-active');
+  if (!active) return;
+  /* Sur mobile (nav glissante), ramener le lien actif dans le viewport horizontal. */
+  requestAnimationFrame(function () {
+    if (nav.scrollWidth <= nav.clientWidth + 1) return;
+    var navMid = nav.getBoundingClientRect().left + nav.clientWidth / 2;
+    var activeMid = active.getBoundingClientRect().left + active.offsetWidth / 2;
+    nav.scrollLeft += activeMid - navMid;
+  });
+})();
+</script>
