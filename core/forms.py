@@ -131,6 +131,7 @@ class MediaSoumissionForm(forms.ModelForm):
         cleaned = super().clean()
         type_media = cleaned.get("type")
         fichier = cleaned.get("fichier")
+        fichiers_multiples = cleaned.get("fichiers_multiples", [])
         url_ext = cleaned.get("url_externe")
         ev_existant = cleaned.get("evenement_existant")
         ev_nouveau = cleaned.get("evenement_nouveau", "").strip()
@@ -139,6 +140,8 @@ class MediaSoumissionForm(forms.ModelForm):
             raise forms.ValidationError("Choisissez un événement existant ou créez-en un nouveau.")
 
         if type_media == "photo":
+            for photo in fichiers_multiples or ([fichier] if fichier else []):
+                self._validate_upload(photo, type_media)
             return cleaned
 
         if type_media == "video" and not fichier and not url_ext:
@@ -148,14 +151,25 @@ class MediaSoumissionForm(forms.ModelForm):
             raise forms.ValidationError("Veuillez sélectionner un fichier.")
 
         if fichier:
-            if fichier.size > MAX_SIZE_BYTES:
-                raise forms.ValidationError("Le fichier dépasse la limite de 1 Go.")
-            ext = "." + fichier.name.rsplit(".", 1)[-1].lower() if "." in fichier.name else ""
-            exts_ok = EXTENSIONS_AUTORISEES.get(type_media, [])
-            if exts_ok and ext not in exts_ok:
-                raise forms.ValidationError(f"Extension non autorisée. Acceptées : {', '.join(exts_ok)}")
+            self._validate_upload(fichier, type_media)
 
         return cleaned
+
+    @staticmethod
+    def _validate_upload(fichier, type_media):
+        if fichier.size > MAX_SIZE_BYTES:
+            raise forms.ValidationError("Le fichier dépasse la limite de 1 Go.")
+
+        ext = "." + fichier.name.rsplit(".", 1)[-1].lower() if "." in fichier.name else ""
+        exts_ok = EXTENSIONS_AUTORISEES.get(type_media, [])
+        if exts_ok and ext not in exts_ok:
+            raise forms.ValidationError(f"Extension non autorisée. Acceptées : {', '.join(exts_ok)}")
+
+        if type_media == "photo":
+            try:
+                forms.ImageField().clean(fichier)
+            except forms.ValidationError as exc:
+                raise forms.ValidationError("Le fichier sélectionné n'est pas une image valide.") from exc
 
     def get_or_create_evenement(self):
         ev = self.cleaned_data.get("evenement_existant")
