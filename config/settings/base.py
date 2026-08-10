@@ -65,7 +65,7 @@ MEDIA_ROOT = Path("/srv/jazz-orchestra-yonnais/media")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 
-LOGIN_URL = "/admin/login/"
+LOGIN_URL = "account_login"
 LOGIN_REDIRECT_URL = "/"
 
 AUTH_PASSWORD_VALIDATORS = [
