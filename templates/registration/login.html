@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion — JOY</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+      color: #1a1714;
+      background: #f5f2ec;
+      font-family: system-ui, sans-serif;
+    }
+    main {
+      width: min(100%, 24rem);
+      padding: 2rem;
+      border: 1px solid rgba(0, 0, 0, .1);
+      border-radius: 6px;
+      background: #faf8f4;
+    }
+    h1 { margin: 0 0 1.5rem; font-family: Georgia, serif; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input { width: 100%; margin-top: .35rem; padding: .7rem; }
+    button {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: .75rem;
+      border: 0;
+      border-radius: 4px;
+      color: #fff;
+      background: #c94f3a;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .errorlist { color: #9f241b; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Mon compte JOY</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <label for="{{ form.username.id_for_label }}">Identifiant</label>
+      {{ form.username }}
+      {{ form.username.errors }}
+      <label for="{{ form.password.id_for_label }}">Mot de passe</label>
+      {{ form.password }}
+      {{ form.password.errors }}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button type="submit">Se connecter</button>
+    </form>
+  </main>
+</body>
+</html>
