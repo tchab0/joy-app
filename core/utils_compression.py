@@ -17,8 +17,13 @@ def compresser_media(media_item):
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     nom_base = Path(src).stem
-    media_item.statut = "en_cours"
-    media_item.save(update_fields=["statut"])
+    model = type(media_item)
+    claimed = model.objects.filter(
+        pk=media_item.pk,
+        statut="en_attente",
+    ).update(statut="en_cours")
+    if not claimed:
+        return
 
     try:
         if media_item.type == "video":
@@ -60,16 +65,29 @@ def compresser_media(media_item):
                         object_stream_mode=pikepdf.ObjectStreamMode.generate
                     )
             except ImportError:
-                media_item.statut = "publie" if media_item.publie else "en_attente"
-                media_item.save(update_fields=["statut"])
+                model.objects.filter(
+                    pk=media_item.pk,
+                    statut="en_cours",
+                ).update(statut="en_attente")
                 return
         else:
             return
 
-        media_item.statut = "publie" if media_item.publie else "en_attente"
-        media_item.save(update_fields=["statut"])
+        statut_final = (
+            "publie"
+            if model.objects.filter(pk=media_item.pk, publie=True).exists()
+            else "en_attente"
+        )
+        model.objects.filter(
+            pk=media_item.pk,
+            statut="en_cours",
+        ).update(statut=statut_final)
 
     except Exception as e:
-        media_item.statut = "en_attente"
-        media_item.note_admin = f"Erreur compression : {e}"
-        media_item.save(update_fields=["statut", "note_admin"])
+        model.objects.filter(
+            pk=media_item.pk,
+            statut="en_cours",
+        ).update(
+            statut="en_attente",
+            note_admin=f"Erreur compression : {e}",
+        )
