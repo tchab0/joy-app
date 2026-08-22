@@ -6,7 +6,8 @@
 .media-groupe-titre { font-family:var(--font-d); font-style:italic; font-size:1.2rem; color:var(--text); margin-bottom:1rem; padding-bottom:.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
 .media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:.75rem; }
 .video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:1rem; margin-top:1rem; }
-.video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
+.video-grid iframe,
+.video-grid video { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); background:#000; }
 .audio-list { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; }
 .audio-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1rem; }
 .audio-item audio { width:100%; margin-top:.5rem; }
@@ -58,7 +59,14 @@
     <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin-bottom:1rem">Vidéos</h2>
     <div class="video-grid" style="margin-bottom:3rem">
       {% for v in videos %}
+      {% if v.url_externe %}
       <iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
+      {% elif v.fichier %}
+      <video controls preload="metadata" title="{{ v.titre }}">
+        <source src="{{ v.fichier.url }}">
+        Votre navigateur ne prend pas en charge la lecture vidéo.
+      </video>
+      {% endif %}
       {% endfor %}
     </div>
     {% endif %}

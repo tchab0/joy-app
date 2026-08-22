@@ -25,7 +25,8 @@ def compresser_media(media_item):
             dest = dest_dir / f"{nom_base}.mp4"
             subprocess.run([
                 "ffmpeg", "-y", "-i", src,
-                "-c:v", "libx265", "-crf", "28", "-preset", "fast",
+                "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+                "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
                 str(dest)
