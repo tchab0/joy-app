@@ -14,19 +14,24 @@ from django.utils.html import escape, linebreaks
 from .models import PageBlock, SitePage
 
 HOME_CACHE_VERSION_KEY = "pages:home:cache_version"
+CONCERTS_CACHE_VERSION_KEY = "pages:concerts:cache_version"
 YT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
+
+
+def _bump_cache_version(key: str) -> None:
+    try:
+        current = cache.get(key) or 1
+        cache.set(key, int(current) + 1, timeout=None)
+    except Exception:
+        try:
+            cache.set(key, 2, timeout=None)
+        except Exception:
+            pass
 
 
 def bump_home_cache() -> None:
     """Invalide le cache HTML de la page d’accueil (toutes les variantes)."""
-    try:
-        current = cache.get(HOME_CACHE_VERSION_KEY) or 1
-        cache.set(HOME_CACHE_VERSION_KEY, int(current) + 1, timeout=None)
-    except Exception:
-        try:
-            cache.set(HOME_CACHE_VERSION_KEY, 2, timeout=None)
-        except Exception:
-            pass
+    _bump_cache_version(HOME_CACHE_VERSION_KEY)
     # Best-effort : purge aussi d’éventuelles clés cache_page héritées
     for key in (
         "views.decorators.cache.cache_page..GET.00000000",
@@ -38,9 +43,27 @@ def bump_home_cache() -> None:
             pass
 
 
+def bump_concerts_cache() -> None:
+    """Invalide le cache HTML des pages concerts (liste + fiche)."""
+    _bump_cache_version(CONCERTS_CACHE_VERSION_KEY)
+
+
+def bump_public_events_cache() -> None:
+    """Accueil + agenda concerts après changement GPS / lieu public."""
+    bump_home_cache()
+    bump_concerts_cache()
+
+
 def home_cache_version() -> str:
     try:
         return str(cache.get(HOME_CACHE_VERSION_KEY) or 1)
+    except Exception:
+        return "1"
+
+
+def concerts_cache_version() -> str:
+    try:
+        return str(cache.get(CONCERTS_CACHE_VERSION_KEY) or 1)
     except Exception:
         return "1"
 

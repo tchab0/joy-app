@@ -22,9 +22,13 @@
 }
 .event-map.leaflet-container {
   width: 100%;
-  height: 100%;
+  /* Ne pas height:100% — le parent .event-map-wrap n’a pas de hauteur fixe,
+     la carte s’effondrait à 0 px (seul le lien OSM restait visible). */
   font: inherit;
   background: var(--surface);
+}
+.event-map--mini.leaflet-container {
+  height: 260px;
 }
 .event-map-pin {
   background: transparent !important;
@@ -271,9 +275,14 @@ body.event-map-nav-open {
   .event-item .event-map-wrap--mini {
     width: 100%;
   }
-  .event-item .event-map--mini {
+  .event-item .event-map--mini,
+  .event-item .event-map--mini.leaflet-container {
     height: 180px;
     margin-top: 0;
     border-radius: 0;
+  }
+  .concerts-home .event-item .event-map-wrap--mini {
+    margin-left: calc(-80px - 1.5rem);
+    width: calc(100% + 80px + 1.5rem);
   }
 }

@@ -27,10 +27,10 @@
         {% endif %}
         {% include "includes/_concert_share.html" with event=e %}
       </div>
+      {% if e.venue.latitude %}
+      {% include "includes/_event_map.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" map_id=e.pk mini=True %}
+      {% endif %}
     </div>
-    {% if e.venue.latitude %}
-    {% include "includes/_event_map.html" with lat=e.venue.latitude|stringformat:"f" lng=e.venue.longitude|stringformat:"f" map_id=e.pk mini=True %}
-    {% endif %}
   </div>
   {% endfor %}
 </div>

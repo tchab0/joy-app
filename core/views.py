@@ -21,7 +21,12 @@ from .forms import MediaSoumissionForm, ContactForm, PrestationForm
 from .forms import EXTENSIONS_AUTORISEES
 from .utils_compression import compresser_media
 from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, website_jsonld
-from .page_cms import enrich_block, get_published_page, home_cache_version
+from .page_cms import (
+    concerts_cache_version,
+    enrich_block,
+    get_published_page,
+    home_cache_version,
+)
 from users.models import User
 from users.notify import notify_users
 
@@ -140,7 +145,10 @@ def _add_bbox(qs):
     return result
 
 
-@cache_page_anonymous(settings.CACHE_TTL_CONCERTS)
+@cache_page_anonymous(
+    settings.CACHE_TTL_CONCERTS,
+    key_prefix=lambda: f"concerts-v{concerts_cache_version()}",
+)
 def concerts(request):
     prochains = _attach_nav_go(
         _add_bbox(
@@ -163,7 +171,10 @@ def concerts(request):
     )
 
 
-@cache_page_anonymous(settings.CACHE_TTL_CONCERTS)
+@cache_page_anonymous(
+    settings.CACHE_TTL_CONCERTS,
+    key_prefix=lambda: f"concerts-v{concerts_cache_version()}",
+)
 def concert_detail(request, slug):
     event = get_object_or_404(
         _public_events_qs(),

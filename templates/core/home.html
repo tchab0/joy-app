@@ -3,12 +3,12 @@
 {% block title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
 {% block og_title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
 {% block twitter_title %}JOY — Jazz Orchestra Yonnais | Big Band La Roche-sur-Yon{% endblock %}
-{% block meta_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations pour mariages, galas et entreprises.{% endif %}{% endblock %}
-{% block og_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations.{% endif %}{% endblock %}
-{% block twitter_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, festivals et prestations.{% endif %}{% endblock %}
+{% block meta_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) — big band à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, prestations pour mariages, galas et entreprises.{% endif %}{% endblock %}
+{% block og_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) — big band à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, prestations pour mariages, galas et entreprises.{% endif %}{% endblock %}
+{% block twitter_description %}{% if page and page.meta_description %}{{ page.meta_description }}{% else %}Jazz Orchestra Yonnais (JOY) — big band à La Roche-sur-Yon. Concerts jazz &amp; swing en Vendée, prestations pour mariages, galas et entreprises.{% endif %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'core/event-map.css' %}?v=3">
 <style>
   .hero {
     background: var(--text);
@@ -248,7 +248,10 @@
     color: var(--muted);
     margin-top: .1rem;
   }
-  .event-map-wrap--mini { margin-top:.85rem; width:80%; }
+  .event-item .event-map-wrap--mini {
+    margin-top: .85rem;
+    width: 100%;
+  }
   .empty {
     color: var(--muted);
     font-style: italic;
@@ -434,6 +437,10 @@
       width: calc(100% + 52px + 1rem);
       gap: .3rem;
     }
+    .event-item .event-map-wrap--mini {
+      margin-left: calc(-52px - 1rem);
+      width: calc(100% + 52px + 1rem);
+    }
     .event-share__btn,
     .event-card-actions .btn-sm,
     .event-card-actions .event-map__go {
@@ -507,7 +514,7 @@
         <img
           class="hero-video__thumb"
           src="https://i.ytimg.com/vi/49LYaGwuXZc/maxresdefault.jpg"
-          alt=""
+          alt="Aperçu vidéo — Jazz Orchestra Yonnais en concert"
           width="1280"
           height="720"
           loading="lazy"
@@ -550,8 +557,8 @@
         le JOY met l'ambiance à chaque prestation.
       </p>
       <div class="about-cta">
-          <a href="{% url 'contact' %}?mode=prestation" class="btn btn-primary">
-            Demande de prestation
+          <a href="{% url 'prestations' %}" class="btn btn-primary">
+            Prestations &amp; devis
           </a>
       </div>
     </div>
