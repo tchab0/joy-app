@@ -92,7 +92,7 @@
     {% if room.event.organisme %}
     <div>
       <dt>Organisme</dt>
-      <dd>{{ room.event.organisme }}</dd>
+      <dd>{% include "includes/_organisme_link.html" with name=room.event.organisme url=room.event.organisme_url show_prefix=False %}</dd>
     </div>
     {% endif %}
     {% if room.event.parent %}

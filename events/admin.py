@@ -10,7 +10,7 @@ class VenueAdmin(admin.ModelAdmin):
 
 @admin.register(Organisme)
 class OrganismeAdmin(admin.ModelAdmin):
-    list_display = ("nom",)
+    list_display = ("nom", "url_site")
     search_fields = ("nom",)
 
 

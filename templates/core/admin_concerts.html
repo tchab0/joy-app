@@ -2,7 +2,23 @@
 {% block title %}Gestion des concerts — JOY{% endblock %}
 {% block extra_css %}
 <style>
-  .admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; }
+  .admin-header { display:flex; flex-direction:column; gap:1rem; margin-bottom:2rem; }
+  .admin-header__top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; }
+  .admin-tabs {
+    display:flex; gap:.35rem; padding:.25rem; background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r); width:100%;
+  }
+  .admin-tab {
+    flex:1; min-height:44px; display:flex; align-items:center; justify-content:center;
+    padding:.55rem .85rem; border-radius:calc(var(--r) - 2px); font-size:.82rem; font-weight:600;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--muted); text-decoration:none;
+    text-align:center;
+  }
+  .admin-tab.is-active { background:var(--surface); color:var(--accent); box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  @media (min-width: 640px) {
+    .admin-header { flex-direction:row; align-items:center; justify-content:space-between; }
+    .admin-tabs { width:auto; min-width:280px; }
+  }
   .admin-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:var(--r); overflow:hidden; }
   .admin-table th { background:var(--text); color:rgba(255,255,255,.7); font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; text-align:left; }
   .admin-table td { padding:.85rem 1rem; border-bottom:1px solid var(--border); font-size:.9rem; vertical-align:middle; }
@@ -32,14 +48,28 @@
   .btn-danger { background:transparent; color:#b43c3c; border:1.5px solid #b43c3c; }
   .btn-danger:hover { background:#b43c3c; color:#fff; }
   .empty-state { padding:3rem; text-align:center; color:var(--muted); font-style:italic; }
+  .admin-event-link { color:var(--accent); text-decoration:none; }
+  .admin-event-link:hover { text-decoration:underline; }
 </style>
 {% endblock %}
 {% block content %}
 <section class="section">
   <div class="container">
     <div class="admin-header">
-      <h1 class="section-title" style="margin-bottom:0">CMS concerts</h1>
-      <a href="{% url 'admin_concert_add' %}" class="btn btn-primary">+ Ajouter un concert</a>
+      <div class="admin-header__top">
+        <h1 class="section-title" style="margin-bottom:0">
+          {% if list_mode == 'repetitions' %}CMS répétitions{% else %}CMS concerts{% endif %}
+        </h1>
+        {% if list_mode == 'repetitions' %}
+          <a href="{% url 'repetitions:staff_create' %}" class="btn btn-primary">+ Ajouter une répétition</a>
+        {% else %}
+          <a href="{% url 'admin_concert_add' %}" class="btn btn-primary">+ Ajouter un concert</a>
+        {% endif %}
+      </div>
+      <nav class="admin-tabs" aria-label="Type d’événements">
+        <a href="{% url 'admin_concerts' %}" class="admin-tab{% if list_mode != 'repetitions' %} is-active{% endif %}">Concerts</a>
+        <a href="{% url 'admin_repetitions' %}" class="admin-tab{% if list_mode == 'repetitions' %} is-active{% endif %}">Répétitions</a>
+      </nav>
     </div>
     {% if events %}
     <table class="admin-table">
@@ -58,18 +88,28 @@
         {% for e in events %}
         <tr>
           <td style="white-space:nowrap">{{ e.date_debut|date:"d/m/Y H\hi" }}</td>
-          <td><strong>{{ e.titre }}</strong></td>
+          <td>
+            {% if list_mode == 'repetitions' %}
+            <strong><a href="{% url 'repetitions:detail' e.pk %}" class="admin-event-link">{{ e.titre }}</a></strong>
+            {% else %}
+            <strong><a href="{% url 'admin_concert_detail' e.pk %}" class="admin-event-link">{{ e.titre }}</a></strong>
+            {% endif %}
+          </td>
           <td>{{ e.venue.nom }}<br><span style="color:var(--muted);font-size:.8rem">{{ e.venue.ville }}</span></td>
           <td>{{ e.type }}</td>
           <td><span class="badge badge-{{ e.statut }}">{{ e.get_statut_display }}</span></td>
           <td>{% if e.public %}✓{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
           <td>
             <div class="row-actions">
+              {% if list_mode == 'repetitions' %}
+              <a href="{% url 'repetitions:staff_edit' e.pk %}" class="btn btn-outline btn-sm">Modifier</a>
+              {% else %}
               <a href="{% url 'admin_concert_edit' e.pk %}" class="btn btn-outline btn-sm">Modifier</a>
               {% if e.public and e.slug %}
                 {% include "includes/_concert_share.html" with event=e show_share_counts=True %}
               {% endif %}
-              <form method="post" action="{% url 'admin_concert_delete' e.pk %}" onsubmit="return confirm('Supprimer ce concert ?')">
+              {% endif %}
+              <form method="post" action="{% url 'admin_concert_delete' e.pk %}" onsubmit="return confirm('{% if list_mode == 'repetitions' %}Supprimer cette répétition ?{% else %}Supprimer ce concert ?{% endif %}')">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
               </form>
@@ -80,7 +120,13 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty-state">Aucun concert enregistré. <a href="{% url 'admin_concert_add' %}">Ajouter le premier →</a></div>
+    <div class="empty-state">
+      {% if list_mode == 'repetitions' %}
+      Aucune répétition enregistrée. <a href="{% url 'repetitions:staff_create' %}">Ajouter la première →</a>
+      {% else %}
+      Aucun concert enregistré. <a href="{% url 'admin_concert_add' %}">Ajouter le premier →</a>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 </section>

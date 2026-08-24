@@ -2,7 +2,9 @@
 <div class="pl-org-typeahead"
      x-data='organismeTypeahead({
        options: [{% for o in organismes %}"{{ o.nom|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}],
-       initial: "{{ organisme_value|default:''|escapejs }}"
+       urls: { {% for o in organismes %}"{{ o.nom|escapejs }}": "{{ o.url_site|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %} },
+       initial: "{{ organisme_value|default:''|escapejs }}",
+       initialUrl: "{{ organisme_url|default:''|escapejs }}"
      })'
      @click.outside="open = false"
      @keydown.escape.window="open = false">
@@ -41,6 +43,12 @@
       Nouveau : sera mémorisé à l’enregistrement
     </li>
   </ul>
-  <p class="pl-row__meta" style="margin:.3rem 0 0">Touchez ▾ pour la liste, ou saisissez un nouveau nom.</p>
+  <label for="{{ p }}_organisme_url" style="margin-top:.75rem;display:block">Site web de l'organisme <span class="pl-row__meta">(optionnel)</span></label>
+  <input type="url" name="organisme_url" id="{{ p }}_organisme_url"
+         x-model="url"
+         placeholder="https://…"
+         autocomplete="url"
+         class="pl-org-typeahead__url">
+  <p class="pl-row__meta" style="margin:.3rem 0 0">Touchez ▾ pour la liste, ou saisissez un nouveau nom. Le lien s’affiche sur le site public.</p>
 </div>
 {% endwith %}

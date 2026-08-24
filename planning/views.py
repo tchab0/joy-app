@@ -20,6 +20,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from events.models import Event, EventType, Organisme, Venue
+from events.organisme import remember_organisme
 from events.weather import attach_weather
 from planning.models import (
     DateOption,
@@ -153,13 +154,8 @@ def _resolve_or_create_venue(post) -> Venue:
     return _apply_venue_coords(venue, lat, lng)
 
 
-def _remember_organisme(name: str) -> str:
-    """Mémorise un organisme saisi (typeahead) et renvoie le nom normalisé."""
-    nom = (name or "").strip()[:200]
-    if not nom:
-        return ""
-    Organisme.objects.get_or_create(nom=nom)
-    return nom
+def _remember_organisme(name: str, url_site: str = "") -> str:
+    return remember_organisme(name, url_site)
 
 
 def _organismes_qs():
@@ -591,7 +587,10 @@ class ProposeEventView(CanProposeEventMixin, View):
             venue=venue,
             date_debut=starts,
             description=(request.POST.get("description") or "").strip(),
-            organisme=_remember_organisme(request.POST.get("organisme") or ""),
+            organisme=_remember_organisme(
+                request.POST.get("organisme") or "",
+                request.POST.get("organisme_url") or "",
+            ),
             parent=parent,
             public=public,
             contact_nom=(request.POST.get("contact_nom") or "").strip(),
@@ -1187,13 +1186,16 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
 
 
 class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
-    """Organisme + événement parent (la visibilité publique est gérée au CMS)."""
+    """Organisme + événement parent (dépublication / affiche via le CMS)."""
 
     def post(self, request, pk):
         event = get_object_or_404(
             Event.objects.select_related("venue", "type"), pk=pk
         )
-        event.organisme = _remember_organisme(request.POST.get("organisme") or "")
+        event.organisme = _remember_organisme(
+            request.POST.get("organisme") or "",
+            request.POST.get("organisme_url") or "",
+        )
         try:
             event.parent = _resolve_or_create_parent_event(
                 request.POST,
@@ -1209,7 +1211,7 @@ class UpdateEventPublicationView(PlanningStaffRequiredMixin, View):
         messages.success(
             request,
             f"Organisation de « {event.titre} » enregistrée. "
-            "Pour la visibilité publique, utilisez le CMS concerts.",
+            "Pour dépublier ou ajuster l’affiche, utilisez le CMS concerts.",
         )
         return redirect("planning:event_roster", pk=event.pk)
 
@@ -1401,7 +1403,10 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
 
         public = False
-        organisme = _remember_organisme(request.POST.get("organisme") or "")
+        organisme = _remember_organisme(
+            request.POST.get("organisme") or "",
+            request.POST.get("organisme_url") or "",
+        )
         contact_nom = (request.POST.get("contact_nom") or "").strip()
         contact_telephone = (request.POST.get("contact_telephone") or "").strip()
         contact_email = (request.POST.get("contact_email") or "").strip()

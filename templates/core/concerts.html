@@ -107,7 +107,7 @@
           <div class="event-meta" style="margin-top:.25rem">Dans : {{ e.parent.titre }}</div>
           {% endif %}
           {% if e.organisme %}
-          <div class="event-meta">Organisé par {{ e.organisme }}</div>
+          <div class="event-meta">{% include "includes/_organisme_link.html" with name=e.organisme url=e.organisme_url %}</div>
           {% endif %}
           <div class="event-meta">{{ e.lieu_affiche }} · {{ e.horaires_affiches }}</div>
           {% include "includes/_weather.html" with weather=e.weather %}
@@ -156,7 +156,7 @@
             <a class="event-titre-link" href="{{ e.get_absolute_url }}">{{ e.titre }}</a>
           </h2>
           {% if e.parent %}<div class="event-meta">Dans : {{ e.parent.titre }}</div>{% endif %}
-          {% if e.organisme %}<div class="event-meta">Organisé par {{ e.organisme }}</div>{% endif %}
+          {% if e.organisme %}<div class="event-meta">{% include "includes/_organisme_link.html" with name=e.organisme url=e.organisme_url %}</div>{% endif %}
           <div class="event-meta">{{ e.lieu_affiche }}</div>
         </div>
       </article>

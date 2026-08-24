@@ -13,7 +13,7 @@
         {% if e.statut == 'annule' %}<span class="badge-annule">Annulé</span>{% endif %}
       </div>
       {% if e.parent %}<div class="event-lieu">Dans : {{ e.parent.titre }}</div>{% endif %}
-      {% if e.organisme %}<div class="event-lieu">Organisé par {{ e.organisme }}</div>{% endif %}
+      {% if e.organisme %}<div class="event-lieu">{% include "includes/_organisme_link.html" with name=e.organisme url=e.organisme_url %}</div>{% endif %}
       <div class="event-lieu">{{ e.lieu_affiche }}</div>
       {% if e.date_debut %}<div class="event-heure">{{ e.horaires_affiches }}</div>{% endif %}
       <div class="event-card-actions">

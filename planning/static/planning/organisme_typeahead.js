@@ -1,10 +1,12 @@
 /**
  * Combobox organisme : liste visible + saisie libre (mémorisée à l’enregistrement).
  */
-window.organismeTypeahead = function organismeTypeahead({ options, initial }) {
+window.organismeTypeahead = function organismeTypeahead({ options, urls, initial, initialUrl }) {
   return {
     options: Array.isArray(options) ? options : [],
+    urls: urls && typeof urls === 'object' ? urls : {},
     query: initial || '',
+    url: initialUrl || '',
     open: false,
     get filtered() {
       const q = (this.query || '').trim().toLowerCase();
@@ -21,6 +23,9 @@ window.organismeTypeahead = function organismeTypeahead({ options, initial }) {
     },
     choose(opt) {
       this.query = opt;
+      if (this.urls && this.urls[opt]) {
+        this.url = this.urls[opt];
+      }
       this.open = false;
     },
   };

@@ -20,7 +20,7 @@
       {{ event.date_debut|date:"l d F Y · H:i" }}
       {% if event.venue %} · {{ event.lieu_affiche }}{% endif %}
       {% if event.parent %} · Dans : {{ event.parent.titre }}{% endif %}
-      {% if event.organisme %} · {{ event.organisme }}{% endif %}
+      {% if event.organisme %} · {% include "includes/_organisme_link.html" with name=event.organisme url=event.organisme_url show_prefix=False %}{% endif %}
       {% if event.show_contact %}
       · Contact{% if event.contact_nom %} {{ event.contact_nom }}{% endif %}
       {% if event.contact_telephone %}
@@ -68,11 +68,14 @@
         Visibilité site :
         <strong style="color:var(--ok)">public</strong>
         (accueil et page Concerts).
+      {% elif event.statut == 'confirme' and not event.is_rehearsal %}
+        Visibilité site : <strong>privé</strong>
+        (dépublié manuellement).
       {% else %}
-        Visibilité site : <strong>privé</strong>.
+        Visibilité site : <strong>privé</strong>
+        — publication automatique à la validation.
       {% endif %}
-      La publication (case « Visible sur le site public », affiche, billets)
-      se gère uniquement dans le
+      Affiche, billets et dépublication dans le
       <a href="{% url 'admin_concert_edit' event.pk %}" style="color:var(--accent)">CMS concerts</a>.
       Ici : organisme et événement parent pour le planning.
     </p>
@@ -80,7 +83,7 @@
           x-data="{ parentMode: '{% if event.parent_id %}existing{% else %}none{% endif %}' }">
       {% csrf_token %}
       <div>
-        {% include "planning/_organisme_field.html" with id_prefix="pub" organisme_value=event.organisme %}
+        {% include "planning/_organisme_field.html" with id_prefix="pub" organisme_value=event.organisme organisme_url=event.organisme_url %}
       </div>
       <div>
         <label>Événement parent <span class="pl-row__meta">(optionnel)</span></label>

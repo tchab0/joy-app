@@ -1,0 +1,1 @@
+{% if name %}{% if show_prefix != False %}Organisé par {% endif %}{% if url %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer"{% if link_class %} class="{{ link_class }}"{% else %} style="color:var(--accent)"{% endif %}>{{ name }}</a>{% else %}{{ name }}{% endif %}{% endif %}

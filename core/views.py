@@ -6,7 +6,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
-from django.db.models import Count, Exists, F, OuterRef
+from django.db.models import Count, Exists, F, OuterRef, Q
 from django.urls import reverse
 from datetime import timedelta
 import logging
@@ -709,30 +709,82 @@ def admin_hub(request):
     return render(request, "core/admin_hub.html")
 
 
+def _admin_events_list_qs(*, rehearsals: bool):
+    rehearsal_types = (
+        Q(type__is_rehearsal=True)
+        | Q(type__nom__icontains="épétition")
+        | Q(type__nom__icontains="repetition")
+    )
+    qs = Event.objects.select_related("venue", "type").order_by("-date_debut")
+    if rehearsals:
+        return qs.filter(rehearsal_types)
+    return qs.exclude(rehearsal_types)
+
+
 @staff_member_required
 def admin_concerts(request):
-    events = Event.objects.select_related("venue", "type").order_by("date_debut")
-    return render(request, "core/admin_concerts.html", {"events": events})
+    events = _admin_events_list_qs(rehearsals=False)
+    return render(
+        request,
+        "core/admin_concerts.html",
+        {"events": events, "list_mode": "concerts"},
+    )
+
+
+@staff_member_required
+def admin_repetitions(request):
+    events = _admin_events_list_qs(rehearsals=True)
+    return render(
+        request,
+        "core/admin_concerts.html",
+        {"events": events, "list_mode": "repetitions"},
+    )
+
+
+@staff_member_required
+def admin_concert_detail(request, pk):
+    event = get_object_or_404(
+        Event.objects.select_related("venue", "type", "parent", "parent__venue"),
+        pk=pk,
+    )
+    if event.is_rehearsal:
+        return redirect("repetitions:detail", pk=event.pk)
+    events = _attach_nav_go(_add_bbox([event]))
+    event = events[0]
+    attach_weather([event])
+    now = timezone.now()
+    return render(
+        request,
+        "core/admin_concert_detail.html",
+        {
+            "event": event,
+            "is_upcoming": event.date_debut >= now,
+        },
+    )
 
 
 @staff_member_required
 def admin_concert_edit(request, pk=None):
     instance = get_object_or_404(Event, pk=pk) if pk else None
+    if instance and instance.is_rehearsal:
+        return redirect("repetitions:staff_edit", pk=instance.pk)
     if request.method == "POST":
-        form = EventForm(request.POST, instance=instance)
+        form = EventForm(request.POST, instance=instance, concerts_only=True)
         if form.is_valid():
-            form.save()
-            return redirect("admin_concerts")
+            event = form.save()
+            return redirect("admin_concert_detail", pk=event.pk)
     else:
-        form = EventForm(instance=instance)
+        form = EventForm(instance=instance, concerts_only=True)
     return render(request, "core/admin_concert_edit.html", {"form": form, "instance": instance})
 
 
 @staff_member_required
 def admin_concert_delete(request, pk):
+    event = Event.objects.filter(pk=pk).first()
+    back = "admin_repetitions" if event and event.is_rehearsal else "admin_concerts"
     if request.method == "POST":
         Event.objects.filter(pk=pk).delete()
-    return redirect("admin_concerts")
+    return redirect(back)
 
 
 @staff_member_required

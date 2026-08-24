@@ -27,6 +27,11 @@ class Organisme(models.Model):
     """Organisateur mémorisé (mairie, festival, association…) pour saisie typeahead."""
 
     nom = models.CharField(max_length=200, unique=True)
+    url_site = models.URLField(
+        "Site web",
+        blank=True,
+        help_text="Page web de l’organisme (lien sur le nom en affichage public).",
+    )
 
     class Meta:
         verbose_name = "Organisme"
@@ -73,7 +78,11 @@ class Event(models.Model):
     public      = models.BooleanField(
         "Visible sur le site public",
         default=False,
-        help_text="Coché = l’événement apparaît sur l’accueil et /concerts/. Géré via le CMS concerts.",
+        help_text=(
+            "Coché = l’événement apparaît sur l’accueil et /concerts/. "
+            "Activé automatiquement à la validation (hors répétitions) ; "
+            "dépublication via le CMS concerts."
+        ),
     )
     parent = models.ForeignKey(
         "self",
@@ -184,6 +193,12 @@ class Event(models.Model):
     @property
     def has_contact(self) -> bool:
         return bool(self.contact_nom or self.contact_telephone or self.contact_email)
+
+    @property
+    def organisme_url(self) -> str:
+        from events.organisme import organisme_url_for_name
+
+        return organisme_url_for_name(self.organisme)
 
     @property
     def show_contact(self) -> bool:
