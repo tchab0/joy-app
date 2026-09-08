@@ -36,6 +36,12 @@
   .fb-item-body { padding:0 1.1rem 1.1rem; display:grid; gap:1rem; grid-template-columns:1fr; }
   @media (min-width:900px) { .fb-item-body { grid-template-columns:1.4fr .9fr; } }
   .fb-message { white-space:pre-wrap; font-size:.95rem; color:var(--text); }
+  .fb-attachment { margin-top:.85rem; }
+  .fb-attachment-img {
+    display:block; max-width:100%; max-height:16rem; width:auto; height:auto;
+    border:1px solid var(--border); border-radius:var(--r); background:var(--bg);
+  }
+  .fb-attachment-link { color:var(--accent); font-size:.9rem; font-weight:600; }
   .fb-page a { color:var(--accent); word-break:break-all; font-size:.85rem; }
   .fb-actions { display:flex; flex-direction:column; gap:.75rem; }
   .fb-panel {
@@ -135,6 +141,17 @@
         <div class="fb-item-body" x-show="open" x-cloak>
           <div>
             <p class="fb-message">{{ item.message }}</p>
+            {% if item.attachment_url %}
+            <div class="fb-attachment">
+              {% if item.attachment_is_image %}
+              <a href="{{ item.attachment_url }}" target="_blank" rel="noopener">
+                <img src="{{ item.attachment_url }}" alt="Pièce jointe du retour" class="fb-attachment-img" loading="lazy">
+              </a>
+              {% else %}
+              <a href="{{ item.attachment_url }}" target="_blank" rel="noopener" class="fb-attachment-link">Voir la pièce jointe</a>
+              {% endif %}
+            </div>
+            {% endif %}
             <div class="fb-page" style="margin-top:.85rem">
               {% if item.page_title %}<p style="font-weight:600">{{ item.page_title }}</p>{% endif %}
               {% if item.page_profile %}<p style="color:var(--muted);font-size:.85rem">Rôles : {{ item.page_profile }}</p>{% endif %}

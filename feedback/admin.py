@@ -16,6 +16,7 @@ class PageFeedbackAdmin(admin.ModelAdmin):
         "status",
         "treated_at",
         "author_notified_at",
+        "has_attachment",
     )
     list_filter = (
         "category",
@@ -46,6 +47,10 @@ class PageFeedbackAdmin(admin.ModelAdmin):
         "vote_closed_by",
         "importance_score",
     )
+
+    @admin.display(boolean=True, description="PJ")
+    def has_attachment(self, obj):
+        return bool(obj.attachment)
 
 
 @admin.register(PageFeedbackRating)

@@ -613,6 +613,8 @@ def _feedback_row(feedback: PageFeedback) -> dict[str, Any]:
         'supporter_count': getattr(feedback, 'supporter_count', feedback.ratings.count()),
         'admin_priority': feedback.admin_priority,
         'admin_priority_label': ADMIN_PRIORITY_LABELS.get(feedback.admin_priority, ''),
+        'attachment_url': feedback.attachment.url if feedback.attachment else '',
+        'attachment_is_image': feedback.attachment_is_image,
         'page_url': feedback.page_url,
         'page_title': page_title,
         'page_profile': page_profile,
@@ -813,6 +815,7 @@ def create_page_feedback(
     importance: int | None = None,
     page_title: str = '',
     page_context: str = '',
+    attachment=None,
 ) -> PageFeedback:
     feedback = PageFeedback.objects.create(
         author=author,
@@ -822,6 +825,7 @@ def create_page_feedback(
         page_url=page_url[:500],
         page_title=(page_title or '')[:200],
         page_context=(page_context or '')[:PAGE_CONTEXT_MAX_LENGTH],
+        attachment=attachment or None,
     )
     if importance is not None:
         PageFeedbackRating.objects.create(

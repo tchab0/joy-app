@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
+
+
+def feedback_attachment_upload_to(instance: "PageFeedback", filename: str) -> str:
+    ext = Path(filename or "").suffix.lower()[:16]
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        ext = ""
+    return f"feedback/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{ext}"
 
 
 class PageFeedback(models.Model):
@@ -69,6 +80,13 @@ class PageFeedback(models.Model):
         help_text="Urgence définie par l'administrateur (1 à 5).",
     )
     message = models.TextField("Message")
+    attachment = models.FileField(
+        "Pièce jointe",
+        upload_to=feedback_attachment_upload_to,
+        blank=True,
+        null=True,
+        help_text="Capture d’écran ou image jointe au retour (optionnel).",
+    )
     page_url = models.CharField("Page concernée", max_length=500)
     page_title = models.CharField("Titre de la page", max_length=200, blank=True)
     page_context = models.TextField("Contexte page (JSON)", blank=True)
@@ -165,6 +183,13 @@ class PageFeedback(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_category_display()} — {self.author} ({self.created_at:%d/%m/%Y})"
+
+    @property
+    def attachment_is_image(self) -> bool:
+        if not self.attachment:
+            return False
+        name = (self.attachment.name or "").lower()
+        return name.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp"))
 
 
 class PageFeedbackVote(models.Model):

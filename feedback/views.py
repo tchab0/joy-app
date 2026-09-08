@@ -79,7 +79,7 @@ def submit_page_feedback(request):
         page_url = urlparse(referer).path if referer else reverse("home")
         data["page_url"] = page_url or reverse("home")
 
-    form = PageFeedbackForm(data)
+    form = PageFeedbackForm(data, files=request.FILES)
     redirect_to = (data.get("page_url") or reverse("home")).strip()
     if not redirect_to.startswith("/"):
         redirect_to = reverse("home")
@@ -114,6 +114,7 @@ def submit_page_feedback(request):
                 page_url=page_info["page_url"],
                 page_title=page_info["page_title"],
                 page_context=page_info["page_context"],
+                attachment=form.cleaned_data.get("attachment"),
             )
             messages.success(request, "Merci, votre retour a bien été transmis aux administrateurs.")
     else:

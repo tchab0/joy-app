@@ -56,7 +56,7 @@
         <h2 id="page-feedback-title">Retour utilisateur</h2>
         <button type="button" class="fb-icon-btn" @click="feedbackOpen = false" aria-label="Fermer">×</button>
       </div>
-      <form method="post" action="{% url 'submit_page_feedback' %}" @submit="syncPageInfo()" class="fb-modal-form">
+      <form method="post" action="{% url 'submit_page_feedback' %}" enctype="multipart/form-data" @submit="syncPageInfo()" class="fb-modal-form">
         {% csrf_token %}
         <input type="hidden" name="page_url" x-ref="pageUrl" value="{{ page_feedback_page_url }}">
         <input type="hidden" name="page_title" x-ref="pageTitle" value="">
@@ -112,9 +112,22 @@
             </div>
           </div>
 
-          <div x-show="mode === 'new'" x-cloak>
-            <label class="fb-label" for="page-feedback-message">Description</label>
-            <textarea id="page-feedback-message" name="message" rows="4" minlength="10" maxlength="2000" :required="mode === 'new'" placeholder="Décrivez le bug, l'inconfort ou la fonctionnalité attendue…"></textarea>
+          <div x-show="mode === 'new'" x-cloak class="fb-new-fields">
+            <div>
+              <label class="fb-label" for="page-feedback-message">Description</label>
+              <textarea id="page-feedback-message" name="message" rows="4" minlength="10" maxlength="2000" :required="mode === 'new'" placeholder="Décrivez le bug, l'inconfort ou la fonctionnalité attendue…"></textarea>
+            </div>
+            <div>
+              <label class="fb-label" for="page-feedback-attachment">Pièce jointe (optionnel)</label>
+              <p class="fb-help">Vous pouvez joindre une capture d’écran ou une image (PNG, JPEG, WebP, GIF — 5&nbsp;Mo max).</p>
+              <input
+                type="file"
+                id="page-feedback-attachment"
+                name="attachment"
+                class="fb-file"
+                accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+              >
+            </div>
           </div>
         </div>
         <div class="fb-modal-foot">

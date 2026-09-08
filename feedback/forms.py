@@ -1,14 +1,30 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from django import forms
 
 from feedback.models import PageFeedback
 from feedback.roles import VOTE_ROLE_LABELS
 
+FEEDBACK_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
+FEEDBACK_ATTACHMENT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+FEEDBACK_ATTACHMENT_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+}
+
 
 class PageFeedbackForm(forms.ModelForm):
     existing_feedback_id = forms.CharField(required=False, widget=forms.HiddenInput)
     importance = forms.IntegerField(required=False, min_value=0, max_value=5)
+    attachment = forms.FileField(
+        required=False,
+        label="Pièce jointe",
+        help_text="Optionnel — une capture d’écran, par exemple (PNG, JPEG, WebP ou GIF, 5 Mo max).",
+    )
 
     class Meta:
         model = PageFeedback
@@ -48,6 +64,27 @@ class PageFeedbackForm(forms.ModelForm):
             return 1
         return value
 
+    def clean_attachment(self):
+        uploaded = self.cleaned_data.get("attachment")
+        if not uploaded:
+            return None
+        name = getattr(uploaded, "name", "") or ""
+        ext = Path(name).suffix.lower()
+        if ext not in FEEDBACK_ATTACHMENT_EXTENSIONS:
+            raise forms.ValidationError(
+                "Format non accepté. Joignez une image PNG, JPEG, WebP ou GIF "
+                "(par ex. une capture d’écran)."
+            )
+        content_type = (getattr(uploaded, "content_type", "") or "").split(";")[0].strip().lower()
+        if content_type and content_type not in FEEDBACK_ATTACHMENT_CONTENT_TYPES:
+            raise forms.ValidationError(
+                "Type de fichier non autorisé. Joignez une image (capture d’écran possible)."
+            )
+        size = getattr(uploaded, "size", None)
+        if size is not None and size > FEEDBACK_ATTACHMENT_MAX_BYTES:
+            raise forms.ValidationError("La pièce jointe ne peut pas dépasser 5 Mo.")
+        return uploaded
+
     def clean(self):
         cleaned = super().clean()
         existing_id = cleaned.get("existing_feedback_id")
@@ -68,6 +105,7 @@ class PageFeedbackForm(forms.ModelForm):
                     "Ce retour n'est plus disponible. Choisissez-en un autre ou rédigez une nouvelle description.",
                 )
             cleaned["message"] = message
+            cleaned["attachment"] = None
             return cleaned
 
         if len(message) < 10:
