@@ -6,6 +6,7 @@ from chat.services import (
     ensure_orchestra_room,
     ensure_staff_room,
     seed_staff_members,
+    sync_all_musicians_to_section_rooms,
     sync_musician_to_orchestra,
     sync_participation_to_chat,
 )
@@ -17,8 +18,8 @@ User = get_user_model()
 
 class Command(BaseCommand):
     help = (
-        "Crée les salons Orchestre et Staff, synchronise les musiciens/staff, "
-        "et aligne salons/memberships sur les événements existants."
+        "Crée les salons Orchestre, Staff et pupitres, synchronise les "
+        "musiciens/staff, et aligne salons/memberships sur les événements existants."
     )
 
     def handle(self, *args, **options):
@@ -30,6 +31,8 @@ class Command(BaseCommand):
 
         staff_room = ensure_staff_room()
         n_staff = seed_staff_members(staff_room)
+
+        n_section_rooms, n_section_users = sync_all_musicians_to_section_rooms()
 
         n_events = 0
         for event in Event.objects.all():
@@ -45,6 +48,7 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"Salon « {room.title} » — {n_musicians} musicien(s), "
                 f"salon « {staff_room.title} » — {n_staff} staff, "
+                f"{n_section_rooms} salon(s) pupitre — {n_section_users} musicien(s), "
                 f"{n_events} salon(s) événement, {n_parts} participation(s) sync."
             )
         )

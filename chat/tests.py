@@ -11,14 +11,17 @@ from django.urls import reverse
 from chat.models import ChatMembership, ChatMessage, ChatMessageReaction, ChatRoom
 from chat.services import (
     ensure_orchestra_room,
+    ensure_section_rooms,
     ensure_staff_room,
     edit_message,
     extract_mention_tokens,
+    musician_section_keys,
     post_message,
     replies_prefetch,
     resolve_mentioned_users,
     serialize_message,
     sync_musician_to_orchestra,
+    sync_musician_to_section_rooms,
     sync_user_to_staff_room,
     toggle_reaction,
     unread_count,
@@ -105,6 +108,99 @@ class ChatCoreTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Staff")
         self.assertContains(r, reverse("chat:room", args=[room.pk]))
+
+    def test_section_rooms_by_poste_and_chant_in_all(self):
+        rooms = {r.section_key: r for r in ensure_section_rooms()}
+        self.assertEqual(
+            set(rooms),
+            {"sax", "trompettes", "trombones", "rythmique"},
+        )
+        self.assertEqual(rooms["trompettes"].title, "Trompettes & clarinette")
+
+        # Trompettistes → salon trompettes seulement
+        sync_musician_to_section_rooms(self.musician)
+        sync_musician_to_section_rooms(self.other)
+        self.assertEqual(musician_section_keys(self.musician), {"trompettes"})
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=rooms["trompettes"],
+                user=self.musician,
+                left_at__isnull=True,
+            ).exists()
+        )
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=rooms["sax"],
+                user=self.musician,
+                left_at__isnull=True,
+            ).exists()
+        )
+
+        # Chanteuse → les 4 salons
+        singer = User.objects.create_user(
+            username="chat_chant",
+            password="pass",
+            email="chant@example.com",
+            is_musician=True,
+            chat_auto_subscribe=True,
+        )
+        sp = singer.musician_profile
+        sp.poste_titulaire = MusicianProfile.Poste.CHANT
+        sp.save()
+        sync_musician_to_section_rooms(singer)
+        self.assertEqual(
+            musician_section_keys(singer),
+            {"sax", "trompettes", "trombones", "rythmique"},
+        )
+        for key in rooms:
+            self.assertTrue(
+                ChatMembership.objects.filter(
+                    room=rooms[key], user=singer, left_at__isnull=True
+                ).exists(),
+                msg=f"chanteuse absente de {key}",
+            )
+
+        # Clarinette → même salon que trompettes
+        clar = User.objects.create_user(
+            username="chat_clar",
+            password="pass",
+            is_musician=True,
+        )
+        cp = clar.musician_profile
+        cp.poste_titulaire = MusicianProfile.Poste.CLARINETTE
+        cp.save()
+        sync_musician_to_section_rooms(clar)
+        self.assertEqual(musician_section_keys(clar), {"trompettes"})
+
+        # Changement de poste → soft-leave / rejoin
+        profile = self.musician.musician_profile
+        profile.poste_titulaire = MusicianProfile.Poste.BARYTON
+        profile.save()
+        sync_musician_to_section_rooms(self.musician)
+        self.assertEqual(musician_section_keys(self.musician), {"sax"})
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=rooms["sax"], user=self.musician, left_at__isnull=True
+            ).exists()
+        )
+        left_tp = ChatMembership.objects.get(
+            room=rooms["trompettes"], user=self.musician
+        )
+        self.assertIsNotNone(left_tp.left_at)
+
+        # Salon pupitre non quittable
+        client = Client()
+        client.login(username="chat_chant", password="pass")
+        r = client.post(
+            reverse("chat:room", args=[rooms["sax"].pk]),
+            {"action": "leave"},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=rooms["sax"], user=singer, left_at__isnull=True
+            ).exists()
+        )
 
     def test_event_creates_staff_only_room(self):
         staff = User.objects.create_user(

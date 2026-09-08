@@ -28,6 +28,65 @@ logger = logging.getLogger(__name__)
 ORCHESTRA_ROOM_TITLE = "Orchestre"
 STAFF_ROOM_TITLE = "Staff"
 CHAT_HISTORY_LIMIT = 100
+
+# Salons pupitre : groupes instrumentaux (chant associée à tous).
+# Clés stables → section_key sur ChatRoom.
+SECTION_ROOM_DEFS: tuple[tuple[str, str, frozenset[str]], ...] = (
+    (
+        "sax",
+        "Saxophones",
+        frozenset(
+            {
+                "alto_1",
+                "alto_2",
+                "tenor_1",
+                "tenor_2",
+                "baryton",
+            }
+        ),
+    ),
+    (
+        "trompettes",
+        "Trompettes & clarinette",
+        frozenset(
+            {
+                "trompette_1",
+                "trompette_2",
+                "trompette_3",
+                "trompette_4",
+                "clarinette",
+            }
+        ),
+    ),
+    (
+        "trombones",
+        "Trombones",
+        frozenset(
+            {
+                "trombone_1",
+                "trombone_2",
+                "trombone_3",
+                "trombone_4",
+            }
+        ),
+    ),
+    (
+        "rythmique",
+        "Rythmique",
+        frozenset(
+            {
+                "piano",
+                "guitare",
+                "basse",
+                "batterie",
+                "percussion",
+            }
+        ),
+    ),
+)
+SECTION_ROOM_BY_KEY = {key: (title, postes) for key, title, postes in SECTION_ROOM_DEFS}
+CHANT_POSTE = "chant"
+
 # @identifiant : lettres unicode, chiffres, . _ -
 MENTION_TOKEN_RE = re.compile(
     r"(?<![\w.])@([^\W\d_][\w.-]{0,49})",
@@ -255,6 +314,113 @@ def sync_musician_to_orchestra(user) -> ChatMembership | None:
     return add_member(room, user)
 
 
+def ensure_section_room(section_key: str) -> ChatRoom:
+    """Crée / aligne un salon pupitre (titre figé depuis SECTION_ROOM_DEFS)."""
+    if section_key not in SECTION_ROOM_BY_KEY:
+        raise ValueError(f"Clé pupitre inconnue : {section_key}")
+    title, _postes = SECTION_ROOM_BY_KEY[section_key]
+    room, created = ChatRoom.objects.get_or_create(
+        kind=ChatRoom.Kind.SECTION,
+        section_key=section_key,
+        defaults={"title": title},
+    )
+    updates: list[str] = []
+    if room.kind != ChatRoom.Kind.SECTION:
+        room.kind = ChatRoom.Kind.SECTION
+        updates.append("kind")
+    if room.section_key != section_key:
+        room.section_key = section_key
+        updates.append("section_key")
+    if room.title != title:
+        room.title = title
+        updates.append("title")
+    if not room.is_active:
+        room.is_active = True
+        updates.append("is_active")
+    if updates:
+        room.save(update_fields=updates)
+    if created:
+        seed_staff_members(room)
+    return room
+
+
+def ensure_section_rooms() -> list[ChatRoom]:
+    """Crée les 4 salons pupitre s’ils n’existent pas."""
+    return [ensure_section_room(key) for key, _title, _postes in SECTION_ROOM_DEFS]
+
+
+def musician_section_keys(user) -> set[str]:
+    """
+    Clés de salons pupitre pour un musicien.
+    Basé sur poste titulaire + postes remplaçant ; le chant est dans tous.
+    """
+    if not getattr(user, "is_musician", False) or not user.is_active:
+        return set()
+    from django.core.exceptions import ObjectDoesNotExist
+
+    try:
+        profile = user.musician_profile
+    except ObjectDoesNotExist:
+        return set()
+    postes: set[str] = set()
+    if profile.poste_titulaire:
+        postes.add(profile.poste_titulaire)
+    postes.update(profile.postes_remplacant)
+    if not postes:
+        return set()
+    if CHANT_POSTE in postes:
+        return {key for key, _title, _postes in SECTION_ROOM_DEFS}
+    keys: set[str] = set()
+    for key, _title, room_postes in SECTION_ROOM_DEFS:
+        if postes & room_postes:
+            keys.add(key)
+    return keys
+
+
+def sync_musician_to_section_rooms(user) -> int:
+    """
+    Aligne les memberships pupitre d’un musicien (ajoute / réintègre / soft-leave).
+    Retourne le nombre de salons où le membre est actif après sync.
+    """
+    ensure_section_rooms()
+    wanted = musician_section_keys(user)
+    rooms = list(
+        ChatRoom.objects.filter(
+            kind=ChatRoom.Kind.SECTION,
+            section_key__in=[k for k, _, _ in SECTION_ROOM_DEFS],
+        )
+    )
+    active_n = 0
+    subscribed = bool(getattr(user, "chat_auto_subscribe", True))
+    for room in rooms:
+        if room.section_key in wanted:
+            membership, created = ChatMembership.objects.get_or_create(
+                room=room,
+                user=user,
+                defaults={"subscribed": subscribed},
+            )
+            if not created and membership.left_at is not None:
+                membership.rejoin(subscribed=subscribed)
+            active_n += 1
+        else:
+            membership = ChatMembership.objects.filter(room=room, user=user).first()
+            if membership is not None and membership.left_at is None:
+                membership.leave()
+    return active_n
+
+
+def sync_all_musicians_to_section_rooms() -> tuple[int, int]:
+    """Backfill : assure les salons + sync tous les musiciens actifs."""
+    rooms = ensure_section_rooms()
+    n_users = 0
+    for user in User.objects.filter(is_musician=True, is_active=True).select_related(
+        "musician_profile"
+    ):
+        sync_musician_to_section_rooms(user)
+        n_users += 1
+    return len(rooms), n_users
+
+
 def sync_participation_to_chat(participation) -> ChatMembership:
     room = ensure_event_room(participation.event)
     return add_member(room, participation.user)
@@ -456,6 +622,12 @@ def room_mention_members(room: ChatRoom) -> list:
     User = get_user_model()
     if room.kind == ChatRoom.Kind.STAFF:
         q = Q(is_staff=True) | Q(is_superuser=True)
+    elif room.kind == ChatRoom.Kind.SECTION:
+        # Pupitre : uniquement les membres actifs (pas tout l’orchestre).
+        q = Q(
+            chat_memberships__room=room,
+            chat_memberships__left_at__isnull=True,
+        )
     else:
         q = Q(is_musician=True) | Q(
             chat_memberships__room=room,
@@ -495,7 +667,10 @@ def resolve_mentioned_users(room: ChatRoom, body: str, *, exclude_user=None) -> 
         if room.kind == ChatRoom.Kind.STAFF and not (u.is_staff or u.is_superuser):
             continue
         if not user_can_access_room(u, room):
-            # Événement / morceau : ajouter pour que la notif soit ouvrable
+            # Événement / morceau : ajouter pour que la notif soit ouvrable.
+            # Pupitre : pas d’ajout auto (composition figée par poste).
+            if room.kind == ChatRoom.Kind.SECTION:
+                continue
             try:
                 add_member(room, u, subscribed=bool(getattr(u, "chat_auto_subscribe", True)))
             except Exception:

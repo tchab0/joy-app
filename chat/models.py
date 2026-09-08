@@ -14,6 +14,7 @@ class ChatRoom(models.Model):
         EVENT = "event", "Événement"
         PIECE = "piece", "Morceau"
         STAFF = "staff", "Staff"
+        SECTION = "section", "Pupitre"
 
     kind = models.CharField(
         "Type",
@@ -22,6 +23,14 @@ class ChatRoom(models.Model):
         db_index=True,
     )
     title = models.CharField("Titre", max_length=200)
+    section_key = models.CharField(
+        "Clé pupitre",
+        max_length=40,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Identifiant stable du salon pupitre (ex. sax, trompettes).",
+    )
     event = models.OneToOneField(
         "events.Event",
         on_delete=models.CASCADE,
@@ -55,6 +64,11 @@ class ChatRoom(models.Model):
                 fields=["kind"],
                 condition=models.Q(kind="staff"),
                 name="unique_staff_chat_room",
+            ),
+            models.UniqueConstraint(
+                fields=["section_key"],
+                condition=models.Q(kind="section") & ~models.Q(section_key=""),
+                name="unique_section_chat_room_key",
             ),
         ]
 

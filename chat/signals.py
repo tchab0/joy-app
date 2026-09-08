@@ -5,7 +5,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from events.models import Event
-from planning.models import EventParticipation
+from planning.models import EventParticipation, MusicianProfile
 from users.models import User
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,25 @@ def sync_chat_on_participation(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=User)
 def sync_orchestra_on_musician(sender, instance, **kwargs):
-    from chat.services import sync_musician_to_orchestra, sync_user_to_staff_room
+    from chat.services import (
+        sync_musician_to_orchestra,
+        sync_musician_to_section_rooms,
+        sync_user_to_staff_room,
+    )
 
     if instance.is_musician and instance.is_active:
         _safe_chat_sync("orchestra", sync_musician_to_orchestra, instance)
+        _safe_chat_sync("section_rooms", sync_musician_to_section_rooms, instance)
     if instance.is_active and (instance.is_staff or instance.is_superuser):
         _safe_chat_sync("staff_room", sync_user_to_staff_room, instance)
+
+
+@receiver(post_save, sender=MusicianProfile)
+def sync_section_rooms_on_profile(sender, instance, **kwargs):
+    """Quand le poste change, réaligner les salons pupitre."""
+    from chat.services import sync_musician_to_section_rooms
+
+    user = getattr(instance, "user", None)
+    if user is None:
+        return
+    _safe_chat_sync("section_rooms_profile", sync_musician_to_section_rooms, user)

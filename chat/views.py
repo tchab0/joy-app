@@ -81,8 +81,9 @@ def room_list(request: HttpRequest) -> HttpResponse:
         kind_rank = {
             ChatRoom.Kind.ORCHESTRA: 0,
             ChatRoom.Kind.STAFF: 1,
-            ChatRoom.Kind.PIECE: 2,
-            ChatRoom.Kind.EVENT: 3,
+            ChatRoom.Kind.SECTION: 2,
+            ChatRoom.Kind.PIECE: 3,
+            ChatRoom.Kind.EVENT: 4,
         }.get(item["room"].kind, 9)
         return (
             0 if item["unread"] else 1,
@@ -199,7 +200,11 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
             messages.success(request, "Notifications désactivées pour ce salon.")
             return redirect("chat:room", room_id=room.pk)
         if action == "leave":
-            if room.kind in {ChatRoom.Kind.ORCHESTRA, ChatRoom.Kind.STAFF}:
+            if room.kind in {
+                ChatRoom.Kind.ORCHESTRA,
+                ChatRoom.Kind.STAFF,
+                ChatRoom.Kind.SECTION,
+            }:
                 messages.error(request, "Ce salon ne peut pas être quitté.")
                 return redirect("chat:room", room_id=room.pk)
             membership.leave()

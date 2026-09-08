@@ -1,7 +1,7 @@
 <li>
   <a href="{% url 'chat:room' item.room.pk %}">
     <div>
-      <div class="chat-kind{% if item.room.kind == 'staff' %} chat-kind--staff{% endif %}">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'staff' %}Staff{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
+      <div class="chat-kind{% if item.room.kind == 'staff' %} chat-kind--staff{% endif %}">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'staff' %}Staff{% elif item.room.kind == 'section' %}Pupitre{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
       <p class="chat-list__title">{{ item.room.title }}</p>
       {% if item.last_message %}
       <p class="chat-list__meta">

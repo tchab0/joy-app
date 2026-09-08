@@ -7,6 +7,8 @@
         Salon orchestre
       {% elif room.kind == 'staff' %}
         Salon staff — privé
+      {% elif room.kind == 'section' %}
+        Salon pupitre
       {% elif room.kind == 'piece' and room.piece %}
         Répertoire · {{ room.piece.title }}
       {% elif room.event %}
