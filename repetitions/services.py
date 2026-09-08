@@ -204,6 +204,9 @@ def notify_rehearsal_created(event: Event, users) -> int:
         title="JOY — Répétition",
         body=body,
         url=url,
+        related_type="rehearsal",
+        related_id=event.pk,
+        notify_type="rehearsal",
     )
 
 
@@ -308,6 +311,7 @@ def notify_substitute_for_absence(
         requires_response=True,
         related_type="participation",
         related_id=participation.pk,
+        notify_type="participation",
     )
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -76,6 +77,41 @@ class User(AbstractUser):
             "Recevoir une notification (push ou e-mail) lorsqu’un message "
             "de contact ou une demande de prestation arrive."
         ),
+    )
+
+    class NotifyFrequency(models.TextChoices):
+        REALTIME = "realtime", "Temps réel"
+        DAILY = "daily", "Une fois par jour"
+        EVERY_2_DAYS = "every_2_days", "Tous les deux jours"
+        EVERY_3_DAYS = "every_3_days", "Tous les trois jours"
+        WEEKLY = "weekly", "Une fois par semaine"
+
+    notify_frequency = models.CharField(
+        "Fréquence des notifications",
+        max_length=20,
+        choices=NotifyFrequency.choices,
+        default=NotifyFrequency.REALTIME,
+        help_text=(
+            "Choix par défaut pour les alertes push / e-mail. "
+            "L’historique in-app reste à jour dans tous les cas."
+        ),
+    )
+    notify_digest_hour = models.PositiveSmallIntegerField(
+        "Heure du récap",
+        default=18,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text="Heure locale (0–23) pour les récaps (pas le temps réel).",
+    )
+    notify_digest_weekday = models.PositiveSmallIntegerField(
+        "Jour du récap hebdo",
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="0 = lundi … 6 = dimanche. Utilisé si fréquence hebdomadaire.",
+    )
+    notify_digest_last_sent_at = models.DateTimeField(
+        "Dernier récap (défaut)",
+        null=True,
+        blank=True,
     )
 
     tour_musician_version = models.PositiveSmallIntegerField(
@@ -307,6 +343,51 @@ class UserNotification(models.Model):
         self.responded_at = timezone.now()
         self.save(update_fields=["responded_at"])
         return True
+
+
+class NotificationTypePref(models.Model):
+    """Contournement du défaut pour un type de notification (temps réel ou quotidien)."""
+
+    class Frequency(models.TextChoices):
+        REALTIME = "realtime", "Temps réel"
+        DAILY = "daily", "Une fois par jour"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notify_type_prefs",
+        verbose_name="Utilisateur",
+    )
+    notify_type = models.CharField("Type", max_length=20, db_index=True)
+    frequency = models.CharField(
+        "Fréquence",
+        max_length=20,
+        choices=Frequency.choices,
+    )
+    digest_hour = models.PositiveSmallIntegerField(
+        "Heure du récap",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+    )
+    last_sent_at = models.DateTimeField(
+        "Dernier récap",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "préférence de notification (type)"
+        verbose_name_plural = "préférences de notification (types)"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "notify_type"],
+                name="uniq_user_notify_type_pref",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} {self.notify_type}={self.frequency}"
 
 
 # Guides coach marks (éditables en admin) — importés pour découverte Django.

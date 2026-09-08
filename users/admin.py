@@ -3,6 +3,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from .models import (
     AuthChallenge,
+    NotificationTypePref,
     ProductTour,
     ProductTourStep,
     PushSubscription,
@@ -163,6 +164,19 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
         (
+            "Notifications",
+            {
+                "fields": (
+                    "notify_frequency",
+                    "notify_digest_hour",
+                    "notify_digest_weekday",
+                    "notify_digest_last_sent_at",
+                    "chat_auto_subscribe",
+                    "notify_contact_messages",
+                ),
+            },
+        ),
+        (
             "Double authentification",
             {
                 "fields": (
@@ -196,6 +210,14 @@ class UserAdmin(DjangoUserAdmin):
             from planning.services import get_or_create_profile
 
             get_or_create_profile(obj)
+
+
+@admin.register(NotificationTypePref)
+class NotificationTypePrefAdmin(admin.ModelAdmin):
+    list_display = ("user", "notify_type", "frequency", "digest_hour", "last_sent_at")
+    list_filter = ("notify_type", "frequency")
+    search_fields = ("user__username", "user__email", "notify_type")
+    raw_id_fields = ("user",)
 
 
 @admin.register(AuthChallenge)

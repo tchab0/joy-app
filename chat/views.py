@@ -29,7 +29,7 @@ from chat.services import (
     unread_messages_filter,
     user_can_access_room,
 )
-from users.forms import ChatNotificationPrefsForm
+from users.forms import NotificationPrefsForm
 from users.roles import user_can_access_planning
 
 
@@ -244,15 +244,99 @@ def room_rejoin(request: HttpRequest, room_id: int) -> HttpResponse:
 @login_required
 @require_http_methods(["GET", "POST"])
 def account_prefs(request: HttpRequest) -> HttpResponse:
-    denied = _require_musician(request)
-    if denied:
-        return denied
-    form = ChatNotificationPrefsForm(request.POST or None, instance=request.user)
+    if not (
+        user_can_access_planning(request.user)
+        or request.user.is_staff
+        or request.user.is_superuser
+    ):
+        return HttpResponseForbidden("Accès réservé aux musiciens et au staff.")
+
+    from chat.models import ChatMembership
+    from users.notify_prefs import (
+        OVERRIDE_DAILY,
+        OVERRIDE_FOLLOW,
+        OVERRIDE_REALTIME,
+        HOUR_CHOICES,
+        save_notification_overrides,
+        types_for_user,
+    )
+    from users.models import NotificationTypePref
+
+    form = NotificationPrefsForm(request.POST or None, instance=request.user)
+    memberships = list(
+        ChatMembership.objects.filter(
+            user=request.user,
+            left_at__isnull=True,
+            subscribed=True,
+        )
+        .select_related("room", "room__event", "room__piece")
+        .order_by("room__kind", "room__title")
+    )
+    type_prefs = {
+        p.notify_type: p
+        for p in NotificationTypePref.objects.filter(user=request.user)
+    }
+    type_specs = types_for_user(request.user)
+
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Préférences de notifications enregistrées.")
-        return redirect("chat:prefs")
-    return render(request, "chat/account_prefs.html", {"form": form})
+        errors = save_notification_overrides(
+            request.user, request.POST, memberships=memberships
+        )
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+        else:
+            messages.success(request, "Préférences de notifications enregistrées.")
+            return redirect("chat:prefs")
+        memberships = list(
+            ChatMembership.objects.filter(
+                user=request.user,
+                left_at__isnull=True,
+                subscribed=True,
+            )
+            .select_related("room", "room__event", "room__piece")
+            .order_by("room__kind", "room__title")
+        )
+        type_prefs = {
+            p.notify_type: p
+            for p in NotificationTypePref.objects.filter(user=request.user)
+        }
+
+    type_rows = []
+    for spec in type_specs:
+        pref = type_prefs.get(spec.key)
+        mode = OVERRIDE_FOLLOW
+        hour = request.user.notify_digest_hour
+        if pref is not None:
+            mode = pref.frequency
+            if pref.digest_hour is not None:
+                hour = pref.digest_hour
+        type_rows.append({"spec": spec, "mode": mode, "hour": hour})
+
+    room_rows = []
+    for m in memberships:
+        mode = m.notify_frequency_override or OVERRIDE_FOLLOW
+        hour = (
+            m.notify_digest_hour
+            if m.notify_digest_hour is not None
+            else request.user.notify_digest_hour
+        )
+        room_rows.append({"membership": m, "mode": mode, "hour": hour})
+
+    return render(
+        request,
+        "chat/account_prefs.html",
+        {
+            "form": form,
+            "type_rows": type_rows,
+            "room_rows": room_rows,
+            "hour_choices": HOUR_CHOICES,
+            "override_follow": OVERRIDE_FOLLOW,
+            "override_realtime": OVERRIDE_REALTIME,
+            "override_daily": OVERRIDE_DAILY,
+        },
+    )
 
 
 @login_required

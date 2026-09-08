@@ -240,6 +240,8 @@ def invite_titulaires_to_event(event, *, send_notification: bool = False) -> int
 
 def notify_event_invite(event, users) -> int:
     """Notification d’invitation au salon / événement."""
+    from chat.services import chat_room_url, ensure_event_room
+
     users = list(users)
     if not users:
         return 0
@@ -249,14 +251,16 @@ def notify_event_invite(event, users) -> int:
         f"Invitation : « {event.titre} » ({date_label}). "
         f"Ouvrez le salon de discussion pour répondre."
     )
+    room = ensure_event_room(event)
     return notify_users(
         users,
         title="JOY — Invitation",
         body=body,
-        url="/chat/",
+        url=chat_room_url(room.pk),
         requires_response=True,
         related_type="event",
         related_id=event.pk,
+        notify_type="event",
     )
 
 
@@ -286,7 +290,15 @@ def send_event_photos_requests(events, members) -> int:
         )
         url = media_submit_url_for_event(event)
         if members:
-            total += notify_users(members, title=title, body=body, url=url)
+            total += notify_users(
+                members,
+                title=title,
+                body=body,
+                url=url,
+                related_type="photos",
+                related_id=event.pk,
+                notify_type="photos",
+            )
         Event.objects.filter(pk=event.pk).update(photos_request_sent_at=now)
         event.photos_request_sent_at = now
     return total

@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 
 from users.webpush import send_web_push, vapid_configured
@@ -25,13 +26,20 @@ def notify_users(
     requires_response: bool = False,
     related_type: str = "",
     related_id: int | None = None,
+    notify_type: str = "",
+    room=None,
+    force_immediate: bool = False,
 ) -> int:
     """
     Notifie chaque utilisateur : enregistre une notification in-app, puis
-    push si abonnement actif, sinon e-mail.
+    push si abonnement actif, sinon e-mail — sauf si la fréquence choisie
+    est un récap (dans ce cas l’inbox est créée tout de suite, l’alerte
+    part au prochain créneau).
 
     ``requires_response`` : invitation / sondage / relance (statut « non répondu »
     distinct de « non lu »).
+
+    ``force_immediate`` : ignore les préférences (mentions chat, envoi de digest).
 
     Retourne le nombre d’utilisateurs notifiés (push ou e-mail).
     Les échecs sont logués, jamais levés.
@@ -50,6 +58,8 @@ def notify_users(
     if relative_url.startswith("/"):
         absolute_url = f"{site}{relative_url}"
 
+    delivery_type = (notify_type or related_type or "").strip()
+
     sent = 0
     seen: set[int] = set()
     for user in users:
@@ -60,7 +70,7 @@ def notify_users(
             continue
         seen.add(uid)
         try:
-            _persist_inbox(
+            notif = _persist_inbox(
                 user,
                 title=title,
                 body=body,
@@ -69,7 +79,25 @@ def notify_users(
                 related_type=related_type,
                 related_id=related_id,
             )
-            if _notify_one(user, title=title, body=body, url=absolute_url):
+            from users.notify_prefs import should_deliver_immediately
+
+            if not should_deliver_immediately(
+                user,
+                delivery_type,
+                room,
+                force=force_immediate,
+            ):
+                continue
+            push_url = relative_url
+            if notif is not None:
+                push_url = reverse("account_notification_open", args=[notif.pk])
+            if _notify_one(
+                user,
+                title=title,
+                body=body,
+                url=absolute_url,
+                push_url=push_url,
+            ):
                 sent += 1
         except Exception:
             logger.exception("Échec notif user_id=%s", uid)
@@ -127,7 +155,7 @@ def invalidate_nav_banner(user) -> None:
 
 def _is_chat_notification(item) -> bool:
     related = (getattr(item, "related_type", None) or "").strip()
-    if related == "chat_msg":
+    if related in {"chat_msg", "chat"}:
         return True
     url = (getattr(item, "url", None) or "").strip()
     return url.startswith("/chat/")
@@ -248,12 +276,12 @@ def _persist_inbox(
     requires_response: bool = False,
     related_type: str = "",
     related_id: int | None = None,
-) -> None:
+):
     """Crée la notification in-app ; tolère un schéma pas encore migré."""
     try:
         from users.models import UserNotification
 
-        UserNotification.objects.create(
+        notif = UserNotification.objects.create(
             user=user,
             title=title[:200],
             body=body,
@@ -263,16 +291,34 @@ def _persist_inbox(
             related_id=related_id,
         )
         invalidate_nav_banner(user)
+        return notif
     except (ProgrammingError, OperationalError):
         logger.warning(
             "Inbox notifications indisponible (migration manquante ?) — "
             "user_id=%s",
             getattr(user, "pk", None),
         )
+        return None
 
 
-def _notify_one(user, *, title: str, body: str, url: str) -> bool:
-    if _try_push(user, title=title, body=body, url=url):
+def _relative_push_url(url: str) -> str:
+    """Chemin relatif sûr pour le service worker (jamais d’URL absolue)."""
+    target = (url or "/").strip() or "/"
+    site = getattr(settings, "SITE_URL", "https://jazz-orchestra-yonnais.fr").rstrip(
+        "/"
+    )
+    if target.startswith(site):
+        target = target[len(site) :] or "/"
+    if not target.startswith("/") or target.startswith("//"):
+        target = "/"
+    return target
+
+
+def _notify_one(
+    user, *, title: str, body: str, url: str, push_url: str = ""
+) -> bool:
+    rel_push = _relative_push_url(push_url or url)
+    if _try_push(user, title=title, body=body, url=rel_push):
         return True
     return _try_email(user, title=title, body=body, url=url)
 

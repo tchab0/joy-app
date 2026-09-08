@@ -185,6 +185,7 @@ def notify_maybe_remind(participation: EventParticipation) -> int:
             requires_response=True,
             related_type="participation",
             related_id=participation.pk,
+            notify_type="participation",
         )
     except Exception:
         logger.exception(
@@ -280,6 +281,9 @@ def notify_staff_presence_invalidated(
             title="JOY — Présence annulée",
             body=" ".join(body_bits),
             url=url,
+            related_type="staff_alert",
+            related_id=participation.pk,
+            notify_type="staff_alert",
         )
     except Exception:
         logger.exception(

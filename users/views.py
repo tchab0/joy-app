@@ -5,6 +5,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -53,6 +54,7 @@ def _safe_next(request: HttpRequest) -> str:
     return reverse("account_home")
 
 
+@ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def login_view(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
@@ -449,6 +451,7 @@ def account_notifications(request: HttpRequest) -> HttpResponse:
             "notifications": qs[:100],
             "unread_count": unread.count(),
             "unanswered_count": unanswered.count(),
+            "can_planning": user_can_access_planning(request.user),
         },
     )
 
@@ -509,6 +512,7 @@ def account_notifications_mark_all_read(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@ensure_csrf_cookie
 def account_notification_open(request: HttpRequest, pk: int) -> HttpResponse:
     """Marque comme lue puis redirige vers le lien de la notification."""
     from users.models import UserNotification

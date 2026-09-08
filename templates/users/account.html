@@ -28,8 +28,8 @@
       <div class="account-actions" data-tour="account-replay">
         <a class="btn btn-outline" href="{% url 'account_security' %}">Sécurité &amp; 2FA</a>
         <a class="btn btn-outline" href="{% url 'account_notifications' %}">Mes notifications{% if unread_notifications %} ({{ unread_notifications }}){% endif %}</a>
-        {% if can_planning %}
-        <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Notifications chat</a>
+        {% if can_planning or request.user.is_staff or request.user.is_superuser %}
+        <a class="btn btn-outline" href="{% url 'chat:prefs' %}">Préférences de notifications</a>
         {% endif %}
         {% if can_replay_musician_tour %}
         <a class="btn btn-outline" href="{% url 'account_home' %}?tour=musician"

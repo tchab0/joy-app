@@ -87,6 +87,7 @@ def notify_availability_poll(proposal: DateProposal) -> int:
         requires_response=True,
         related_type="proposal",
         related_id=proposal.pk,
+        notify_type="proposal",
     )
 
 
@@ -115,6 +116,7 @@ def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
             requires_response=True,
             related_type="proposal",
             related_id=proposal.pk,
+            notify_type="proposal",
         )
     except Exception:
         logger.exception(

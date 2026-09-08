@@ -86,7 +86,6 @@ SECTION_ROOM_DEFS: tuple[tuple[str, str, frozenset[str]], ...] = (
 )
 SECTION_ROOM_BY_KEY = {key: (title, postes) for key, title, postes in SECTION_ROOM_DEFS}
 CHANT_POSTE = "chant"
-
 # @identifiant : lettres unicode, chiffres, . _ -
 MENTION_TOKEN_RE = re.compile(
     r"(?<![\w.])@([^\W\d_][\w.-]{0,49})",
@@ -203,6 +202,14 @@ def ensure_event_room(event) -> ChatRoom:
     if created:
         seed_staff_members(room)
     return room
+
+
+def chat_room_url(room_id: int, *, message_id: int | None = None) -> str:
+    """Chemin relatif vers un salon, optionnellement centré sur un message."""
+    path = reverse("chat:room", kwargs={"room_id": room_id})
+    if message_id:
+        return f"{path}?msg={int(message_id)}"
+    return path
 
 
 def _chorus_system_body(piece) -> str:
@@ -755,7 +762,7 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
         preview = "pièce jointe"
     if len(preview) > 140:
         preview = preview[:137].rstrip() + "…"
-    url = reverse("chat:room", kwargs={"room_id": message.room_id})
+    url = chat_room_url(message.room_id, message_id=message.pk)
     title = f"JOY — {room_title}"
     body = f"{author_name} vous a cité : {preview}"
 
@@ -769,6 +776,9 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
             url=url,
             related_type="chat_msg",
             related_id=message.pk,
+            notify_type="chat",
+            room=message.room,
+            force_immediate=True,
         )
     except Exception:
         logger.exception(

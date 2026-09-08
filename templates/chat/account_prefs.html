@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% load page_lead %}
 {% load static %}
-{% block title %}Notifications chat — JOY{% endblock %}
+{% block title %}Préférences de notifications — JOY{% endblock %}
 {% block extra_css %}
 <style>
   .chat-prefs {
-    max-width: 520px;
+    max-width: 560px;
     margin: 0 auto;
     padding: 1.25rem 1rem calc(2rem + env(safe-area-inset-bottom));
     color: var(--text);
@@ -15,33 +15,91 @@
     font-size: 1.5rem;
     margin: 0 0 .5rem;
   }
+  .chat-prefs h2 {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    margin: 0 0 .5rem;
+    color: var(--text);
+  }
   .chat-prefs__lead {
     color: var(--muted);
     margin: 0 0 1.25rem;
     line-height: 1.4;
     font-size: .95rem;
   }
+  .chat-prefs__section {
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+    color: var(--text);
+  }
+  .chat-prefs__section > p {
+    color: var(--muted);
+    font-size: .9rem;
+    line-height: 1.4;
+    margin: 0 0 .85rem;
+  }
   .chat-prefs__opt {
     display: flex;
     gap: .85rem;
     align-items: flex-start;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    background: var(--surface);
-    margin-bottom: 1.25rem;
+    padding: .75rem 0;
+    border-bottom: 1px solid var(--border);
     cursor: pointer;
-    min-height: 72px;
+    min-height: 44px;
   }
-  .chat-prefs__opt input {
+  .chat-prefs__opt:last-child { border-bottom: 0; }
+  .chat-prefs__opt input[type="radio"],
+  .chat-prefs__opt input[type="checkbox"] {
     width: 1.25rem;
     height: 1.25rem;
     margin-top: .15rem;
     flex-shrink: 0;
     accent-color: var(--accent);
   }
-  .chat-prefs__opt strong { display: block; margin-bottom: .25rem; }
+  .chat-prefs__opt strong { display: block; margin-bottom: .15rem; }
   .chat-prefs__opt span span { color: var(--muted); font-size: .88rem; line-height: 1.35; }
+  .chat-prefs__field {
+    margin-top: .85rem;
+  }
+  .chat-prefs__field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: .35rem;
+    font-size: .92rem;
+  }
+  .chat-prefs__field select {
+    width: 100%;
+    min-height: 48px;
+    padding: .65rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+  .chat-prefs__row {
+    padding: .85rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .chat-prefs__row:last-child { border-bottom: 0; }
+  .chat-prefs__row-title {
+    font-weight: 600;
+    margin: 0 0 .2rem;
+  }
+  .chat-prefs__row-help {
+    color: var(--muted);
+    font-size: .85rem;
+    line-height: 1.35;
+    margin: 0 0 .55rem;
+  }
+  .chat-prefs__row-controls {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+  }
   .chat-prefs__push {
     border: 1px solid var(--border);
     border-radius: var(--r);
@@ -89,22 +147,54 @@
     width: 100%;
     justify-content: center;
   }
+  .chat-prefs details.chat-prefs__section {
+    padding: 0;
+  }
+  .chat-prefs details.chat-prefs__section > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1rem;
+    min-height: 48px;
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+  }
+  .chat-prefs details.chat-prefs__section > summary::-webkit-details-marker { display: none; }
+  .chat-prefs details.chat-prefs__section > .chat-prefs__details-body {
+    padding: 0 1rem 1rem;
+  }
+  .form-errors {
+    color: var(--accent-h);
+    font-size: .9rem;
+    margin: 0 0 1rem;
+  }
   @media (min-width: 640px) {
     .chat-prefs__actions {
       flex-direction: row;
       flex-wrap: wrap;
     }
     .chat-prefs__actions .btn { width: auto; min-width: 10rem; }
+    .chat-prefs__row-controls {
+      flex-direction: row;
+      align-items: center;
+    }
+    .chat-prefs__row-controls select { min-width: 11rem; }
   }
 </style>
 {% endblock %}
 {% block content %}
 <section class="chat-prefs" x-data="joyPushPrefs()" x-init="init()">
-  <h1>Notifications chat</h1>
+  <h1>Préférences de notifications</h1>
   {% page_lead "chat.prefs" %}
-    Choisissez si vous êtes automatiquement abonné aux alertes (push ou e-mail)
-    des nouveaux salons d’événements.
+    Choisissez la fréquence des alertes (push ou e-mail), puis affinez
+    par type ou par salon si besoin. L’historique in-app reste à jour.
   {% endpage_lead %}
+
+  {% if form.errors %}
+  <ul class="form-errors">
+    {% for field in form %}{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}
+    {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+  </ul>
+  {% endif %}
 
   <div class="chat-prefs__ios" x-show="showIosHint" x-cloak>
     <strong>iPhone / iPad —</strong>
@@ -130,17 +220,111 @@
     </div>
   </div>
 
-  <form method="post">
+  <form method="post"
+        x-data="{
+          freq: '{{ form.notify_frequency.value|default:form.instance.notify_frequency|escapejs }}'
+        }">
     {% csrf_token %}
-    <label class="chat-prefs__opt">
-      {{ form.chat_auto_subscribe }}
-      <span>
-        <strong>{{ form.chat_auto_subscribe.label }}</strong>
-        <span>{{ form.chat_auto_subscribe.help_text }}</span>
-      </span>
-    </label>
+
+    <div class="chat-prefs__section">
+      <h2>Fréquence par défaut</h2>
+      <p>{{ form.notify_frequency.help_text }}</p>
+      {% for value, label in form.fields.notify_frequency.choices %}
+      <label class="chat-prefs__opt">
+        <input type="radio" name="notify_frequency" value="{{ value }}"
+               {% if form.notify_frequency.value == value or form.instance.notify_frequency == value and not form.notify_frequency.value %}checked{% endif %}
+               @change="freq = '{{ value }}'">
+        <span><strong>{{ label }}</strong></span>
+      </label>
+      {% endfor %}
+
+      <div class="chat-prefs__field" x-show="freq !== 'realtime'" x-cloak>
+        <label for="id_notify_digest_hour">{{ form.notify_digest_hour.label }}</label>
+        {{ form.notify_digest_hour }}
+      </div>
+      <div class="chat-prefs__field" x-show="freq === 'weekly'" x-cloak>
+        <label for="id_notify_digest_weekday">{{ form.notify_digest_weekday.label }}</label>
+        {{ form.notify_digest_weekday }}
+      </div>
+    </div>
+
+    <div class="chat-prefs__section">
+      <h2>Exceptions par type</h2>
+      <p>
+        Contournez le choix par défaut : temps réel, ou une fois par jour
+        à l’heure indiquée. Laissez « Comme le défaut » pour ne rien changer.
+      </p>
+      {% for row in type_rows %}
+      <div class="chat-prefs__row"
+           x-data="{ mode: '{{ row.mode|escapejs }}' }">
+        <p class="chat-prefs__row-title">{{ row.spec.label }}</p>
+        <p class="chat-prefs__row-help">{{ row.spec.help_text }}</p>
+        <div class="chat-prefs__row-controls">
+          <select name="ov_type_{{ row.spec.key }}" x-model="mode" aria-label="Fréquence {{ row.spec.label }}">
+            <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
+            <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
+            <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
+          </select>
+          <select name="ov_type_{{ row.spec.key }}_hour"
+                  x-show="mode === 'daily'" x-cloak
+                  aria-label="Heure {{ row.spec.label }}">
+            {% for h, label in hour_choices %}
+            <option value="{{ h }}" {% if row.hour == h %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      {% empty %}
+      <p>Aucun type disponible.</p>
+      {% endfor %}
+    </div>
+
+    {% if room_rows %}
+    <details class="chat-prefs__section" {% if room_rows|length <= 8 %}open{% endif %}>
+      <summary>Exceptions par salon ({{ room_rows|length }})</summary>
+      <div class="chat-prefs__details-body">
+        <p style="color:var(--muted);font-size:.9rem;line-height:1.4;margin:0 0 .85rem">
+          Prioritaire sur le type « Messages des salons ».
+          Les salons sans alertes n’apparaissent pas — réactivez-les depuis le salon.
+        </p>
+        {% for row in room_rows %}
+        <div class="chat-prefs__row"
+             x-data="{ mode: '{{ row.mode|escapejs }}' }">
+          <p class="chat-prefs__row-title">{{ row.membership.room.title }}</p>
+          <div class="chat-prefs__row-controls">
+            <select name="ov_room_{{ row.membership.pk }}" x-model="mode"
+                    aria-label="Fréquence {{ row.membership.room.title }}">
+              <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
+              <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
+              <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
+            </select>
+            <select name="ov_room_{{ row.membership.pk }}_hour"
+                    x-show="mode === 'daily'" x-cloak
+                    aria-label="Heure {{ row.membership.room.title }}">
+              {% for h, label in hour_choices %}
+              <option value="{{ h }}" {% if row.hour == h %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
+    <div class="chat-prefs__section">
+      <label class="chat-prefs__opt" style="border:0;padding:0">
+        {{ form.chat_auto_subscribe }}
+        <span>
+          <strong>{{ form.chat_auto_subscribe.label }}</strong>
+          <span>{{ form.chat_auto_subscribe.help_text }}</span>
+        </span>
+      </label>
+    </div>
+
     <div class="chat-prefs__actions">
       <button type="submit" class="btn btn-primary">Enregistrer</button>
+      <a class="btn btn-outline" href="{% url 'account_notifications' %}">Mes notifications</a>
       <a class="btn btn-outline" href="{% url 'chat:list' %}">← Salons</a>
       <a class="btn btn-outline" href="{% url 'account_home' %}">Mon compte</a>
     </div>

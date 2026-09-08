@@ -124,19 +124,71 @@ class ProfileSecurityForm(forms.ModelForm):
         }
 
 
-class ChatNotificationPrefsForm(forms.ModelForm):
+class NotificationPrefsForm(forms.ModelForm):
+    """Défaut de fréquence + abonnement auto aux salons."""
+
     class Meta:
         model = User
-        fields = ("chat_auto_subscribe",)
+        fields = (
+            "notify_frequency",
+            "notify_digest_hour",
+            "notify_digest_weekday",
+            "chat_auto_subscribe",
+        )
         labels = {
-            "chat_auto_subscribe": "M’abonner automatiquement aux salons des nouveaux événements",
-        }
-        help_texts = {
+            "notify_frequency": "Fréquence par défaut",
+            "notify_digest_hour": "Heure du récap",
+            "notify_digest_weekday": "Jour du récap hebdomadaire",
             "chat_auto_subscribe": (
-                "Vous recevrez un digest des nouveaux messages (notification push "
-                "si activée, sinon e-mail). Vous pourrez vous désabonner salon par salon."
+                "M’abonner automatiquement aux salons des nouveaux événements"
             ),
         }
+        help_texts = {
+            "notify_frequency": (
+                "S’applique à toutes les alertes sauf exception ci-dessous. "
+                "Temps réel : tout de suite (messages de salon regroupés ~toutes "
+                "les 30 min). Les @mentions et réponses sont toujours immédiates."
+            ),
+            "chat_auto_subscribe": (
+                "Vous pourrez désactiver les alertes salon par salon, "
+                "ou choisir une autre fréquence ci-dessous."
+            ),
+        }
+        widgets = {
+            "notify_frequency": forms.RadioSelect,
+            "notify_digest_hour": forms.Select,
+            "notify_digest_weekday": forms.Select,
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from users.notify_prefs import HOUR_CHOICES, WEEKDAY_LABELS
+
+        self.fields["notify_digest_hour"].choices = HOUR_CHOICES
+        self.fields["notify_digest_weekday"].choices = WEEKDAY_LABELS
+        self.fields["notify_digest_hour"].widget.choices = HOUR_CHOICES
+        self.fields["notify_digest_weekday"].widget.choices = WEEKDAY_LABELS
+
+    def clean(self):
+        cleaned = super().clean()
+        freq = cleaned.get("notify_frequency")
+        if freq and freq != User.NotifyFrequency.REALTIME:
+            if cleaned.get("notify_digest_hour") is None:
+                self.add_error(
+                    "notify_digest_hour",
+                    "Indiquez l’heure du récap.",
+                )
+        if freq == User.NotifyFrequency.WEEKLY:
+            if cleaned.get("notify_digest_weekday") is None:
+                self.add_error(
+                    "notify_digest_weekday",
+                    "Indiquez le jour du récap hebdomadaire.",
+                )
+        return cleaned
+
+
+# Rétro-compat imports / tests
+ChatNotificationPrefsForm = NotificationPrefsForm
 
 
 class StaffContactNotifyPrefsForm(forms.ModelForm):
@@ -149,6 +201,7 @@ class StaffContactNotifyPrefsForm(forms.ModelForm):
         help_texts = {
             "notify_contact_messages": (
                 "Notification push si activée, sinon e-mail, pour chaque demande "
-                "reçue via le formulaire public."
+                "reçue via le formulaire public. La fréquence se règle dans "
+                "Préférences de notifications."
             ),
         }

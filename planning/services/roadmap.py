@@ -310,6 +310,7 @@ def notify_roadmap(event: Event, *, actor=None) -> int:
         url=path,
         related_type="event_roadmap",
         related_id=event.pk,
+        notify_type="event_roadmap",
     )
     now = timezone.now()
     EventRoadmap.objects.filter(pk=roadmap.pk).update(notified_at=now)

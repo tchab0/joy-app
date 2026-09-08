@@ -37,11 +37,12 @@ class ChatMembershipAdmin(admin.ModelAdmin):
         "user",
         "room",
         "subscribed",
+        "notify_frequency_override",
         "joined_at",
         "left_at",
         "last_read_at",
     )
-    list_filter = ("subscribed", "room__kind")
+    list_filter = ("subscribed", "notify_frequency_override", "room__kind")
     search_fields = ("user__username", "user__first_name", "user__last_name", "room__title")
     autocomplete_fields = ("user", "room")
 

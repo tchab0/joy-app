@@ -94,9 +94,26 @@ class ChatMembership(models.Model):
         verbose_name="Utilisateur",
     )
     subscribed = models.BooleanField(
-        "Alertes (digest)",
+        "Alertes",
         default=True,
-        help_text="Reçoit un digest (push ou e-mail) des nouveaux messages.",
+        help_text="Reçoit les alertes (push ou e-mail) des nouveaux messages.",
+    )
+    notify_frequency_override = models.CharField(
+        "Fréquence (salon)",
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Vide = suivre le défaut. « realtime » ou « daily » pour forcer.",
+    )
+    notify_digest_hour = models.PositiveSmallIntegerField(
+        "Heure du récap (salon)",
+        null=True,
+        blank=True,
+    )
+    notify_digest_last_sent_at = models.DateTimeField(
+        "Dernier récap (salon)",
+        null=True,
+        blank=True,
     )
     joined_at = models.DateTimeField("Rejoint le", auto_now_add=True)
     left_at = models.DateTimeField("Quitté le", null=True, blank=True)

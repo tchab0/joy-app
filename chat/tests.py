@@ -7,9 +7,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from chat.models import ChatMembership, ChatMessage, ChatMessageReaction, ChatRoom
 from chat.services import (
+    chat_room_url,
     ensure_orchestra_room,
     ensure_section_rooms,
     ensure_staff_room,
@@ -438,7 +440,15 @@ class ChatCoreTests(TestCase):
         client.login(username="chat_musi", password="pass")
         r = client.get(reverse("chat:prefs"))
         self.assertEqual(r.status_code, 200)
-        r = client.post(reverse("chat:prefs"), {"chat_auto_subscribe": False})
+        r = client.post(
+            reverse("chat:prefs"),
+            {
+                "notify_frequency": "realtime",
+                "notify_digest_hour": 18,
+                "notify_digest_weekday": 0,
+                "chat_auto_subscribe": False,
+            },
+        )
         self.assertEqual(r.status_code, 302)
         self.musician.refresh_from_db()
         self.assertFalse(self.musician.chat_auto_subscribe)
@@ -701,3 +711,65 @@ class ChatCoreTests(TestCase):
         self.assertGreater(
             membership.last_read_at, timezone.now() - timedelta(minutes=1)
         )
+
+
+class ChatNotificationDeepLinkTests(TestCase):
+    def test_chat_room_url_with_message(self):
+        self.assertEqual(chat_room_url(7), reverse("chat:room", args=[7]))
+        self.assertEqual(
+            chat_room_url(7, message_id=123),
+            reverse("chat:room", args=[7]) + "?msg=123",
+        )
+
+    @classmethod
+    def setUpTestData(cls):
+        ensure_participation_statuses()
+        cls.venue = Venue.objects.create(nom="Salle Notif", ville="La Roche-sur-Yon")
+        cls.etype = EventType.objects.create(nom="Concert")
+        cls.musician = User.objects.create_user(
+            username="notif_musi",
+            password="pass",
+            email="notif_musi@example.com",
+            is_musician=True,
+        )
+        cls.other = User.objects.create_user(
+            username="notif_other",
+            password="pass",
+            email="notif_other@example.com",
+            is_musician=True,
+        )
+
+    def test_mention_notification_links_to_message(self):
+        from users.models import UserNotification
+
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        msg = post_message(
+            room=room,
+            author=self.other,
+            body=f"Salut @{self.musician.username}",
+        )
+        notif = UserNotification.objects.filter(
+            user=self.musician,
+            related_type="chat_msg",
+            related_id=msg.pk,
+        ).get()
+        self.assertIn(f"?msg={msg.pk}", notif.url)
+        self.assertTrue(notif.url.startswith(reverse("chat:room", args=[room.pk])))
+
+    def test_event_invite_links_to_event_room(self):
+        from planning.services import notify_event_invite
+        from users.models import UserNotification
+
+        event = Event.objects.create(
+            titre="Soirée jazz",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 6, 1, 20, 0)),
+            statut="confirme",
+        )
+        room = ChatRoom.objects.get(event=event)
+        notify_event_invite(event, [self.musician])
+        notif = UserNotification.objects.get(user=self.musician)
+        self.assertEqual(notif.url, reverse("chat:room", args=[room.pk]))
