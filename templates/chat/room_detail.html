@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ room.title }} — Chat JOY{% endblock %}
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=1"></script>
+<script defer src="{% static 'chat/room.js' %}?v=9"></script>
 {% endblock %}
 {% block extra_css %}
 {% include "chat/_room_styles.html" %}
@@ -12,7 +12,7 @@
 {{ mention_members|json_script:mention_members_script_id }}
 {{ read_cursors|json_script:read_cursors_script_id }}
 {# cache-bust mentions v2 — liste orchestre entière #}
-<div class="chat-room"
+<div class="chat-room{% if room.kind == 'staff' %} chat-room--staff{% endif %}"
      x-data="chatRoom({
        messagesScriptId: '{{ messages_script_id|escapejs }}',
        membersScriptId: '{{ mention_members_script_id|escapejs }}',
@@ -22,11 +22,15 @@
        apiSendUrl: '{{ api_send_url|escapejs }}',
        apiReactUrl: '{{ api_react_url|escapejs }}',
        apiEditUrl: '{{ api_edit_url|escapejs }}',
+       apiDeleteUrl: '{{ api_delete_url|escapejs }}',
        apiMembersUrl: '{{ api_members_url|escapejs }}',
        apiReadUrl: '{{ api_read_url|escapejs }}',
        csrfToken: '{{ csrf_token }}',
        initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
-       embedded: false
+       embedded: false,
+       roomId: {{ room.pk }},
+       isRehearsalRoom: {{ is_rehearsal_room|yesno:'true,false' }},
+       composerPlaceholder: '{{ composer_placeholder|escapejs }}'
      })"
      x-init="init()"
      @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
@@ -46,6 +50,17 @@
     </form>
   </div>
   {% endif %}
+
+  <div class="chat-setlist-tip" x-show="setlistTipVisible" x-cloak x-transition.opacity.duration.200ms>
+    <div class="chat-setlist-tip__text">
+      <strong>Setlist de la répé</strong>
+      Proposez un morceau ici — les autres votent avec 👍. Le staff compose ensuite la setlist.
+    </div>
+    <button type="button" class="chat-setlist-tip__dismiss" @click="dismissSetlistTip()"
+            aria-label="Masquer ce rappel" title="Masquer">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
 
   {% include "chat/_room_thread_composer.html" %}
 </div>

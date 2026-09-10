@@ -22,20 +22,54 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+function normalizeNotifUrl(raw) {
+  let target = (raw || "/").trim() || "/";
+  try {
+    if (target.startsWith("http://") || target.startsWith("https://")) {
+      const u = new URL(target);
+      if (u.origin === self.location.origin) {
+        target = u.pathname + u.search + u.hash;
+      }
+    }
+  } catch (_) {
+    target = "/";
+  }
+  if (!target.startsWith("/")) {
+    target = "/" + target;
+  }
+  return target;
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/";
+  const target = normalizeNotifUrl(
+    event.notification.data && event.notification.data.url
+  );
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    (async () => {
+      const list = await clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
       for (const client of list) {
-        if ("focus" in client) {
-          client.navigate(target);
-          return client.focus();
+        if (!client.url || !client.url.startsWith(self.location.origin)) {
+          continue;
+        }
+        if ("navigate" in client && "focus" in client) {
+          try {
+            const page = await client.navigate(target);
+            if (page) {
+              await page.focus();
+              return;
+            }
+          } catch (_) {
+            /* openWindow ci-dessous */
+          }
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow(target);
+        await clients.openWindow(target);
       }
-    })
+    })()
   );
 });

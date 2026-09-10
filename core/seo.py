@@ -37,8 +37,22 @@ def path_should_noindex(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in NOINDEX_PREFIXES)
 
 
+def _social_same_as() -> list[str]:
+    urls: list[str] = []
+    for key in (
+        "SOCIAL_FACEBOOK_URL",
+        "SOCIAL_INSTAGRAM_URL",
+        "SOCIAL_YOUTUBE_URL",
+        "SOCIAL_LINKABAND_URL",
+    ):
+        value = (getattr(settings, key, "") or "").strip()
+        if value and value not in urls:
+            urls.append(value)
+    return urls
+
+
 def music_group_jsonld() -> dict[str, Any]:
-    return {
+    data: dict[str, Any] = {
         "@context": "https://schema.org",
         "@type": "MusicGroup",
         "@id": f"{site_url()}/#musicgroup",
@@ -46,25 +60,36 @@ def music_group_jsonld() -> dict[str, Any]:
         "alternateName": "JOY",
         "description": (
             "Big Band associatif basé à La Roche-sur-Yon (Vendée). "
-            "Jazz, swing, concerts, festivals et prestations."
+            "Jazz, swing, concerts, festivals et prestations pour mariages, "
+            "galas et entreprises."
         ),
         "url": f"{site_url()}/",
         "email": getattr(settings, "ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr"),
         "genre": ["Jazz", "Swing", "Big Band"],
+        "logo": absolute_url("/static/users/icons/logo-joy.webp"),
+        "image": absolute_url("/static/users/icons/og-image.jpg"),
         "address": {
             "@type": "PostalAddress",
+            "streetAddress": getattr(
+                settings, "ORG_STREET_ADDRESS", "51 Rue de la Vergne"
+            ),
+            "postalCode": getattr(settings, "ORG_POSTAL_CODE", "85000"),
             "addressLocality": "La Roche-sur-Yon",
             "addressRegion": "Vendée",
             "addressCountry": "FR",
         },
-        "areaServed": {
-            "@type": "AdministrativeArea",
-            "name": "Vendée",
-        },
-        "sameAs": [
-            "https://www.facebook.com/jazzorchestrayonnais",
+        "areaServed": [
+            {"@type": "AdministrativeArea", "name": "Vendée"},
+            {"@type": "AdministrativeArea", "name": "Pays de la Loire"},
         ],
     }
+    phone = (getattr(settings, "ORG_TELEPHONE", "") or "").strip()
+    if phone:
+        data["telephone"] = phone
+    same_as = _social_same_as()
+    if same_as:
+        data["sameAs"] = same_as
+    return data
 
 
 def website_jsonld() -> dict[str, Any]:
@@ -76,6 +101,28 @@ def website_jsonld() -> dict[str, Any]:
         "url": f"{site_url()}/",
         "inLanguage": "fr-FR",
         "publisher": {"@id": f"{site_url()}/#musicgroup"},
+    }
+
+
+def service_jsonld() -> dict[str, Any]:
+    """Offre de prestation live (mariages, galas, entreprises)."""
+    return {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "@id": f"{site_url()}/prestations/#service",
+        "name": "Prestation Big Band Jazz Orchestra Yonnais",
+        "serviceType": "Prestation musicale live — big band jazz & swing",
+        "description": (
+            "Le Jazz Orchestra Yonnais propose des prestations live pour mariages, "
+            "cocktails, soirées de gala et animations d'entreprise en Vendée et "
+            "Pays de la Loire."
+        ),
+        "provider": {"@id": f"{site_url()}/#musicgroup"},
+        "areaServed": [
+            {"@type": "AdministrativeArea", "name": "Vendée"},
+            {"@type": "AdministrativeArea", "name": "Pays de la Loire"},
+        ],
+        "url": f"{site_url()}/prestations/",
     }
 
 
@@ -147,6 +194,7 @@ STATIC_PUBLIC_PATHS = (
     ("home", {}),
     ("concerts", {}),
     ("medias", {}),
+    ("prestations", {}),
     ("contact", {}),
     ("goodies", {}),
     ("don", {}),

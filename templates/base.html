@@ -12,7 +12,7 @@
   <meta name="google-site-verification" content="{{ GOOGLE_SITE_VERIFICATION }}">
   {% endif %}
   <link rel="manifest" href="{% url 'web_manifest' %}">
-  <meta name="theme-color" content="#1a1714">
+  <meta name="theme-color" content="#12100e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="JOY">
@@ -46,17 +46,21 @@
       --bg:       #f5f2ec;
       --surface:  #faf8f4;
       --border:   rgba(0,0,0,.10);
-      --text:     #1a1714;
+      --text:     #12100e;
       --muted:    #6b6560;
-      --accent:   #c94f3a;
-      --accent-h: #a83c2a;
-      --accent-rgb: 201, 79, 58;
-      --gold:     #b8892a;
-      --gold-text: #8a6a1a;
+      /* CTA cuivre — harmonisé avec l’or métallique du logo */
+      --accent:   #c25a36;
+      --accent-h: #a34528;
+      --accent-rgb: 194, 90, 54;
+      --gold:     #c8954d;
+      --gold-text: #8d5f16;
       --ok:       #2a6b3c;
-      /* Coulisses staff — slate froid, distinct du terracotta musicien */
+      /* Coulisses / Admin staff — slate froid, distinct du terracotta musicien */
       --staff:    #3d5a6c;
+      --staff-h:  #2f4756;
       --staff-rgb: 61, 90, 108;
+      --staff-on-dark: #7eb4cc;
+      --staff-on-dark-h: #a8d4e8;
       --font-d:   'Playfair Display', Georgia, serif;
       --font-b:   'Work Sans', 'Helvetica Neue', sans-serif;
       --r:        4px;
@@ -85,7 +89,7 @@
       font-size: 1.05rem; letter-spacing: .06em; text-transform: uppercase;
       color: #fff; line-height: 1.15; white-space: nowrap;
     }
-    .nav-logo-text .nav-logo-joy { color: var(--accent); }
+    .nav-logo-text .nav-logo-joy { color: var(--gold); }
     .nav-logo-rest { display: none; }
     /* Compact brand (J.O.Y) once there's room beside the logo */
     @media (min-width: 400px) {
@@ -107,15 +111,15 @@
     /* Coulisses — lettres slate, clairement distinctes du blanc des autres liens */
     .nav-links a[data-tour="nav-coulisses"],
     .nav-links a[data-tour="nav-coulisses"]:visited {
-      color: #7eb4cc;
+      color: var(--staff-on-dark);
       font-weight: 600;
     }
     .nav-links a[data-tour="nav-coulisses"]:hover,
     .nav-links a[data-tour="nav-coulisses"].active {
-      color: #a8d4e8;
+      color: var(--staff-on-dark-h);
     }
     .nav-links a[data-tour="nav-coulisses"].active {
-      border-bottom-color: #7eb4cc;
+      border-bottom-color: var(--staff-on-dark);
     }
     .nav-burger { display: none; background: none; border: none; cursor: pointer; padding: .5rem; }
     .nav-burger span { display: block; width: 22px; height: 2px; background: #fff; margin: 5px 0; transition: var(--trans); }
@@ -135,36 +139,62 @@
     footer > p a:hover { color: #fff; }
     .footer-staff {
       margin-top: 1.25rem; padding-top: 1rem;
-      border-top: 1px solid rgba(255,255,255,.12);
+      border-top: 1px solid rgba(var(--staff-rgb), .45);
       max-width: 1100px; margin-left: auto; margin-right: auto;
     }
     .footer-staff-label {
       display: block; margin-bottom: .5rem;
       font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
-      color: rgba(255,255,255,.4);
+      color: var(--staff-on-dark);
     }
     .footer-staff-links {
       display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem .5rem;
     }
     .footer-staff a {
-      color: rgba(255,255,255,.55) !important; font-size: .75rem; letter-spacing: .06em;
+      color: rgba(168, 212, 232, .82) !important; font-size: .75rem; letter-spacing: .06em;
       display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .65rem;
       margin: 0 !important;
     }
-    .footer-staff a:hover { color: #fff !important; }
+    .footer-staff a:hover { color: var(--staff-on-dark-h) !important; }
     .footer-staff-icon {
       gap: .4rem;
-      border: 1px solid rgba(255,255,255,.18);
+      border: 1px solid rgba(126, 180, 204, .35);
       border-radius: var(--r);
-      color: rgba(255,255,255,.7) !important;
+      color: var(--staff-on-dark) !important;
     }
     .footer-staff-icon:hover {
-      color: #fff !important;
-      border-color: rgba(255,255,255,.4);
-      background: rgba(255,255,255,.06);
+      color: var(--staff-on-dark-h) !important;
+      border-color: rgba(168, 212, 232, .55);
+      background: rgba(var(--staff-rgb), .35);
     }
     .footer-staff-icon svg {
       width: 1rem; height: 1rem; flex-shrink: 0;
+    }
+
+    /* Mode musicien (staff) — masque chrome / commandes staff */
+    body.joy-mode-musician .footer-staff,
+    body.joy-mode-musician .joy-staff-ui,
+    body.joy-mode-musician .pl-nav__group--staff,
+    body.joy-mode-musician .pl-nav-context--staff,
+    body.joy-mode-musician .pl-btn--staff,
+    body.joy-mode-musician .pl-staff,
+    body.joy-mode-musician .pl-accept__staff,
+    body.joy-mode-musician .pl-day-events__salon--staff,
+    body.joy-mode-musician .pl-day-events__confirm,
+    body.joy-mode-musician .pl-missing__invite,
+    body.joy-mode-musician .rep-staff-block,
+    body.joy-mode-musician .chat-staff-panel,
+    body.joy-mode-musician .account-staff-notify {
+      display: none !important;
+    }
+    body:not(.joy-mode-musician) .joy-musician-fallback {
+      display: none !important;
+    }
+    body.joy-mode-musician .joy-musician-fallback.pl-day-events__salon {
+      display: flex !important;
+    }
+    body.joy-mode-musician .joy-musician-fallback:not(.pl-day-events__salon) {
+      display: revert !important;
     }
 
     /* UTILS */
@@ -217,6 +247,37 @@
     .btn-primary:hover { background: var(--accent-h); }
     .btn-outline { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
     .btn-outline:hover { background: var(--accent); color: #fff; }
+    .btn-staff { background: var(--staff); color: #fff; }
+    .btn-staff:hover { background: var(--staff-h); }
+    .btn-staff-outline {
+      background: transparent; color: var(--staff);
+      border: 1.5px solid var(--staff);
+    }
+    .btn-staff-outline:hover { background: var(--staff); color: #fff; }
+
+    /* Pages Admin / Staff — CTA et accents en slate (pas terracotta) */
+    body.joy-staff-page .btn-primary { background: var(--staff); color: #fff; }
+    body.joy-staff-page .btn-primary:hover { background: var(--staff-h); }
+    body.joy-staff-page .btn-outline {
+      color: var(--staff); border-color: var(--staff);
+    }
+    body.joy-staff-page .btn-outline:hover {
+      background: var(--staff); color: #fff; border-color: var(--staff);
+    }
+    body.joy-staff-page .page-lead { border-left-color: var(--staff); }
+    body.joy-staff-page .filter-link.active {
+      background: var(--staff); color: #fff; border-color: var(--staff);
+    }
+    body.joy-staff-page .field-input:focus,
+    body.joy-staff-page input:focus,
+    body.joy-staff-page select:focus,
+    body.joy-staff-page textarea:focus {
+      outline-color: var(--staff);
+      border-color: var(--staff);
+    }
+    body.joy-staff-page .tab-btn.active {
+      color: var(--staff); border-bottom-color: var(--staff);
+    }
     .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
     [x-cloak] { display: none !important; }
 
@@ -257,7 +318,7 @@
       display:flex; gap:.75rem; align-items:flex-start; padding:.75rem; border:1px solid var(--border);
       border-radius:var(--r); cursor:pointer; background:#fff;
     }
-    .fb-choice.is-active { border-color:var(--accent); background:rgba(201,79,58,.06); }
+    .fb-choice.is-active { border-color:var(--accent); background:rgba(194,90,54,.06); }
     .fb-choice input { margin-top:.2rem; }
     .fb-msg { display:block; white-space:pre-wrap; font-size:.9rem; }
     .fb-meta { display:block; margin-top:.35rem; font-size:.75rem; color:var(--muted); }
@@ -286,19 +347,50 @@
       padding:1rem; margin-bottom:.75rem; display:flex; flex-direction:column; gap:.65rem;
     }
     .fb-vote-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .fb-muted { color:var(--muted); font-size:.9rem; }
+    .fb-thread { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; }
+    .fb-thread-list { list-style:none; display:flex; flex-direction:column; gap:.55rem; }
+    .fb-msg {
+      border:1px solid var(--border); border-radius:var(--r);
+      padding:.7rem .8rem; background:var(--surface); color:var(--text);
+    }
+    .fb-msg.is-staff {
+      background:rgba(var(--staff-rgb), .08);
+      border-color:rgba(var(--staff-rgb), .28);
+    }
+    .fb-msg.is-author { background:var(--bg); }
+    .fb-msg-meta {
+      display:flex; flex-wrap:wrap; gap:.5rem .75rem; align-items:baseline;
+      font-size:.78rem; color:var(--muted); margin-bottom:.35rem;
+    }
+    .fb-msg-who { font-weight:600; color:var(--text); }
+    .fb-msg.is-staff .fb-msg-who { color:var(--staff); }
+    .fb-msg-body { white-space:pre-wrap; font-size:.95rem; color:var(--text); }
+    .fb-thread-form { display:flex; flex-direction:column; gap:.5rem; }
+    .fb-thread-form label { font-size:.85rem; font-weight:600; color:var(--text); }
+    .fb-thread-form textarea {
+      width:100%; min-height:5.5rem; padding:.65rem .75rem;
+      border:1px solid var(--border); border-radius:var(--r);
+      font:inherit; resize:vertical; background:#fff; color:var(--text);
+    }
+    .fb-thread-form .btn { min-height:44px; align-self:stretch; }
+    @media (min-width:640px) {
+      .fb-thread-form .btn { align-self:flex-start; }
+    }
     .fb-cat, .fb-badge {
       display:inline-flex; align-items:center; padding:.2rem .55rem; border-radius:var(--r);
       font-size:.75rem; font-weight:600; border:1px solid var(--border);
       background:var(--bg); color:var(--text);
     }
     .fb-cat-bug { background:rgba(var(--accent-rgb),.1); color:var(--accent-h); border-color:rgba(var(--accent-rgb),.28); }
-    .fb-cat-comfort { background:rgba(184,137,42,.12); color:var(--gold-text); border-color:rgba(184,137,42,.35); }
+    .fb-cat-comfort { background:rgba(200,149,77,.12); color:var(--gold-text); border-color:rgba(200,149,77,.35); }
     .fb-cat-feature { background:rgba(26,23,20,.06); color:var(--text); border-color:var(--border); }
     .fb-badge-new { background:rgba(var(--accent-rgb),.1); color:var(--accent); border-color:rgba(var(--accent-rgb),.28); }
-    .fb-badge-progress { background:rgba(184,137,42,.12); color:var(--gold-text); border-color:rgba(184,137,42,.35); }
+    .fb-badge-progress { background:rgba(200,149,77,.12); color:var(--gold-text); border-color:rgba(200,149,77,.35); }
     .fb-badge-snooze { background:rgba(107,101,96,.1); color:var(--muted); border-color:var(--border); }
     .fb-badge-done { background:rgba(42,107,60,.12); color:var(--ok); border-color:rgba(42,107,60,.28); }
     .fb-badge-vote { background:rgba(var(--accent-rgb),.08); color:var(--accent-h); border-color:rgba(var(--accent-rgb),.22); }
+    .fb-badge-reply { background:rgba(var(--staff-rgb),.1); color:var(--staff); border-color:rgba(var(--staff-rgb),.28); }
 
     /* RESPONSIVE NAV — burger until ~half desktop so brand + links never overlap */
     @media (max-width: 1099px) {
@@ -311,7 +403,18 @@
   </style>
   {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="{% if show_staff_nav %}joy-has-staff-ui{% endif %}{% if is_staff_surface %} joy-staff-page{% endif %}">
+{% if show_staff_nav %}
+<script>
+(function () {
+  try {
+    if (localStorage.getItem('joy-ui-mode') === 'musician') {
+      document.body.classList.add('joy-mode-musician');
+    }
+  } catch (e) {}
+})();
+</script>
+{% endif %}
 <nav x-data="{ open: false }">
   <div class="nav-inner">
     <a class="nav-logo" href="{% url 'home' %}" aria-label="J.O.Y — Jazz Orchestra Yonnais">
@@ -360,6 +463,7 @@
 <footer>
   <div>
     <a href="{% url 'mentions_legales' %}">Mentions légales</a>
+    <a href="{% url 'prestations' %}">Prestations</a>
     <a href="https://www.facebook.com/jazzorchestrayonnais" target="_blank" rel="noopener">Facebook</a>
     {% include "includes/_page_feedback_footer.html" %}
   </div>
@@ -457,7 +561,7 @@ window.joyShareInstagram = async function (btn) {
       el = document.createElement("div");
       el.id = "joy-ig-toast";
       el.setAttribute("role", "status");
-      el.style.cssText = "position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#1a1714;color:#fff;padding:.85rem 1.1rem;border-radius:4px;font:600 .85rem/1.35 Work Sans,system-ui,sans-serif;max-width:min(92vw,26rem);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25)";
+      el.style.cssText = "position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);z-index:9999;background:#12100e;color:#fff;padding:.85rem 1.1rem;border-radius:4px;font:600 .85rem/1.35 Work Sans,system-ui,sans-serif;max-width:min(92vw,26rem);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25)";
       document.body.appendChild(el);
     }
     el.textContent = msg;

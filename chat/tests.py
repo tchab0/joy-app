@@ -11,8 +11,12 @@ from django.utils import timezone
 
 from chat.models import ChatMembership, ChatMessage, ChatMessageReaction, ChatRoom
 from chat.services import (
+    assign_mention_handles,
     chat_room_url,
+    delete_message,
+    ensure_event_room,
     ensure_orchestra_room,
+    ensure_rehearsal_setlist_tip,
     ensure_section_rooms,
     ensure_staff_room,
     edit_message,
@@ -21,6 +25,7 @@ from chat.services import (
     post_message,
     replies_prefetch,
     resolve_mentioned_users,
+    serialize_mention_members,
     serialize_message,
     sync_musician_to_orchestra,
     sync_musician_to_section_rooms,
@@ -28,6 +33,7 @@ from chat.services import (
     toggle_reaction,
     unread_count,
     user_can_access_room,
+    REHEARSAL_SETLIST_TIP_PREFIX,
 )
 from events.models import Event, EventType, Venue
 from planning.models import EventParticipation, MusicianProfile
@@ -292,6 +298,23 @@ class ChatCoreTests(TestCase):
         r = client.get(reverse("chat:list"))
         self.assertEqual(r.status_code, 403)
 
+    def test_room_list_handles_system_last_message(self):
+        """Messages système (author=None) ne doivent pas faire planter /chat/."""
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        post_message(
+            room=room,
+            author=None,
+            body="Message système de bienvenue",
+            kind=ChatMessage.Kind.SYSTEM,
+        )
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Système")
+        self.assertContains(r, "Message système de bienvenue")
+
     def test_event_room_shows_event_intro(self):
         from planning.services import invite_musician_to_event
 
@@ -424,6 +447,69 @@ class ChatCoreTests(TestCase):
         self.assertEqual(data["message"]["body"], "api edit")
         self.assertEqual(len(data["message"]["attachments"]), 2)
 
+    def test_author_can_delete_own_message(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        msg = post_message(room=room, author=self.musician, body="À effacer")
+        reply_before = post_message(
+            room=room,
+            author=self.other,
+            body="Réponse avant suppression",
+            reply_to=msg,
+        )
+
+        with self.assertRaises(ValueError):
+            delete_message(message=msg, actor=self.other)
+
+        deleted = delete_message(message=msg, actor=self.musician)
+        self.assertTrue(deleted.is_deleted)
+        payload = serialize_message(deleted, viewer=self.other)
+        self.assertTrue(payload["deleted"])
+        self.assertEqual(payload["body"], "")
+        self.assertEqual(payload["attachments"], [])
+
+        # Soft-deleted : absent de l’historique salon (pas de placeholder UI).
+        self.assertFalse(
+            ChatMessage.objects.filter(
+                room=room, deleted_at__isnull=True, pk=deleted.pk
+            ).exists()
+        )
+
+        reply_payload = serialize_message(
+            ChatMessage.objects.select_related("reply_to", "reply_to__author")
+            .prefetch_related("reply_to__attachments")
+            .get(pk=reply_before.pk),
+            viewer=self.other,
+        )
+        self.assertEqual(reply_payload["reply_to"]["body_preview"], "…")
+        self.assertTrue(reply_payload["reply_to"]["deleted"])
+
+        with self.assertRaises(ValueError):
+            delete_message(message=deleted, actor=self.musician)
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        other_msg = post_message(room=room, author=self.musician, body="Via API")
+        r = client.post(
+            reverse("chat:api_delete", args=[room.pk]),
+            {"message_id": other_msg.pk},
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["message"]["deleted"])
+
+        client.logout()
+        client.login(username="chat_other", password="pass")
+        third = post_message(room=room, author=self.musician, body="Pas à toi")
+        r = client.post(
+            reverse("chat:api_delete", args=[room.pk]),
+            {"message_id": third.pk},
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(r.json()["ok"])
+
     def test_digest_command(self):
         room = ensure_orchestra_room()
         sync_musician_to_orchestra(self.musician)
@@ -440,6 +526,7 @@ class ChatCoreTests(TestCase):
         client.login(username="chat_musi", password="pass")
         r = client.get(reverse("chat:prefs"))
         self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Réponses à mes messages")
         r = client.post(
             reverse("chat:prefs"),
             {
@@ -556,6 +643,15 @@ class ChatCoreTests(TestCase):
         )
         self.assertEqual([u.pk for u in matched], [self.other.pk])
 
+        # @Prénom (handle) aussi résolu
+        other_handle = assign_mention_handles(
+            [self.musician, self.other]
+        )[self.other.pk]
+        matched_handle = resolve_mentioned_users(
+            room, f"Coucou @{other_handle} !", exclude_user=self.musician
+        )
+        self.assertEqual([u.pk for u in matched_handle], [self.other.pk])
+
         from unittest.mock import patch
 
         with patch("users.notify.notify_users", return_value=1) as notify:
@@ -584,6 +680,10 @@ class ChatCoreTests(TestCase):
             users = list(notify.call_args[0][0])
             self.assertEqual([u.pk for u in users], [self.other.pk])
             self.assertNotIn(self.musician.pk, [u.pk for u in users])
+            kwargs = notify.call_args[1]
+            self.assertEqual(kwargs.get("notify_type"), "chat_reply")
+            self.assertFalse(kwargs.get("force_immediate"))
+            self.assertIn("répondu", kwargs["body"])
 
         # L’auteur ne reçoit aucune notif pour son propre message
         # (ni message simple, ni auto-@mention, ni auto-réponse)
@@ -620,6 +720,63 @@ class ChatCoreTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "chat-members-")
         self.assertContains(r, "chat_other")
+
+    def test_mention_handles_disambiguate_same_first_name(self):
+        a = User.objects.create_user(
+            username="stephane.gallet",
+            password="pass",
+            first_name="Stéphane",
+            last_name="Gallet",
+            is_musician=True,
+        )
+        b = User.objects.create_user(
+            username="stephane.poussin",
+            password="pass",
+            first_name="Stéphane",
+            last_name="Poussin",
+            is_musician=True,
+        )
+        c = User.objects.create_user(
+            username="adrien.pubert",
+            password="pass",
+            first_name="Adrien",
+            last_name="Pubert",
+            is_musician=True,
+        )
+        handles = assign_mention_handles([a, b, c])
+        self.assertEqual(handles[c.pk], "Adrien")
+        self.assertEqual(handles[a.pk], "Stéphane G")
+        self.assertEqual(handles[b.pk], "Stéphane P")
+
+        # Préfixe plus long si la 1re lettre du nom est identique
+        d1 = User.objects.create_user(
+            username="jean.dupont",
+            password="pass",
+            first_name="Jean",
+            last_name="Dupont",
+            is_musician=True,
+        )
+        d2 = User.objects.create_user(
+            username="jean.durand",
+            password="pass",
+            first_name="Jean",
+            last_name="Durand",
+            is_musician=True,
+        )
+        handles2 = assign_mention_handles([d1, d2])
+        self.assertEqual(handles2[d1.pk], "Jean Dup")
+        self.assertEqual(handles2[d2.pk], "Jean Dur")
+
+        payload = serialize_mention_members([a, b, c])
+        by_id = {row["id"]: row for row in payload}
+        self.assertEqual(by_id[a.pk]["handle"], "Stéphane G")
+        self.assertEqual(by_id[c.pk]["handle"], "Adrien")
+
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(a)
+        sync_musician_to_orchestra(b)
+        matched = resolve_mentioned_users(room, "@Stéphane G salut", exclude_user=c)
+        self.assertEqual([u.pk for u in matched], [a.pk])
 
     def test_edit_message_marks_unread(self):
         from django.utils import timezone
@@ -711,6 +868,51 @@ class ChatCoreTests(TestCase):
         self.assertGreater(
             membership.last_read_at, timezone.now() - timedelta(minutes=1)
         )
+
+    def test_rehearsal_room_gets_setlist_tip_once(self):
+        event = Event.objects.create(
+            titre="Répé tip",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 7, 1, 20, 15)),
+            statut="confirme",
+        )
+        self.assertTrue(event.is_rehearsal)
+        room = ChatRoom.objects.get(event=event)
+        tips = ChatMessage.objects.filter(
+            room=room,
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_SETLIST_TIP_PREFIX,
+        )
+        self.assertEqual(tips.count(), 1)
+        tip = tips.get()
+        # Tip auto : digéré pour les membres déjà présents (pas d’alerte chat).
+        for m in ChatMembership.objects.filter(room=room, left_at__isnull=True):
+            self.assertGreaterEqual(m.last_digested_message_id, tip.pk)
+        self.assertIsNone(ensure_rehearsal_setlist_tip(room))
+        self.assertEqual(tips.count(), 1)
+        ensure_event_room(event)
+        self.assertEqual(tips.count(), 1)
+
+    def test_concert_room_has_no_setlist_tip(self):
+        concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        event = Event.objects.create(
+            titre="Concert sans tip",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 8, 1, 20, 0)),
+            statut="confirme",
+        )
+        self.assertFalse(event.is_rehearsal)
+        room = ChatRoom.objects.get(event=event)
+        self.assertFalse(
+            ChatMessage.objects.filter(
+                room=room,
+                kind=ChatMessage.Kind.SYSTEM,
+                body__startswith=REHEARSAL_SETLIST_TIP_PREFIX,
+            ).exists()
+        )
+        self.assertIsNone(ensure_rehearsal_setlist_tip(room))
 
 
 class ChatNotificationDeepLinkTests(TestCase):

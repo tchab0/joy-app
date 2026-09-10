@@ -16,6 +16,23 @@ function pollVotes(cfg) {
       this._toastTimer = setTimeout(() => { this.toast = ''; }, 2200);
     },
     choiceOf(id) { return this.choices[id] || ''; },
+    voteLabel(c) {
+      if (c === 'yes') return 'Oui';
+      if (c === 'no') return 'Non';
+      if (c === 'maybe') return 'Peut-être';
+      return '';
+    },
+    answeredSummary() {
+      const ids = Object.keys(this.urls);
+      if (!ids.length) return '';
+      if (ids.length === 1) {
+        const label = this.voteLabel(this.choices[ids[0]]);
+        return label
+          ? ('Votre réponse : ' + label + ' — vous pouvez encore la modifier.')
+          : '';
+      }
+      return 'Vos réponses sont enregistrées — vous pouvez encore les modifier.';
+    },
     isBusy(id) { return !!this.busy[id]; },
     countsOf(id) {
       const c = this.counts[id] || {};

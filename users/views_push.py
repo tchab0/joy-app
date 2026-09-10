@@ -40,7 +40,7 @@ def web_manifest(request: HttpRequest) -> HttpResponse:
         "scope": "/",
         "display": "standalone",
         "background_color": "#f5f2ec",
-        "theme_color": "#1a1714",
+        "theme_color": "#12100e",
         "lang": "fr",
         "icons": [
             {

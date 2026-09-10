@@ -19,6 +19,7 @@ PAGE_LEAD_LABELS: dict[str, str] = {
     "repertoire.staff_setlist_form": "Staff — éditer une setlist",
     "repetitions.staff_list": "Staff — répétitions",
     "repetitions.staff_form": "Staff — fiche répétition",
+    "repetitions.detail": "Répétition — setlist & demandes",
     "chat.rooms": "Chat",
     "chat.prefs": "Préférences de notifications",
     "stats.dashboard": "Statistiques",

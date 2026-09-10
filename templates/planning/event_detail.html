@@ -68,10 +68,21 @@
   {% endif %}
 
   {% if roadmap and participation %}
-  <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'planning:event_roadmap_edit' event.pk %}{% else %}{% url 'planning:event_roadmap' event.pk %}{% endif %}">
+  {% if is_planning_staff %}
+  <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'planning:event_roadmap_edit' event.pk %}">
     <span>Feuille de route</span>
-    <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
+    <span>Éditer</span>
   </a>
+  <a class="pl-day-events__salon joy-musician-fallback" href="{% url 'planning:event_roadmap' event.pk %}">
+    <span>Feuille de route</span>
+    <span>Voir</span>
+  </a>
+  {% else %}
+  <a class="pl-day-events__salon" href="{% url 'planning:event_roadmap' event.pk %}">
+    <span>Feuille de route</span>
+    <span>Voir</span>
+  </a>
+  {% endif %}
   {% elif is_planning_staff %}
   <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'planning:event_roadmap_edit' event.pk %}">
     <span>Feuille de route</span>
@@ -80,13 +91,12 @@
   {% endif %}
 
   {% if setlist %}
-  <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' setlist.pk %}{% else %}#setlist{% endif %}">
-    <span>Setlist — {{ setlist.title }}</span>
-    <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
-  </a>
-  <section id="setlist" class="pl-section" style="margin-top:1.25rem">
-    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Setlist</h2>
-    {% if setlist.notes %}<p class="pl-row__meta" style="margin-bottom:.5rem">{{ setlist.notes }}</p>{% endif %}
+  <details id="setlist" class="pl-section pl-setlist-fold" style="margin-top:1.25rem"{% if request.GET.poste_tit or request.GET.poste_remp %} open{% endif %}>
+    <summary class="pl-setlist-fold__summary">
+      <span class="pl-setlist-fold__title">Setlist</span>
+      <span class="pl-setlist-fold__meta">{{ setlist.title }} · {{ setlist_items|length }} morceau{{ setlist_items|length|pluralize }}</span>
+    </summary>
+    {% if setlist.notes %}<p class="pl-row__meta" style="margin:.35rem 0 .5rem">{{ setlist.notes }}</p>{% endif %}
 
     <form class="rep-filter pl-setlist-postes" method="get" action="#setlist" data-tour="setlist-postes">
       <div class="pl-setlist-postes__field">
@@ -148,11 +158,11 @@
       {% endfor %}
     </ol>
     {% if is_planning_staff %}
-    <p class="pl-staff" style="margin-top:.85rem">
+    <p class="pl-staff" style="margin-top:.65rem">
       <a class="pl-btn pl-btn--staff" href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}" style="min-height:44px">Modifier la setlist</a>
     </p>
     {% endif %}
-  </section>
+  </details>
   {% elif is_planning_staff %}
   <section class="pl-section pl-staff" style="margin-top:1.25rem">
     <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem;color:var(--staff)">Setlist</h2>
@@ -176,17 +186,17 @@
   </section>
   {% endif %}
 
-  {% if participation %}
   <section class="pl-accept__response"
-           x-data="respondButtons({{ participation.pk }}, '{{ participation.status.code }}', { eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if participation.poste %}{{ participation.poste_label|escapejs }}{% endif %}' })">
-    <div class="pl-row__actions pl-accept__actions" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
+           x-data="respondButtons({% if participation %}{{ participation.pk }}{% else %}null{% endif %}, '{% if participation %}{{ participation.status.code }}{% else %}invited{% endif %}', { eventPk: {{ event.pk }}, eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if participation and participation.poste %}{{ participation.poste_label|escapejs }}{% endif %}' })">
+    <div class="pl-row__actions pl-accept__actions pl-accept__actions--inline" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
+      <span class="pl-badge pl-badge--{% if participation %}{{ participation.status.color_token|default:'neutral' }}{% else %}warning{% endif %}" x-text="label">{% if participation %}{{ participation.status.label }}{% else %}À répondre{% endif %}</span>
       <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
       <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
       <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy"
         @click="respond('no')">Non</button>
     </div>
 
-    {% if eligible_subs %}
+    {% if eligible_subs and participation %}
     <div x-show="code === 'declined' || code === 'replacement_needed'" x-cloak x-transition.opacity class="pl-reveal" style="margin-top:1rem">
       <h3 style="font-size:.85rem;margin-bottom:.5rem;color:var(--muted)">Proposer un remplaçant</h3>
       <div class="pl-row__actions" style="flex-direction:column;align-items:stretch;max-width:20rem" x-data="{ candidate: '', busy2: false }">
@@ -203,15 +213,106 @@
       </div>
     </div>
     {% endif %}
+    {% if participation %}
     {% include "planning/_rsvp_invalidate_modal.html" with prefix=participation.pk %}
     {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=participation.pk %}
+    {% else %}
+    {% include "planning/_rsvp_invalidate_modal.html" with prefix=event.pk %}
+    {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=event.pk %}
+    {% endif %}
   </section>
-  {% else %}
-  <p class="pl-empty">Vous n’êtes pas invité à cette date.</p>
+
+  {% if roster_rows or roster_extras or roster_unassigned or by_section or cal_summary %}
+  <section class="pl-section" style="margin-top:1.25rem"
+           x-data="{ effectifView: 'liste' }">
+    <div class="pl-effectif__head">
+      <h2 class="pl-effectif__title">Effectif</h2>
+      {% if roster_rows or by_section %}
+      <div class="pl-mode-toggle pl-effectif__toggle" role="group" aria-label="Vue effectif">
+        <button type="button" class="pl-mode-toggle__btn"
+                :class="{ 'is-active': effectifView === 'liste' }"
+                :aria-pressed="effectifView === 'liste'"
+                @click="effectifView = 'liste'">Liste</button>
+        <button type="button" class="pl-mode-toggle__btn"
+                :class="{ 'is-active': effectifView === 'orchestre' }"
+                :aria-pressed="effectifView === 'orchestre'"
+                @click="effectifView = 'orchestre'">Orchestre</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if cal_summary %}
+    <div class="pl-orchestre-dispo">
+      <p class="pl-orchestre-dispo__line">
+        Présents : {{ cal_summary.n_presents|default:0 }}
+        <span class="pl-event-stats__split">({{ cal_summary.n_titulaires|default:0 }} tit. · {{ cal_summary.n_remplacants|default:0 }} remp.)</span>
+      </p>
+      <p class="pl-orchestre-dispo__line {% if cal_summary.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
+        Manquants : {{ cal_summary.instruments_manquants_label|default:"—" }}
+      </p>
+      {% if cal_summary.n_maybe %}
+      <p class="pl-orchestre-dispo__line is-warn">
+        Peut-être : {{ cal_summary.n_maybe }}
+        {% for mb in cal_summary.maybe_detail %}{% if not forloop.first %}, {% endif %}{{ mb.name }}{% endfor %}
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div x-show="effectifView === 'liste'">
+      {% for section_name, parts in by_section.items %}
+      <div class="pl-gear-line" style="flex-direction:column;align-items:stretch;gap:.25rem">
+        <span class="pl-gear-line__name">{{ section_name }}</span>
+        <ul style="list-style:none;margin:0;padding:0">
+          {% for p in parts %}
+          <li class="pl-stage__person pl-stage__person--{{ p.status.code }}" style="margin:0 0 .2rem">
+            <div class="pl-stage__line">
+              <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+              {% if p.poste %}<span class="pl-stage__role">{{ p.poste_label }}</span>{% endif %}
+              {% if p.role_kind == "remplacant" %}<span class="pl-stage__role">remplaçant</span>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% empty %}
+      <p class="pl-empty">Aucun musicien inscrit.</p>
+      {% endfor %}
+    </div>
+    {% if roster_rows %}
+    <div class="pl-stage-scroll" x-show="effectifView === 'orchestre'" x-cloak>
+      {% include "planning/_stage_roster.html" with show_invites=False id_prefix="detail" %}
+    </div>
+    {% endif %}
+  </section>
   {% endif %}
+
+  <section class="pl-section" id="materiel" style="margin-top:1.25rem">
+    <h2 style="font-family:var(--font-d);font-size:1.15rem;margin-bottom:.5rem">Matériel</h2>
+    {% for g in gear %}
+    <div class="pl-gear-line">
+      <span class="pl-gear-line__name">{{ g.item.name }}</span>
+      <span class="pl-gear-line__meta">
+        {% if g.assigned_to %}{{ g.assigned_to.get_full_name|default:g.assigned_to.username }}{% else %}Non assigné{% endif %}
+        · {{ g.get_status_display }}
+        {% if g.notes %} · {{ g.notes }}{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <p class="pl-empty">Aucun matériel listé pour l’instant.</p>
+    {% endfor %}
+    {% url 'planning:event_detail' event.pk as detail_next %}
+    <div style="margin-top:1rem">
+      {% include "planning/_equipment_suggest_form.html" with event=event equipment_catalog=equipment_catalog next_url=detail_next id_prefix="detail_suggest" %}
+    </div>
+  </section>
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
 {% include "planning/_respond_buttons_js.html" %}
+<script>
+(function () {
+  var el = document.getElementById("setlist");
+  if (el && location.hash === "#setlist") el.open = true;
+})();
+</script>
 {% endblock %}

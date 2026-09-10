@@ -7,7 +7,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
 from django.db.models import Count, Exists, F, OuterRef, Q
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from datetime import timedelta
 import logging
 import threading
@@ -16,16 +16,23 @@ from events.models import Event, Venue, EventType
 from events.forms import EventForm, VenueForm
 from events.weather import attach_weather
 from .cache_utils import cache_page_anonymous
-from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock
-from .forms import MediaSoumissionForm, ContactForm, PrestationForm
+from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock, StaffMailing
+from .forms import MediaSoumissionForm, ContactForm, PrestationForm, StaffMailingForm
 from .forms import EXTENSIONS_AUTORISEES
 from .utils_compression import compresser_media
-from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, website_jsonld
+from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, service_jsonld, website_jsonld
 from .page_cms import (
     concerts_cache_version,
     enrich_block,
     get_published_page,
     home_cache_version,
+)
+from .presentation_slides import SLIDES
+from .mailing import (
+    DEFAULT_BODY,
+    list_musician_choices,
+    personalize,
+    send_staff_mailing,
 )
 from users.models import User
 from users.notify import notify_users
@@ -213,6 +220,15 @@ def mentions_legales(request):
         {"admin_email": settings.ADMIN_EMAIL},
     )
 
+
+
+@cache_page_anonymous(settings.CACHE_TTL_PRESTATIONS)
+def prestations(request):
+    return render(
+        request,
+        "core/prestations.html",
+        {"json_ld": dumps_jsonld(music_group_jsonld(), service_jsonld())},
+    )
 
 def medias(request):
     if not request.session.session_key:
@@ -407,6 +423,9 @@ def _proposer_media_context(form, planning_event, prefilled_media_event):
 
 
 def _notifier_admin(media, nb=1):
+    if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
+        logger.info("E-mail en pause — pas de notif admin média id=%s", getattr(media, "pk", None))
+        return
     try:
         sujet = f"[JOY] {nb} média(s) soumis — {media.evenement or media.titre or '?'}"
         corps = (
@@ -448,7 +467,15 @@ def _notify_staff_contact(msg: ContactMessage) -> None:
         title = "JOY — Message de contact"
         body = f"{msg.nom} : {(msg.message or '')[:120]}"
     try:
-        notify_users(staff, title=title, body=body or title, url="/admin-contact/")
+        notify_users(
+            staff,
+            title=title,
+            body=body or title,
+            url="/admin-contact/",
+            related_type="contact",
+            related_id=msg.pk,
+            notify_type="contact",
+        )
     except Exception:
         logger.exception("Échec notification staff contact id=%s", msg.pk)
 
@@ -543,6 +570,82 @@ def admin_contact_delete(request, pk):
     if request.method == "POST":
         ContactMessage.objects.filter(pk=pk).delete()
     return redirect("admin_contact")
+
+
+@staff_member_required
+def admin_emails(request):
+    """Composer et envoyer de vrais e-mails (musiciens + adresses libres)."""
+    include_fake = bool(
+        request.method == "POST" and request.POST.get("include_fake")
+    )
+    musicians = list_musician_choices(include_fake=include_fake)
+    history = StaffMailing.objects.select_related("sent_by")[:15]
+    action = (request.POST.get("action") or "compose").strip()
+
+    if request.method == "POST":
+        form = StaffMailingForm(request.POST, musicians=musicians)
+        if form.is_valid():
+            recipients = form.cleaned_data["recipients"]
+            subject = form.cleaned_data["subject"]
+            body = form.cleaned_data["body"]
+
+            if action == "send":
+                mailing = send_staff_mailing(
+                    sent_by=request.user,
+                    subject=subject,
+                    body_template=body,
+                    recipients=recipients,
+                )
+                if mailing.failed_count:
+                    messages.warning(
+                        request,
+                        f"Envoi terminé : {mailing.sent_count} ok, "
+                        f"{mailing.failed_count} échec(s).",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"E-mail envoyé à {mailing.sent_count} destinataire(s).",
+                    )
+                return redirect("admin_emails")
+
+            # Confirmation
+            preview_prenom = next(
+                (r.prenom for r in recipients if r.prenom),
+                "Camille",
+            )
+            return render(
+                request,
+                "core/admin_emails.html",
+                {
+                    "form": form,
+                    "musicians": musicians,
+                    "confirm": True,
+                    "recipients": recipients,
+                    "preview_subject": personalize(subject, preview_prenom),
+                    "preview_body": personalize(body, preview_prenom),
+                    "preview_prenom": preview_prenom,
+                    "history": history,
+                    "default_from": settings.DEFAULT_FROM_EMAIL,
+                },
+            )
+    else:
+        form = StaffMailingForm(
+            musicians=musicians,
+            initial={"body": DEFAULT_BODY},
+        )
+
+    return render(
+        request,
+        "core/admin_emails.html",
+        {
+            "form": form,
+            "musicians": musicians,
+            "confirm": False,
+            "history": history,
+            "default_from": settings.DEFAULT_FROM_EMAIL,
+        },
+    )
 
 
 @staff_member_required
@@ -707,6 +810,42 @@ def adhesion(request):
 def admin_hub(request):
     """Point d’entrée unique pour les outils staff (CMS + ops orchestre)."""
     return render(request, "core/admin_hub.html")
+
+
+@staff_member_required
+def admin_presentation(request):
+    """Diaporama staff pour présenter le site aux musiciens."""
+    slides = []
+    for slide in SLIDES:
+        demo_url = ""
+        if slide.url_name:
+            try:
+                demo_url = reverse(slide.url_name, kwargs=slide.url_kwargs or None)
+            except NoReverseMatch:
+                logger.warning(
+                    "Présentation: URL introuvable name=%s kwargs=%s",
+                    slide.url_name,
+                    slide.url_kwargs,
+                )
+        elif slide.url_path:
+            demo_url = slide.url_path
+        slides.append(
+            {
+                "id": slide.id,
+                "title": slide.title,
+                "summary": slide.summary,
+                "steps": slide.steps,
+                "section": slide.section,
+                "is_section": slide.is_section,
+                "demo_url": demo_url,
+                "demo_label": slide.demo_label,
+            }
+        )
+    return render(
+        request,
+        "core/admin_presentation.html",
+        {"slides": slides, "slide_count": len(slides)},
+    )
 
 
 def _admin_events_list_qs(*, rehearsals: bool):

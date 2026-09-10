@@ -32,15 +32,21 @@ function chatRoom(cfg) {
     apiSendUrl: cfg.apiSendUrl || '',
     apiReactUrl: cfg.apiReactUrl || '',
     apiEditUrl: cfg.apiEditUrl || '',
+    apiDeleteUrl: cfg.apiDeleteUrl || '',
     apiMembersUrl: cfg.apiMembersUrl || '',
     apiReadUrl: cfg.apiReadUrl || '',
     csrfToken: cfg.csrfToken || '',
     embedded: !!cfg.embedded,
     initialLastReadAt: cfg.initialLastReadAt || null,
+    composerPlaceholder: cfg.composerPlaceholder || 'Message… — @ pour mentionner',
+    isRehearsalRoom: !!cfg.isRehearsalRoom,
+    roomId: cfg.roomId || null,
+    setlistTipVisible: false,
     membersLoaded: false,
     body: '',
     busy: false,
     busyReact: null,
+    busyDelete: null,
     status: 'connecting',
     displayStatus: 'connecting',
     menuOpen: false,
@@ -54,6 +60,8 @@ function chatRoom(cfg) {
     replyTo: null,
     editingId: null,
     editPreview: '',
+    composerToolsOpen: false,
+    _composerBlurTimer: null,
     mentionOpen: false,
     mentionQuery: '',
     mentionStart: -1,
@@ -92,6 +100,23 @@ function chatRoom(cfg) {
     },
     get statusClass() {
       return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.displayStatus] || '';
+    },
+    get composerToolsVisible() {
+      if (this._isWideComposer()) return true;
+      return !!(
+        this.composerToolsOpen
+        || this.replyTo
+        || this.editingId
+        || (this.pendingFiles && this.pendingFiles.length)
+        || (this.editingAttachments && this.editingAttachments.length)
+      );
+    },
+    _isWideComposer() {
+      try {
+        return window.matchMedia('(min-width: 768px)').matches;
+      } catch (_) {
+        return false;
+      }
     },
     setStatus(next) {
       if (!next) return;
@@ -132,14 +157,38 @@ function chatRoom(cfg) {
       if (this._memberByUser) return this._memberByUser;
       const map = {};
       (this.members || []).forEach(function (m) {
-        if (m && m.username) map[String(m.username).toLowerCase()] = m;
+        if (!m) return;
+        if (m.username) map[String(m.username).toLowerCase()] = m;
+        if (m.handle) map[String(m.handle).toLowerCase()] = m;
       });
       this._memberByUser = map;
       return map;
     },
+    mentionHandle(mem) {
+      if (!mem) return '';
+      return String(mem.handle || mem.username || '').trim();
+    },
+    mentionTokensSorted() {
+      const tokens = [];
+      const seen = {};
+      (this.members || []).forEach((m) => {
+        const handle = this.mentionHandle(m);
+        if (handle) {
+          const k = handle.toLowerCase();
+          if (!seen[k]) { seen[k] = true; tokens.push(handle); }
+        }
+        if (m && m.username) {
+          const k = String(m.username).toLowerCase();
+          if (!seen[k]) { seen[k] = true; tokens.push(m.username); }
+        }
+      });
+      tokens.sort(function (a, b) { return b.length - a.length; });
+      return tokens;
+    },
     formatBodyHtml(body) {
       if (!body) return '';
       const map = this.memberMap();
+      const mentionTokens = this.mentionTokensSorted();
       // Échapper d’abord (pas de HTML/JS utilisateur), puis mise en forme, puis @mentions
       let s = escapeHtml(String(body));
 
@@ -249,26 +298,59 @@ function chatRoom(cfg) {
         return text;
       });
 
-      // Mentions @ — token déjà échappé ; noms issus des membres à échapper
+      // Mentions @ — handles (prénom / prénom + lettres) + usernames historiques
       s = mapPlain(s, function (text) {
-        const re = /(^|[^\w.])@([^\s@]{1,50})/g;
         let out = '';
-        let last = 0;
-        let m;
-        while ((m = re.exec(text)) !== null) {
-          const prefix = m[1] || '';
-          const token = m[2];
-          const start = m.index;
-          out += text.slice(last, start);
-          out += prefix;
-          const member = map[decodeBasic(token).toLowerCase()];
-          const label = member ? escapeHtml(member.name) : token;
-          const title = member ? ('@' + member.username) : ('@' + decodeBasic(token));
-          out += '<span class="chat-mention-tag" title="' + escapeHtml(title) + '">@'
-            + label + '</span>';
-          last = start + m[0].length;
+        let i = 0;
+        while (i < text.length) {
+          const ch = text.charAt(i);
+          const prev = i > 0 ? text.charAt(i - 1) : '';
+          if (ch === '@' && !/[\w.]/u.test(prev)) {
+            const rest = decodeBasic(text.slice(i + 1));
+            const restFold = rest.toLowerCase();
+            let matched = null;
+            for (let t = 0; t < mentionTokens.length; t++) {
+              const token = mentionTokens[t];
+              const fold = String(token).toLowerCase();
+              if (!restFold.startsWith(fold)) continue;
+              const next = rest.charAt(token.length);
+              if (next && /[\w.-]/u.test(next)) continue;
+              matched = token;
+              break;
+            }
+            if (matched) {
+              const rawSlice = text.slice(i + 1, i + 1 + matched.length);
+              const member = map[matched.toLowerCase()];
+              const label = member
+                ? escapeHtml(member.handle || member.name || matched)
+                : escapeHtml(matched);
+              const title = member
+                ? ('@' + (member.handle || member.username))
+                : ('@' + matched);
+              out += '<span class="chat-mention-tag" title="' + escapeHtml(title) + '">@'
+                + label + '</span>';
+              i += 1 + rawSlice.length;
+              continue;
+            }
+            const m = /^@([^\s@<&]{1,50})/.exec(text.slice(i));
+            if (m) {
+              const token = decodeBasic(m[1]);
+              const member = map[token.toLowerCase()];
+              const label = member
+                ? escapeHtml(member.handle || member.name || token)
+                : m[1];
+              const title = member
+                ? ('@' + (member.handle || member.username))
+                : ('@' + token);
+              out += '<span class="chat-mention-tag" title="' + escapeHtml(title) + '">@'
+                + label + '</span>';
+              i += m[0].length;
+              continue;
+            }
+          }
+          out += ch;
+          i += 1;
         }
-        out += text.slice(last);
         return out;
       });
 
@@ -682,7 +764,7 @@ function chatRoom(cfg) {
     },
     replyPreview(msg) {
       if (!msg) return '';
-      if (msg.deleted) return 'Message supprimé';
+      if (msg.deleted) return '…';
       const body = (msg.body || '').trim();
       if (body) return body.length > 80 ? body.slice(0, 77) + '…' : body;
       if (msg.attachments && msg.attachments.length) {
@@ -776,11 +858,19 @@ function chatRoom(cfg) {
       if (!msg || msg.deleted) return;
       this.cancelEdit();
       this.replyTo = msg;
+      this.composerToolsOpen = true;
       this.emojiOpen = false;
       this.closeMention();
-      const uname = msg.author_username || '';
-      if (uname && msg.author_id !== this.currentUserId) {
-        const token = '@' + uname;
+      let handle = '';
+      const authorId = msg.author_id;
+      if (authorId && authorId !== this.currentUserId) {
+        const mem = (this.members || []).find(function (m) {
+          return Number(m.id) === Number(authorId);
+        });
+        handle = mem ? this.mentionHandle(mem) : (msg.author_username || '');
+      }
+      if (handle) {
+        const token = '@' + handle;
         const cur = (this.body || '').trimStart();
         if (!cur.toLowerCase().startsWith(token.toLowerCase())) {
           this.setEditorFromMarkdown(token + (cur ? ' ' + cur : ' '));
@@ -796,6 +886,7 @@ function chatRoom(cfg) {
     startEdit(msg) {
       if (!msg || msg.deleted || msg.author_id !== this.currentUserId || msg.highlight) return;
       this.replyTo = null;
+      this.composerToolsOpen = true;
       this.emojiOpen = false;
       this.closeMention();
       this.editingId = msg.id;
@@ -829,6 +920,50 @@ function chatRoom(cfg) {
       this.setEditorFromMarkdown('');
       this.$nextTick(() => this.measureComposer());
     },
+    async deleteOwnMessage(msg) {
+      if (!msg || msg.deleted || msg.author_id !== this.currentUserId || msg.highlight) {
+        return;
+      }
+      if (!this.apiDeleteUrl || this.busyDelete) return;
+      if (!window.confirm('Supprimer ce message ?')) return;
+      this.busyDelete = msg.id;
+      if (this.editingId === msg.id) this.cancelEdit();
+      if (this.replyTo && this.replyTo.id === msg.id) this.clearReply();
+      const fd = new FormData();
+      fd.append('message_id', msg.id);
+      try {
+        const r = await fetch(this.apiDeleteUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          body: fd,
+        });
+        const data = await r.json();
+        if (!data.ok) {
+          alert(data.error || 'Erreur');
+        } else if (data.message) {
+          this.removeDeletedMessage(data.message);
+        }
+      } catch (e) {
+        alert('Échec de la suppression');
+      }
+      this.busyDelete = null;
+    },
+    removeDeletedMessage(message) {
+      if (!message || !message.id) return;
+      const id = message.id;
+      const idx = this.messages.findIndex(m => m.id === id);
+      if (idx >= 0) this.messages.splice(idx, 1);
+      for (let i = 0; i < this.messages.length; i++) {
+        const m = this.messages[i];
+        if (!m || !m.reply_to || m.reply_to.id !== id) continue;
+        m.reply_to = Object.assign({}, m.reply_to, {
+          deleted: true,
+          body_preview: '…',
+        });
+      }
+      if (this.editingId === id) this.cancelEdit();
+      if (this.replyTo && this.replyTo.id === id) this.clearReply();
+    },
     removeEditingAttachment(id) {
       this.editingAttachments = (this.editingAttachments || []).filter(function (a) {
         return a.id !== id;
@@ -848,7 +983,7 @@ function chatRoom(cfg) {
       this.mentionSuggestions = [];
     },
     mentionMatch(mem, query) {
-      if (!mem || !mem.username) return false;
+      if (!mem || !(mem.username || mem.handle)) return false;
       if (Number(mem.id) === Number(this.currentUserId)) return false;
       if (!query) return true;
       function fold(s) {
@@ -859,12 +994,14 @@ function chatRoom(cfg) {
         }
       }
       const q = fold(query);
-      const user = fold(mem.username);
+      const user = fold(mem.username || '');
+      const handle = fold(mem.handle || '');
       const name = fold(mem.name || '');
       const parts = name.split(/[\s-]+/).filter(Boolean);
+      if (handle.startsWith(q)) return true;
       if (user.startsWith(q)) return true;
       if (parts.some(function (p) { return p.startsWith(q); })) return true;
-      if (q.length >= 2 && (user.includes(q) || name.includes(q))) return true;
+      if (q.length >= 2 && (user.includes(q) || name.includes(q) || handle.includes(q))) return true;
       return false;
     },
     async loadMembers() {
@@ -893,7 +1030,7 @@ function chatRoom(cfg) {
       const text = this.body || '';
       const pos = cursorPos != null ? cursorPos : text.length;
       const before = text.slice(0, pos);
-      const m = before.match(/(^|[\s\n])@([^\s@]*)$/);
+      const m = before.match(/(^|[\s\n])@([^\s@]*(?: [A-Za-zÀ-ÿ]*)?)$/u);
       if (!m) {
         this.closeMention();
         return;
@@ -906,12 +1043,14 @@ function chatRoom(cfg) {
         return self.mentionMatch(mem, query);
       }).map(function (mem) {
         const q = query.toLowerCase();
-        const user = String(mem.username).toLowerCase();
+        const user = String(mem.username || '').toLowerCase();
+        const handle = String(mem.handle || '').toLowerCase();
         const name = (mem.name || '').toLowerCase();
         let score = 50;
-        if (user.startsWith(q)) score = 0;
-        else if (name.split(/[\s-]+/).some(function (p) { return p.startsWith(q); })) score = 1;
-        return { mem: mem, score: score, label: name };
+        if (handle.startsWith(q)) score = 0;
+        else if (user.startsWith(q)) score = 1;
+        else if (name.split(/[\s-]+/).some(function (p) { return p.startsWith(q); })) score = 2;
+        return { mem: mem, score: score, label: handle || name };
       });
       scored.sort(function (a, b) {
         if (a.score !== b.score) return a.score - b.score;
@@ -923,14 +1062,15 @@ function chatRoom(cfg) {
       this.$nextTick(() => this.measureComposer());
     },
     pickMention(mem) {
-      if (!mem || !mem.username) return;
+      const handle = this.mentionHandle(mem);
+      if (!handle) return;
       this.syncBodyFromEditor();
       const text = this.body || '';
       const start = this.mentionStart >= 0 ? this.mentionStart : text.length;
       let end = start + 1 + (this.mentionQuery || '').length;
       const caret = this.getCaretMarkdownOffset();
       if (caret > start) end = Math.max(end, caret);
-      const insert = '@' + mem.username + ' ';
+      const insert = '@' + handle + ' ';
       this.closeMention();
       this.replaceMarkdownRange(start, end, insert);
     },
@@ -1289,6 +1429,16 @@ function chatRoom(cfg) {
       this.$nextTick(() => this.queueJumpBottomUpdate());
       setTimeout(() => this.updateJumpBottom(), 400);
     },
+    scrollTargetMessageId() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const msg = parseInt(params.get('msg'), 10);
+        if (msg > 0) return msg;
+      } catch (_) {
+        /* ignore */
+      }
+      return null;
+    },
     repliesLabel(msg) {
       const n = (msg && msg.replies_count) || 0;
       if (n <= 1) return 'Voir la réponse ↓';
@@ -1378,6 +1528,35 @@ function chatRoom(cfg) {
       const t = Date.parse(msg.created_at);
       return !!t && t > lastReadMs;
     },
+    ownLastReadMs() {
+      const uid = Number(this.currentUserId);
+      const own = (this.readCursors || []).find(function (c) {
+        return c && Number(c.user_id) === uid;
+      });
+      if (own && own.last_read_at) {
+        const t = Date.parse(own.last_read_at);
+        if (t) return t;
+      }
+      if (this.initialLastReadAt) {
+        const t = Date.parse(this.initialLastReadAt);
+        if (t) return t;
+      }
+      return null;
+    },
+    isEditedUnread(msg) {
+      if (!msg || !msg.edited_at || msg.deleted) return false;
+      if (Number(msg.author_id) === Number(this.currentUserId)) return false;
+      return this.isMessageUnread(msg, this.ownLastReadMs());
+    },
+    flashMessage(msgId) {
+      if (!msgId) return;
+      this.$nextTick(() => {
+        const el = document.getElementById('chat-msg-' + msgId);
+        if (!el) return;
+        el.classList.add('chat-msg--flash');
+        setTimeout(() => el.classList.remove('chat-msg--flash'), 1200);
+      });
+    },
     findFirstUnreadId() {
       const raw = this.initialLastReadAt;
       const lastReadMs = raw ? Date.parse(raw) : null;
@@ -1390,12 +1569,34 @@ function chatRoom(cfg) {
       return null;
     },
     scrollToInitialPosition() {
+      const targetMsg = this.scrollTargetMessageId();
+      if (targetMsg) {
+        this.scrollToMessage(targetMsg, { block: 'center', behavior: 'auto' });
+        return;
+      }
       const id = this.findFirstUnreadId();
       if (id) {
         this.scrollToMessage(id, { block: 'start', behavior: 'auto' });
         return;
       }
+      // Mobile : garder date / lieu (intro) visibles ; le scroll utilisateur les masque.
+      if (this._preferIntroFirst()) {
+        const el = this.$refs.thread;
+        if (el) el.scrollTop = 0;
+        this.queueJumpBottomUpdate();
+        return;
+      }
       this.scrollBottom(true);
+    },
+    _preferIntroFirst() {
+      try {
+        if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+          return false;
+        }
+      } catch (_) {}
+      const el = this.$refs.thread;
+      if (!el) return false;
+      return !!el.querySelector('.chat-event-intro, .chat-piece-intro');
     },
     _canHoverZoom() {
       try {
@@ -1479,6 +1680,7 @@ function chatRoom(cfg) {
     addPendingFiles(fileList) {
       const list = Array.from(fileList || []).filter((f) => this._fileIsAccepted(f));
       if (!list.length) return;
+      this.composerToolsOpen = true;
       const maxCount = 20;
       const keptExisting = (this.editingId && this.editingAttachments)
         ? this.editingAttachments.length
@@ -1528,6 +1730,7 @@ function chatRoom(cfg) {
       this.measureComposer();
     },
     init() {
+      this.refreshSetlistTip();
       this.loadMembers();
       this.$nextTick(() => {
         this.bindThreadScroll();
@@ -1551,6 +1754,55 @@ function chatRoom(cfg) {
           this.updateJumpBottom();
         });
       }
+    },
+    destroy() {
+      this._dead = true;
+      if (this._wsReconnectTimer) {
+        clearTimeout(this._wsReconnectTimer);
+        this._wsReconnectTimer = null;
+      }
+      if (this._visHandler) {
+        document.removeEventListener('visibilitychange', this._visHandler);
+        this._visHandler = null;
+      }
+      if (this.ws) {
+        try {
+          this.ws.onclose = null;
+          this.ws.onerror = null;
+          this.ws.onmessage = null;
+          this.ws.close();
+        } catch (_) {}
+        this.ws = null;
+      }
+    },
+    setlistTipStorageKey() {
+      return this.roomId ? ('joy.chat.setlistTip.' + this.roomId) : null;
+    },
+    refreshSetlistTip() {
+      if (!this.isRehearsalRoom || !this.roomId) {
+        this.setlistTipVisible = false;
+        return;
+      }
+      const key = this.setlistTipStorageKey();
+      let until = 0;
+      try {
+        until = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+      } catch (e) {
+        until = 0;
+      }
+      this.setlistTipVisible = Date.now() >= until;
+    },
+    dismissSetlistTip() {
+      const key = this.setlistTipStorageKey();
+      if (!key) {
+        this.setlistTipVisible = false;
+        return;
+      }
+      const until = Date.now() + 21 * 24 * 60 * 60 * 1000;
+      try {
+        localStorage.setItem(key, String(until));
+      } catch (e) { /* ignore quota / private mode */ }
+      this.setlistTipVisible = false;
     },
     bindVisibility() {
       this._visHandler = () => {
@@ -1584,13 +1836,42 @@ function chatRoom(cfg) {
       const h = composer.offsetHeight || 120;
       room.style.setProperty('--composer-h', h + 'px');
     },
+    onComposerFocusIn() {
+      if (this._composerBlurTimer) {
+        clearTimeout(this._composerBlurTimer);
+        this._composerBlurTimer = null;
+      }
+      this.composerToolsOpen = true;
+      this.$nextTick(() => this.measureComposer());
+    },
+    onComposerFocusOut(ev) {
+      const form = this.$refs.composer;
+      const next = ev && ev.relatedTarget;
+      if (form && next && form.contains(next)) return;
+      if (this._composerBlurTimer) clearTimeout(this._composerBlurTimer);
+      this._composerBlurTimer = setTimeout(() => {
+        this._composerBlurTimer = null;
+        if (!form) return;
+        if (form.contains(document.activeElement)) return;
+        if (this.replyTo || this.editingId) return;
+        if (this.emojiOpen || this.mentionOpen) return;
+        if ((this.pendingFiles && this.pendingFiles.length)
+            || (this.editingAttachments && this.editingAttachments.length)) {
+          return;
+        }
+        this.composerToolsOpen = false;
+        this.$nextTick(() => this.measureComposer());
+      }, 120);
+    },
     onFocus() {
+      this.composerToolsOpen = true;
       this.$nextTick(() => {
         this.adaptToKeyboard();
         this.scrollBottom(true);
         if (this.$refs.input) {
           this.$refs.input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
+        this.measureComposer();
       });
       if (!this.embedded) {
         setTimeout(() => { this.adaptToKeyboard(); this.scrollBottom(false); }, 350);
@@ -1656,6 +1937,7 @@ function chatRoom(cfg) {
       this.$nextTick(() => this.measureComposer());
     },
     scheduleWsReconnect() {
+      if (this._dead) return;
       if (this._wsReconnectTimer) return;
       const wait = Math.min(this._wsRetryMs || 1000, 15000);
       this._wsRetryMs = Math.min((this._wsRetryMs || 1000) * 2, 15000);
@@ -1665,6 +1947,7 @@ function chatRoom(cfg) {
       }, wait);
     },
     connect() {
+      if (this._dead) return;
       if (!this.wsUrl) {
         this.setStatus('offline');
         return;
@@ -1711,17 +1994,23 @@ function chatRoom(cfg) {
             this.scheduleMarkRead();
           }
         } else if (data.type === 'chat.message_edit' && data.message) {
-          const idx = this.messages.findIndex(m => m.id === data.message.id);
-          if (idx >= 0) {
-            const prev = this.messages[idx];
-            this.messages.splice(idx, 1, Object.assign({}, prev, data.message, {
-              likes: data.message.likes != null ? data.message.likes : prev.likes,
-              mine: data.message.mine != null ? data.message.mine : prev.mine,
-              hidden: data.message.hidden != null ? data.message.hidden : prev.hidden,
-            }));
-          }
-          if (data.message.author_id !== this.currentUserId) {
-            this.scheduleMarkRead();
+          if (data.message.deleted) {
+            this.removeDeletedMessage(data.message);
+          } else {
+            const idx = this.messages.findIndex(m => m.id === data.message.id);
+            if (idx >= 0) {
+              const prev = this.messages[idx];
+              this.messages.splice(idx, 1, Object.assign({}, prev, data.message, {
+                likes: data.message.likes != null ? data.message.likes : prev.likes,
+                mine: data.message.mine != null ? data.message.mine : prev.mine,
+                hidden: data.message.hidden != null ? data.message.hidden : prev.hidden,
+              }));
+            }
+            // Ne pas marquer lu auto : une édition après lecture reste « message modifié »
+            // / non lu jusqu’à une relecture explicite (visibilité, nouveau message, etc.).
+            if (data.message.author_id !== this.currentUserId) {
+              this.flashMessage(data.message.id);
+            }
           }
         } else if (data.type === 'chat.reaction' && data.message_id) {
           const msg = this.messages.find(m => m.id === data.message_id);
@@ -1785,6 +2074,7 @@ function chatRoom(cfg) {
       this.editingId = null;
       this.editPreview = '';
       this.editingAttachments = [];
+      this.composerToolsOpen = false;
       this.emojiOpen = false;
       this.closeMention();
       this.clearPendingFiles();

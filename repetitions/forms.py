@@ -50,9 +50,14 @@ class RehearsalCreateForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
     )
     notify_musicians = forms.BooleanField(
-        label="Notifier les musiciens",
+        label="Envoyer une notification aux musiciens",
         required=False,
-        initial=True,
+        initial=False,
+        help_text=(
+            "Optionnel. Par défaut, la répé et son salon sont créés sans alerte "
+            "(push / e-mail). Cochez uniquement si vous voulez prévenir "
+            "explicitement les titulaires."
+        ),
     )
 
     def clean(self):

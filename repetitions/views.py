@@ -174,7 +174,18 @@ class ToggleAbsenceView(MusicianRequiredMixin, View):
         event = get_rehearsal_event(pk)
         participation = get_participation_for(event, request.user)
         if participation is None:
-            return _json_error("Vous n’êtes pas inscrit à cette répétition.", 403)
+            from planning.services import ensure_open_participation, get_status
+
+            try:
+                participation, created = ensure_open_participation(
+                    event, request.user
+                )
+            except ValueError as exc:
+                return _json_error(str(exc), 403)
+            if created:
+                # Répé : présent par défaut tant qu’aucune absence n’est signalée.
+                participation.status = get_status("confirmed")
+                participation.save(update_fields=["status", "updated_at"])
 
         import json
 

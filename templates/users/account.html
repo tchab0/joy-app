@@ -36,11 +36,11 @@
            onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide musicien</a>
         {% endif %}
         {% if can_replay_staff_tour %}
-        <a class="btn btn-outline" href="{% url 'account_home' %}?tour=staff"
+        <a class="btn btn-staff-outline joy-staff-ui" href="{% url 'account_home' %}?tour=staff"
            onclick="try{sessionStorage.removeItem('joy_product_tour')}catch(e){}">Rejouer le guide staff</a>
         {% endif %}
         {% if request.user.is_staff or request.user.is_superuser %}
-        <a class="btn btn-outline" href="{% url 'admin_tours' %}">Éditer les guides</a>
+        <a class="btn btn-staff-outline joy-staff-ui" href="{% url 'admin_tours' %}">Éditer les guides</a>
         {% endif %}
       </div>
       {% if staff_notify_form %}
@@ -54,7 +54,7 @@
             <span class="account-desc" style="display:block;margin:0">{{ staff_notify_form.notify_contact_messages.help_text }}</span>
           </span>
         </label>
-        <button type="submit" class="btn btn-outline" style="margin-top:.85rem;min-height:44px">Enregistrer</button>
+        <button type="submit" class="btn btn-staff-outline" style="margin-top:.85rem;min-height:44px">Enregistrer</button>
       </form>
       {% endif %}
       {% if dismissed_leads %}
@@ -104,6 +104,14 @@
     width: 1.25rem; height: 1.25rem; margin-top: .15rem; flex-shrink: 0;
     accent-color: var(--accent);
   }
+  .account-staff-notify {
+    padding: .85rem 1rem;
+    border: 1px solid rgba(var(--staff-rgb), .22);
+    border-radius: var(--r);
+    background: rgba(var(--staff-rgb), .07);
+  }
+  .account-staff-notify .account-check input { accent-color: var(--staff); }
+  .account-staff-notify strong { color: var(--staff); }
   .account-check strong { display: block; margin-bottom: .2rem; }
   .account-actions .btn,
   .account-block > .btn,

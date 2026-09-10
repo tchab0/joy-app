@@ -23,6 +23,7 @@ class StaticViewSitemap(Sitemap):
         return {
             "home": 1.0,
             "concerts": 0.9,
+            "prestations": 0.9,
             "medias": 0.8,
             "contact": 0.8,
         }.get(name, 0.6)

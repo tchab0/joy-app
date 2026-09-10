@@ -169,6 +169,11 @@ def create_challenge(
 
 def _deliver_code(user: User, challenge: AuthChallenge, code: str) -> None:
     if challenge.channel == AuthChallenge.Channel.EMAIL:
+        if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
+            raise RuntimeError(
+                "Envoi e-mail temporairement désactivé. "
+                "Réessayez plus tard ou utilisez un autre canal."
+            )
         send_mail(
             subject="Votre code de connexion — Jazz Orchestra Yonnais",
             message=(

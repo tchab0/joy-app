@@ -1,0 +1,20 @@
+{# Duo Présent / Absent — nécessite x-data=rehearsalAbsence|absenceToggle #}
+{# Optionnel : initially_absent=True|False pour l’état SSR avant Alpine #}
+<div class="pl-presence" role="group" aria-label="Présence">
+  <button type="button"
+          class="pl-btn pl-btn--yes pl-presence__present{% if not initially_absent %} is-active{% endif %}"
+          :class="{ 'is-active': !absent }"
+          :aria-pressed="(!absent).toString()"
+          :disabled="busy"
+          @click="choosePresent()">
+    Présent
+  </button>
+  <button type="button"
+          class="pl-btn pl-btn--no pl-presence__absent{% if initially_absent %} is-active{% endif %}"
+          :class="{ 'is-active': absent }"
+          :aria-pressed="absent.toString()"
+          :disabled="busy"
+          @click="chooseAbsent()">
+    Absent
+  </button>
+</div>

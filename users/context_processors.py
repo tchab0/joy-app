@@ -9,6 +9,46 @@ from users.roles import user_can_access_planning
 # Namespaces du menu Coulisses (lien nav → planning).
 _COULISSES_NAMESPACES = frozenset({"planning", "repertoire", "repetitions", "chat"})
 
+# Pages entièrement staff → teinte slate (CTA, page-lead, etc.).
+_PLANNING_STAFF_URLS = frozenset(
+    {
+        "admin",
+        "admin_musicians",
+        "admin_musician_add",
+        "admin_musician_edit",
+        "admin_musician_remove",
+        "event_roster",
+        "event_publication",
+        "event_roadmap_edit",
+        "create_event",
+        "create_poll",
+        "launch_poll",
+        "lock_poll",
+        "invite_musician",
+        "invite_titulaires",
+        "add_event_equipment",
+        "create_equipment",
+        "update_poll_deadline",
+        "resend_poll_notifications",
+    }
+)
+
+
+def _is_staff_surface(*, namespace: str, url_name: str) -> bool:
+    if not url_name:
+        return False
+    if url_name.startswith("admin_") or url_name == "admin_hub":
+        return True
+    if namespace == "planning" and url_name in _PLANNING_STAFF_URLS:
+        return True
+    if namespace in {"repertoire", "repetitions"} and url_name.startswith("staff_"):
+        return True
+    if namespace == "chat" and url_name == "staff":
+        return True
+    if namespace == "stats":
+        return True
+    return False
+
 
 def nav_access(request):
     user = getattr(request, "user", None)
@@ -16,6 +56,7 @@ def nav_access(request):
         return {
             "show_musician_nav": False,
             "show_staff_nav": False,
+            "is_staff_surface": False,
             "product_tour_config": None,
             "dismissed_page_leads": set(),
             "pending_polls": [],
@@ -84,9 +125,18 @@ def nav_access(request):
             )
             unread_inbox_banner = group_unread_inbox_for_banner(unread_inbox)
 
+    is_staff = bool(user.is_staff or user.is_superuser)
+    force_staff_surface = bool(getattr(request, "joy_force_staff_surface", False))
     return {
         "show_musician_nav": show_musician_nav,
-        "show_staff_nav": bool(user.is_staff or user.is_superuser),
+        "show_staff_nav": is_staff,
+        "is_staff_surface": bool(
+            is_staff
+            and (
+                force_staff_surface
+                or _is_staff_surface(namespace=ns, url_name=url_name)
+            )
+        ),
         "product_tour_config": build_tour_config(request),
         "dismissed_page_leads": get_dismissed_page_leads(user),
         "pending_polls": pending_polls,

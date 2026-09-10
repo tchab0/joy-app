@@ -29,6 +29,13 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
     """
     if not vapid_configured():
         logger.warning("Web Push ignoré : clés VAPID manquantes.")
+        # #region agent log
+        try:
+            import time as _t
+            open("/srv/jazz-orchestra-yonnais/.cursor/debug-e044df.log","a").write(json.dumps({"sessionId":"e044df","hypothesisId":"C","location":"webpush.py:send_web_push","message":"vapid_missing","data":{"sub_id":getattr(subscription,"pk",None)},"timestamp":int(_t.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         return False
 
     from py_vapid import Vapid
@@ -52,6 +59,13 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
     else:
         vapid_key = Vapid.from_string(private_key)
 
+    ua = (getattr(subscription, "user_agent", None) or "")[:80]
+    endpoint_host = ""
+    try:
+        endpoint_host = (subscription.endpoint or "").split("/")[2][:60]
+    except Exception:
+        endpoint_host = "?"
+
     try:
         webpush(
             subscription_info={
@@ -66,9 +80,23 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
             vapid_claims=claims,
             ttl=86400,
         )
+        # #region agent log
+        try:
+            import time as _t
+            open("/srv/jazz-orchestra-yonnais/.cursor/debug-e044df.log","a").write(json.dumps({"sessionId":"e044df","hypothesisId":"A","location":"webpush.py:send_web_push","message":"push_ok","data":{"sub_id":subscription.pk,"user_id":getattr(subscription,"user_id",None),"ua":ua,"endpoint_host":endpoint_host,"title":(title or "")[:80]},"timestamp":int(_t.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         return True
     except WebPushException as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
+        # #region agent log
+        try:
+            import time as _t
+            open("/srv/jazz-orchestra-yonnais/.cursor/debug-e044df.log","a").write(json.dumps({"sessionId":"e044df","hypothesisId":"A","location":"webpush.py:send_web_push","message":"push_webpush_exception","data":{"sub_id":subscription.pk,"user_id":getattr(subscription,"user_id",None),"ua":ua,"endpoint_host":endpoint_host,"status":status,"err":str(exc)[:200]},"timestamp":int(_t.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         if status in (404, 410):
             logger.info(
                 "Subscription push expirée (HTTP %s), suppression id=%s",
@@ -84,7 +112,14 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
                 exc,
             )
         return False
-    except Exception:
+    except Exception as exc:
+        # #region agent log
+        try:
+            import time as _t
+            open("/srv/jazz-orchestra-yonnais/.cursor/debug-e044df.log","a").write(json.dumps({"sessionId":"e044df","hypothesisId":"A","location":"webpush.py:send_web_push","message":"push_unexpected_exception","data":{"sub_id":getattr(subscription,"pk",None),"err":str(exc)[:200]},"timestamp":int(_t.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
         logger.exception(
             "Échec Web Push inattendu subscription_id=%s", subscription.pk
         )

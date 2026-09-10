@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 {% if room %}
-<script defer src="{% static 'chat/room.js' %}?v=1"></script>
+<script defer src="{% static 'chat/room.js' %}?v=9"></script>
 {% endif %}
 {% endblock %}
 
@@ -58,12 +58,38 @@
       {% if proposal.created_by %}
       Proposé par {{ proposal.created_by.get_full_name|default:proposal.created_by.username }}
       {% endif %}
-      {% if proposal.deadline %}
+      {% if proposal.deadline and proposal.is_open %}
       {% if proposal.created_by %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
       Répondre avant le {{ proposal.deadline|date:"d/m/Y" }}
       {% endif %}
+      {% if proposal.status == 'locked' %}
+      {% if proposal.created_by or proposal.deadline %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
+      <span style="color:var(--ok)">Clôturé</span>
+      {% elif proposal.status == 'cancelled' %}
+      {% if proposal.created_by %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
+      Annulé
+      {% elif proposal.is_draft %}
+      {% if proposal.created_by %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
+      Brouillon
+      {% endif %}
     </p>
   </header>
+
+  {% if proposal.status == 'locked' and event %}
+  <section class="pl-section" aria-label="Sondage clôturé">
+    <p class="pl-row__meta" style="margin:0">
+      La date a été retenue
+      {% if proposal.locked_option %}
+      ({{ proposal.locked_option.starts_at|date:"d/m/Y H:i" }})
+      {% endif %}
+      et l’événement est confirmé.
+      {% if event %}
+      Pour indiquer votre disponibilité, répondez sur
+      <a href="{% url 'planning:event_detail' event.pk %}" style="color:var(--accent)">la fiche de l’événement</a>.
+      {% endif %}
+    </p>
+  </section>
+  {% endif %}
 
   {% if can_edit_deadline and proposal.status != 'locked' and proposal.status != 'cancelled' %}
   <section class="pl-section">
@@ -79,6 +105,74 @@
       <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
         Enregistrer
       </button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if can_edit_options %}
+  <section class="pl-section" aria-label="Modifier les dates du sondage">
+    <h2>Dates et heures proposées</h2>
+    <p class="pl-row__meta" style="margin:0 0 1rem">
+      Modifiez les créneaux du sondage. Les votes déjà enregistrés restent liés à chaque option.
+      {% if event and event.statut == 'tentative' %}
+      S’il ne reste qu’une date, l’événement lié est mis à jour automatiquement.
+      {% endif %}
+    </p>
+    <form class="pl-form" method="post" action="{% url 'planning:update_poll_options' proposal.pk %}"
+          x-data="{ extra: 0 }">
+      {% csrf_token %}
+      {% for opt in proposal.options.all %}
+      <div class="pl-form__row pl-form__row--2"
+           style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
+        <div>
+          <label for="opt_starts_{{ opt.pk }}">Option {{ forloop.counter }} — début</label>
+          <input type="datetime-local" name="option_starts_{{ opt.pk }}"
+                 id="opt_starts_{{ opt.pk }}" required
+                 value="{{ opt.starts_at|date:'Y-m-d\TH:i' }}">
+        </div>
+        <div>
+          <label for="opt_label_{{ opt.pk }}">Libellé (optionnel)</label>
+          <input type="text" name="option_label_{{ opt.pk }}" id="opt_label_{{ opt.pk }}"
+                 value="{{ opt.label }}" placeholder="ex. soirée">
+        </div>
+        <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+          <div style="flex:1 1 10rem;min-width:0">
+            <label for="opt_ends_{{ opt.pk }}">Fin (optionnel)</label>
+            <input type="datetime-local" name="option_ends_{{ opt.pk }}"
+                   id="opt_ends_{{ opt.pk }}"
+                   value="{% if opt.ends_at %}{{ opt.ends_at|date:'Y-m-d\TH:i' }}{% endif %}">
+          </div>
+          <label class="pl-check" for="opt_delete_{{ opt.pk }}"
+                 style="min-height:48px;align-items:center;margin:0">
+            <input type="checkbox" name="option_delete_{{ opt.pk }}"
+                   id="opt_delete_{{ opt.pk }}" value="1">
+            <span>Retirer</span>
+          </label>
+        </div>
+      </div>
+      {% endfor %}
+      <template x-for="i in Array.from({length: extra}, (_, k) => k)" :key="'new'+i">
+        <div class="pl-form__row pl-form__row--2"
+             style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
+          <div>
+            <label :for="'new_starts_'+i">Nouvelle option — début</label>
+            <input type="datetime-local" :name="'new_option_starts_'+i" :id="'new_starts_'+i">
+          </div>
+          <div>
+            <label :for="'new_label_'+i">Libellé (optionnel)</label>
+            <input type="text" :name="'new_option_label_'+i" :id="'new_label_'+i"
+                   placeholder="ex. matin">
+          </div>
+        </div>
+      </template>
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.75rem">
+        <button type="button" class="pl-btn" style="min-height:48px" @click="extra++">
+          + Option
+        </button>
+        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+          Enregistrer les dates
+        </button>
+      </div>
     </form>
   </section>
   {% endif %}
@@ -117,9 +211,7 @@
 
   {% if proposal.is_open and options_data %}
   <p class="pl-row__meta" style="margin:.5rem 0 0"
-     x-show="allAnswered()" x-cloak>
-    Votre réponse est enregistrée — vous pouvez encore la modifier.
-  </p>
+     x-show="allAnswered()" x-cloak x-text="answeredSummary()"></p>
   {% endif %}
 
   {% if is_planning_staff and proposal.is_open and options_data %}
@@ -201,7 +293,7 @@
 {% block extra_js %}
 {% if needs_event_create %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="{% static 'planning/venue_map.js' %}"></script>
+<script src="{% static 'planning/venue_map.js' %}?v=2"></script>
 <script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endif %}
 {% endblock %}

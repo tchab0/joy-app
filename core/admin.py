@@ -7,6 +7,7 @@ from .models import (
     ContactMessage,
     SitePage,
     PageBlock,
+    StaffMailing,
 )
 
 
@@ -69,3 +70,19 @@ class PageBlockAdmin(admin.ModelAdmin):
     list_filter = ("type", "visible", "page")
     search_fields = ("titre_admin", "page__slug")
     autocomplete_fields = ("media", "page")
+
+
+@admin.register(StaffMailing)
+class StaffMailingAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "subject", "sent_by", "sent_count", "failed_count")
+    list_filter = ("created_at",)
+    search_fields = ("subject", "body_template")
+    readonly_fields = (
+        "sent_by",
+        "subject",
+        "body_template",
+        "recipients",
+        "sent_count",
+        "failed_count",
+        "created_at",
+    )

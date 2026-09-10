@@ -39,7 +39,7 @@ def notify_users(
     ``requires_response`` : invitation / sondage / relance (statut « non répondu »
     distinct de « non lu »).
 
-    ``force_immediate`` : ignore les préférences (mentions chat, envoi de digest).
+    ``force_immediate`` : ignore les préférences (@mentions chat, envoi de digest).
 
     Retourne le nombre d’utilisateurs notifiés (push ou e-mail).
     Les échecs sont logués, jamais levés.
@@ -70,6 +70,16 @@ def notify_users(
             continue
         seen.add(uid)
         try:
+            from users.notify_prefs import (
+                is_staff_only_notify_type,
+                user_is_staff_recipient,
+            )
+
+            if is_staff_only_notify_type(delivery_type) and not user_is_staff_recipient(
+                user
+            ):
+                # Jamais d’alerte staff (absences, contact…) vers un musicien pur.
+                continue
             notif = _persist_inbox(
                 user,
                 title=title,
@@ -155,10 +165,36 @@ def invalidate_nav_banner(user) -> None:
 
 def _is_chat_notification(item) -> bool:
     related = (getattr(item, "related_type", None) or "").strip()
-    if related in {"chat_msg", "chat"}:
+    if related in {"chat_msg", "chat", "chat_reply"}:
         return True
     url = (getattr(item, "url", None) or "").strip()
     return url.startswith("/chat/")
+
+
+def is_staff_destined_notification(item) -> bool:
+    """
+    True pour les alertes / chats destinés au staff (teinte slate en UI).
+    - Types staff_only (staff_alert, contact)
+    - Salon chat Staff (titre / libellé)
+    """
+    from users.notify_prefs import is_staff_only_notify_type
+
+    related = (getattr(item, "related_type", None) or "").strip()
+    if is_staff_only_notify_type(related):
+        return True
+    url = (getattr(item, "url", None) or "").strip()
+    if related == "feedback" and url.startswith("/admin-retours"):
+        return True
+    title = (getattr(item, "title", None) or "").strip().lower()
+    if "présence annulée" in title:
+        return True
+    if _is_chat_notification(item):
+        label = _chat_room_label(item).strip().lower()
+        if label == "staff" or label.startswith("staff "):
+            return True
+        if "salon staff" in title:
+            return True
+    return False
 
 
 def _chat_room_label(item) -> str:
@@ -201,6 +237,7 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                     "count": 0,
                     "open_pk": item.pk,
                     "preview": preview,
+                    "is_staff": is_staff_destined_notification(item),
                 }
                 chat_by_url[url] = group
                 chat_order.append(url)
@@ -339,6 +376,12 @@ def _try_push(user, *, title: str, body: str, url: str) -> bool:
 
 
 def _try_email(user, *, title: str, body: str, url: str) -> bool:
+    if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
+        logger.info(
+            "E-mail en pause — pas de fallback mail user_id=%s",
+            getattr(user, "pk", None),
+        )
+        return False
     email = (getattr(user, "email", "") or "").strip()
     if not email:
         logger.info(

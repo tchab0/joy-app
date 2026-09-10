@@ -15,6 +15,24 @@
 </section>
 {% endif %}
 
+{% if show_page_feedback_threads %}
+<section class="fb-account-block">
+  <h2>Vos retours</h2>
+  {% for item in page_feedback_threads %}
+  <article class="fb-account-card" id="retour-{{ item.id }}">
+    <div class="fb-badges" style="display:flex;flex-wrap:wrap;gap:.4rem">
+      <p class="fb-badge {{ item.category_css_class }}">{{ item.category_label }}</p>
+      {% if item.is_treated %}<span class="fb-badge fb-badge-done">Traité</span>{% endif %}
+      {% if item.has_staff_reply %}<span class="fb-badge fb-badge-reply">Message du staff</span>{% endif %}
+    </div>
+    {% if item.page_title %}<p style="font-weight:600">{{ item.page_title }}</p>{% endif %}
+    <p class="fb-muted">Votre message : {{ item.message }}</p>
+    {% include "feedback/_feedback_thread.html" with item=item thread_mode="author" %}
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
 {% if show_page_feedback_vote_requests %}
 <section class="fb-account-block">
   <h2>Votes en cours</h2>

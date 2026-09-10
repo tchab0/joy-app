@@ -390,3 +390,91 @@ class MediaSoumissionForm(forms.ModelForm):
         date = self.cleaned_data.get("evenement_date")
         ev, _ = EvenementMedia.objects.get_or_create(nom=nom, defaults={"date": date})
         return ev
+
+
+class StaffMailingForm(forms.Form):
+    subject = forms.CharField(
+        max_length=200,
+        label="Sujet",
+        widget=forms.TextInput(attrs={**_INPUT, "placeholder": "Sujet de l’e-mail"}),
+    )
+    body = forms.CharField(
+        label="Message",
+        widget=forms.Textarea(
+            attrs={
+                **_INPUT,
+                "rows": 10,
+                "placeholder": "Bonjour {{prenom}},",
+            }
+        ),
+    )
+    musician_ids = forms.TypedMultipleChoiceField(
+        required=False,
+        coerce=int,
+        label="Musiciens",
+        widget=forms.CheckboxSelectMultiple,
+    )
+    free_emails = forms.CharField(
+        required=False,
+        label="Adresses libres",
+        widget=forms.Textarea(
+            attrs={
+                **_INPUT,
+                "rows": 3,
+                "placeholder": "autre@exemple.fr, encore@exemple.fr",
+            }
+        ),
+    )
+    include_fake = forms.BooleanField(
+        required=False,
+        label="Inclure les adresses @fake.net",
+        widget=forms.CheckboxInput(attrs={"class": "form-check"}),
+    )
+
+    def __init__(self, *args, musicians=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        musicians = musicians or []
+        self.fields["musician_ids"].choices = [
+            (u.pk, f"{musician_label(u)} <{u.email}>") for u in musicians
+        ]
+        if not self.is_bound and not self.initial.get("body"):
+            self.fields["body"].initial = "Bonjour {{prenom}},\n\n"
+
+    def clean_subject(self):
+        return self.cleaned_data["subject"].strip()
+
+    def clean_body(self):
+        body = self.cleaned_data["body"].strip()
+        if len(body) < 3:
+            raise forms.ValidationError("Le message est trop court.")
+        return body
+
+    def clean(self):
+        cleaned = super().clean()
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .mailing import resolve_recipients
+
+        try:
+            recipients = resolve_recipients(
+                musician_ids=cleaned.get("musician_ids") or [],
+                free_emails_raw=cleaned.get("free_emails") or "",
+                include_fake=bool(cleaned.get("include_fake")),
+            )
+        except DjangoValidationError as exc:
+            msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            self.add_error("free_emails", msg)
+            return cleaned
+
+        if not recipients:
+            raise forms.ValidationError(
+                "Choisissez au moins un musicien ou saisissez une adresse libre."
+            )
+        cleaned["recipients"] = recipients
+        return cleaned
+
+
+def musician_label(user) -> str:
+    from .mailing import musician_display_name
+
+    return musician_display_name(user)

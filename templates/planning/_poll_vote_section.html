@@ -31,6 +31,17 @@
     </div>
     {% elif proposal.is_draft %}
     <p class="pl-row__meta">En attente de lancement par le staff.</p>
+    {% elif proposal.status == 'locked' %}
+    {% if item.my_vote %}
+    <p class="pl-row__meta">Votre réponse :
+      {% if item.my_vote == 'yes' %}Oui{% elif item.my_vote == 'no' %}Non{% else %}Peut-être{% endif %}
+      — sondage clôturé.
+    </p>
+    {% else %}
+    <p class="pl-row__meta">Sondage clôturé — les votes sont fermés.</p>
+    {% endif %}
+    {% elif proposal.status == 'cancelled' %}
+    <p class="pl-row__meta">Sondage annulé.</p>
     {% endif %}
   </div>
   {% empty %}

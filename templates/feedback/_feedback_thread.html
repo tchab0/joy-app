@@ -1,0 +1,29 @@
+<div class="fb-thread">
+  {% if item.thread_messages %}
+  <ol class="fb-thread-list">
+    {% for msg in item.thread_messages %}
+    <li class="fb-msg {% if msg.is_from_staff %}is-staff{% else %}is-author{% endif %}">
+      <p class="fb-msg-meta">
+        <span class="fb-msg-who">{% if msg.is_from_staff %}Staff{% else %}{{ msg.sender_name }}{% endif %}</span>
+        <time datetime="{{ msg.created_at|date:'c' }}">{{ msg.created_at|date:"d/m/Y H:i" }}</time>
+      </p>
+      <p class="fb-msg-body">{{ msg.body }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="fb-muted">Aucun message pour l’instant. Écrivez pour démarrer l’échange.</p>
+  {% endif %}
+
+  <form method="post" action="{% url 'post_page_feedback_message' item.id %}" class="fb-thread-form">
+    {% csrf_token %}
+    {% if thread_mode == "admin" %}
+    <input type="hidden" name="feedback_sort" value="{{ page_feedback_sort }}">
+    <input type="hidden" name="feedback_view" value="{{ page_feedback_view }}">
+    {% endif %}
+    <label for="fb-msg-{{ item.id }}">Votre message</label>
+    <textarea id="fb-msg-{{ item.id }}" name="body" rows="3" maxlength="2000" required
+              placeholder="{% if thread_mode == 'admin' %}Demander un détail, préciser une correction…{% else %}Ajouter une précision ou répondre au staff…{% endif %}"></textarea>
+    <button type="submit" class="btn btn-primary">Envoyer</button>
+  </form>
+</div>

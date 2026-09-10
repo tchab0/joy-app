@@ -10,11 +10,12 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from feedback.forms import PageFeedbackForm, PageFeedbackVoteOpenForm
+from feedback.forms import PageFeedbackForm, PageFeedbackThreadForm, PageFeedbackVoteOpenForm
 from feedback.services.page_feedback import (
     FEEDBACK_VIEW_PENDING,
     build_page_feedback_admin_context,
     build_page_feedback_author_responses_context,
+    build_page_feedback_threads_context,
     build_page_feedback_vote_requests_context,
     build_pending_page_feedback_items,
     can_manage_page_feedback,
@@ -27,6 +28,7 @@ from feedback.services.page_feedback import (
     open_feedback_vote,
     parse_feedback_focus,
     parse_snooze_until_date,
+    post_page_feedback_message,
     rate_page_feedback,
     redirect_url_after_feedback_admin_action,
     reopen_feedback_vote,
@@ -339,3 +341,32 @@ def submit_page_feedback_vote_view(request, feedback_id):
         label = "pour" if choice == PageFeedbackVote.VOTE_FOR else "contre"
         messages.success(request, f"Votre vote {label} a été enregistré.")
     return redirect("account_home")
+
+
+@login_required
+@require_POST
+def post_page_feedback_message_view(request, feedback_id):
+    form = PageFeedbackThreadForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Le message n'a pas pu être envoyé. Vérifiez le texte (2000 caractères max).")
+    else:
+        posted = post_page_feedback_message(
+            feedback_id=feedback_id,
+            sender=request.user,
+            body=form.cleaned_data["body"],
+        )
+        if posted is None:
+            messages.error(request, "Vous ne pouvez pas écrire sur ce retour.")
+        else:
+            messages.success(request, "Message envoyé.")
+
+    if can_manage_page_feedback(request.user):
+        return redirect(
+            redirect_url_after_feedback_admin_action(
+                acted_feedback_id=feedback_id,
+                sort=request.POST.get("feedback_sort"),
+                view=request.POST.get("feedback_view") or FEEDBACK_VIEW_PENDING,
+                leaves_current_list=False,
+            )
+        )
+    return redirect(f"{reverse('account_home')}#retour-{feedback_id}")

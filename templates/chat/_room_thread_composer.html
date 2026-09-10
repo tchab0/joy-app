@@ -1,9 +1,94 @@
 <p class="chat-status" :class="statusClass" x-text="statusLabel"></p>
 
 <div class="chat-thread" x-ref="thread">
+{% if show_chat_chrome %}
+{% if room.piece %}
+<aside class="chat-piece-intro" aria-label="Infos du morceau">
+  <h2>Remarques &amp; chorus</h2>
+  {% if room.piece.audio_recording %}
+  <div class="chat-piece-intro__media">
+    <p><strong>Enregistrement</strong></p>
+    <audio class="chat-piece-intro__audio" controls preload="metadata" src="{{ room.piece.audio_recording.url }}">
+      Votre navigateur ne lit pas l’audio.
+    </audio>
+  </div>
+  {% endif %}
+  {% if room.piece.youtube_videos %}
+  <div class="chat-piece-intro__media">
+    <p><strong>YouTube</strong></p>
+    {% include "repertoire/_youtube_thumbs.html" with videos=room.piece.youtube_videos compact=True %}
+  </div>
+  {% endif %}
+  {% if room.piece.chorus_order %}
+  <p><strong>Ordre des chorus</strong></p>
+  <pre>{{ room.piece.chorus_order }}</pre>
+  {% endif %}
+  {% if room.piece.remarks %}
+  <p style="margin-top:.65rem"><strong>Remarques</strong></p>
+  <pre>{{ room.piece.remarks }}</pre>
+  {% endif %}
+  {% if not room.piece.chorus_order and not room.piece.remarks and not room.piece.audio_recording and not room.piece.youtube_videos %}
+  <p style="color:var(--muted);font-size:.85rem">Pas encore de remarques ni d’ordre de chorus.</p>
+  {% endif %}
+  <a class="chat-piece-intro__link" href="{% url 'repertoire:detail' room.piece.slug %}">
+    Voir la fiche morceau →
+  </a>
+</aside>
+{% endif %}
+
+{% if room.event %}
+<aside class="chat-event-intro" aria-label="Infos de l’événement">
+  {% if room.event.type %}<p class="chat-event-intro__type">{{ room.event.type.nom }}</p>{% endif %}
+  <dl class="chat-event-intro__list">
+    <div>
+      <dt>Date</dt>
+      <dd>
+        {{ room.event.date_debut|date:"l d F Y · H:i" }}
+        {% if room.event.date_fin %} – {{ room.event.date_fin|date:"H:i" }}{% endif %}
+      </dd>
+    </div>
+    <div>
+      <dt>Lieu</dt>
+      <dd>{% if room.event.venue %}{{ room.event.lieu_affiche }}{% else %}—{% endif %}</dd>
+    </div>
+    {% if room.event.organisme %}
+    <div>
+      <dt>Organisme</dt>
+      <dd>{% include "includes/_organisme_link.html" with name=room.event.organisme url=room.event.organisme_url show_prefix=False %}</dd>
+    </div>
+    {% endif %}
+    {% if room.event.parent %}
+    <div>
+      <dt>Dans</dt>
+      <dd>{{ room.event.parent.titre }}</dd>
+    </div>
+    {% endif %}
+    {% if room.event.show_contact %}
+    <div>
+      <dt>Contact</dt>
+      <dd>
+        {% if room.event.contact_nom %}{{ room.event.contact_nom }}{% endif %}
+        {% if room.event.contact_telephone %}
+          {% if room.event.contact_nom %} · {% endif %}
+          <a href="tel:{{ room.event.contact_telephone }}" style="color:var(--accent)">{{ room.event.contact_telephone }}</a>
+        {% endif %}
+        {% if room.event.contact_email %}
+          · <a href="mailto:{{ room.event.contact_email }}" style="color:var(--accent)">{{ room.event.contact_email }}</a>
+        {% endif %}
+      </dd>
+    </div>
+    {% endif %}
+  </dl>
+  <a class="chat-event-intro__link" href="{% url 'planning:event_detail' room.event.pk %}">
+    Voir le détail planning →
+  </a>
+</aside>
+{% endif %}
+{% endif %}
+
 <template x-for="(msg, index) in messages" :key="msg.id">
     <div class="chat-msg-slot" style="display:contents">
-      <template x-if="msg.hidden && !msg.deleted && isLeadingHidden(index)">
+      <template x-if="!msg.deleted && msg.hidden && isLeadingHidden(index)">
         <button type="button" class="chat-react__unhide chat-react__unhide--leading"
                 @click="toggleReaction(msg, 'down')"
                 :disabled="busyReact === msg.id"
@@ -12,7 +97,7 @@
           <span aria-hidden="true">👁</span>
         </button>
       </template>
-      <template x-if="!msg.hidden || msg.deleted">
+      <template x-if="!msg.deleted && !msg.hidden">
         <div class="chat-msg"
              :id="'chat-msg-' + msg.id"
              :class="{
@@ -25,10 +110,11 @@
               <span x-text="msg.highlight ? 'Sondage de disponibilité' : msg.author_name"></span>
               · <span x-text="formatTime(msg.created_at)"></span>
               <template x-if="msg.edited_at">
-                <span class="chat-msg__edited"> · modifié</span>
+                <span class="chat-msg__edited"
+                      :class="{ 'is-unread-edit': isEditedUnread(msg) }"> · message modifié</span>
               </template>
             </span>
-            <span class="chat-react" x-show="!msg.deleted">
+            <span class="chat-react">
               <button type="button"
                       class="chat-react__btn"
                       x-show="msg.author_id === currentUserId && !msg.highlight"
@@ -36,6 +122,15 @@
                       aria-label="Modifier"
                       title="Modifier">
                 <span aria-hidden="true">✏️</span>
+              </button>
+              <button type="button"
+                      class="chat-react__btn"
+                      x-show="msg.author_id === currentUserId && !msg.highlight"
+                      @click="deleteOwnMessage(msg)"
+                      :disabled="busyDelete === msg.id"
+                      aria-label="Supprimer"
+                      title="Supprimer">
+                <span aria-hidden="true">🗑️</span>
               </button>
               <button type="button"
                       class="chat-react__btn"
@@ -73,10 +168,7 @@
               <span class="chat-msg__quote-body" x-text="msg.reply_to.body_preview"></span>
             </button>
           </template>
-          <template x-if="msg.deleted">
-            <div class="chat-msg__body chat-msg__body--deleted">Message supprimé</div>
-          </template>
-          <template x-if="!msg.deleted && msg.body">
+          <template x-if="msg.body">
             <div class="chat-msg__body" x-html="formatBodyHtml(msg.body)"></div>
           </template>
           <template x-if="msg.highlight && msg.poll_url">
@@ -159,6 +251,8 @@
       x-ref="composer"
       :class="{ 'is-dragover': dragOver }"
       @submit.prevent="send()"
+      @focusin="onComposerFocusIn()"
+      @focusout="onComposerFocusOut($event)"
       @dragenter.prevent="onComposerDragEnter($event)"
       @dragover.prevent="onComposerDragOver($event)"
       @dragleave.prevent="onComposerDragLeave($event)"
@@ -247,7 +341,7 @@
                   @click="pickMention(m)"
                   @mouseenter="mentionIndex = i">
             <span class="chat-mention__name" x-text="m.name"></span>
-            <span class="chat-mention__user" x-text="'@' + m.username"></span>
+            <span class="chat-mention__user" x-text="'@' + (m.handle || m.username)"></span>
           </button>
         </template>
       </div>
@@ -258,7 +352,7 @@
            enterkeyhint="send"
            autocomplete="off"
            x-ref="input"
-           :data-placeholder="editingId ? 'Modifier le message…' : 'Message… — @ pour mentionner'"
+           :data-placeholder="editingId ? 'Modifier le message…' : composerPlaceholder"
            :class="{ 'is-empty': !body }"
            @focus="onFocus()"
            @input="onBodyInput()"
@@ -266,69 +360,71 @@
            @beforeinput="onEditorBeforeInput($event)"
            @paste="onEditorPaste($event)"></div>
     </div>
-    <div class="chat-composer__row">
-      <div class="chat-emoji" @click.outside="emojiOpen = false">
-        <button type="button" class="chat-attach chat-emoji__btn"
-                @click="emojiOpen = !emojiOpen; closeMention()"
-                :aria-expanded="emojiOpen.toString()"
-                aria-label="Insérer un emoji"
-                title="Emoji">
-          😊
-        </button>
-        <div class="chat-emoji__panel" x-show="emojiOpen" x-cloak role="listbox" aria-label="Émojis">
-          <template x-for="em in emojis" :key="em">
-            <button type="button" class="chat-emoji__item" @click="insertEmoji(em)"
-                    :aria-label="'Insérer ' + em" x-text="em"></button>
-          </template>
+    <div class="chat-composer__row" x-show="composerToolsVisible" x-cloak>
+      <div class="chat-composer__tools" role="toolbar" aria-label="Formatage et pièces jointes">
+        <div class="chat-emoji" @click.outside="emojiOpen = false">
+          <button type="button" class="chat-attach chat-emoji__btn"
+                  @click="emojiOpen = !emojiOpen; closeMention()"
+                  :aria-expanded="emojiOpen.toString()"
+                  aria-label="Insérer un emoji"
+                  title="Emoji">
+            😊
+          </button>
+          <div class="chat-emoji__panel" x-show="emojiOpen" x-cloak role="listbox" aria-label="Émojis">
+            <template x-for="em in emojis" :key="em">
+              <button type="button" class="chat-emoji__item" @click="insertEmoji(em)"
+                      :aria-label="'Insérer ' + em" x-text="em"></button>
+            </template>
+          </div>
         </div>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="applyRichFormat('bold')"
+                aria-label="Gras"
+                title="Gras">
+          <strong>G</strong>
+        </button>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="applyRichFormat('italic')"
+                aria-label="Italique"
+                title="Italique">
+          <em>I</em>
+        </button>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="insertLink()"
+                aria-label="Insérer un lien"
+                title="Lien">
+          🔗
+        </button>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="applyQuote()"
+                aria-label="Citation"
+                title="Citation">
+          «»
+        </button>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="applyBulletList()"
+                aria-label="Liste à puces"
+                title="Liste à puces">
+          •−
+        </button>
+        <button type="button" class="chat-attach"
+                @click="startMentionPicker()"
+                aria-label="Mentionner quelqu’un"
+                title="Mentionner">
+          @
+        </button>
+        <label class="chat-attach" aria-label="Joindre un fichier">
+          📎
+          <input type="file" x-ref="files" multiple
+                 accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.zip,.mp3,.wav,.m4a"
+                 @change="onFiles()">
+        </label>
       </div>
-      <button type="button" class="chat-attach chat-fmt"
-              @mousedown.prevent
-              @click="applyRichFormat('bold')"
-              aria-label="Gras"
-              title="Gras">
-        <strong>G</strong>
-      </button>
-      <button type="button" class="chat-attach chat-fmt"
-              @mousedown.prevent
-              @click="applyRichFormat('italic')"
-              aria-label="Italique"
-              title="Italique">
-        <em>I</em>
-      </button>
-      <button type="button" class="chat-attach chat-fmt"
-              @mousedown.prevent
-              @click="insertLink()"
-              aria-label="Insérer un lien"
-              title="Lien">
-        🔗
-      </button>
-      <button type="button" class="chat-attach chat-fmt"
-              @mousedown.prevent
-              @click="applyQuote()"
-              aria-label="Citation"
-              title="Citation">
-        «»
-      </button>
-      <button type="button" class="chat-attach chat-fmt"
-              @mousedown.prevent
-              @click="applyBulletList()"
-              aria-label="Liste à puces"
-              title="Liste à puces">
-        •−
-      </button>
-      <button type="button" class="chat-attach"
-              @click="startMentionPicker()"
-              aria-label="Mentionner quelqu’un"
-              title="Mentionner">
-        @
-      </button>
-      <label class="chat-attach" aria-label="Joindre un fichier">
-        📎
-        <input type="file" x-ref="files" multiple
-               accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.txt,.zip,.mp3,.wav,.m4a"
-               @change="onFiles()">
-      </label>
       <button type="submit" class="chat-send" :disabled="busy"
               x-text="editingId ? 'Enregistrer' : 'Envoyer'"></button>
     </div>

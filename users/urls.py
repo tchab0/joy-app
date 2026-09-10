@@ -18,6 +18,11 @@ urlpatterns = [
         views_tour_editor.admin_tours_save,
         name="admin_tours_save",
     ),
+    path(
+        "mot-de-passe/",
+        views.password_change_view,
+        name="account_password_change",
+    ),
     path("securite/", views.security_view, name="account_security"),
     path("securite/totp/demarrer/", views.totp_setup_start, name="account_totp_start"),
     path("securite/totp/confirmer/", views.totp_setup_confirm, name="account_totp_confirm"),

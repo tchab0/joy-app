@@ -5,9 +5,9 @@ from planning.models import ParticipationStatus
 
 STATUS_CODES = {
     "invited": {"label": "Invité", "color_token": "warning", "sort_order": 10},
-    "confirmed": {"label": "Confirmé", "color_token": "success", "sort_order": 20},
+    "confirmed": {"label": "Dispo", "color_token": "success", "sort_order": 20},
     "maybe": {"label": "Peut-être", "color_token": "warning", "sort_order": 25},
-    "declined": {"label": "Refusé", "color_token": "danger", "sort_order": 30},
+    "declined": {"label": "Pas dispo", "color_token": "danger", "sort_order": 30},
     "replacement_needed": {
         "label": "Remplacement demandé",
         "color_token": "neutral",

@@ -16,6 +16,7 @@ def robots_txt(request):
         "Disallow: /planning/",
         "Disallow: /repertoire/",
         "Disallow: /chat/",
+        "Disallow: /stats/",
         "Disallow: /admin/",
         "Disallow: /admin-",
         "Disallow: /administration/",

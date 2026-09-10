@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth import authenticate
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
 
 from .models import AuthChallenge, User
 from .otp import available_2fa_channels, find_user_by_identifier
@@ -114,6 +114,26 @@ class TwoFactorChannelForm(forms.Form):
             self.fields["channel"].initial = channels[0]
 
 
+class NewPasswordForm(SetPasswordForm):
+    """Nouveau mot de passe sans ressaisir l’ancien (premier accès ou reprise en main)."""
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        self.fields["new_password1"].label = "Nouveau mot de passe"
+        self.fields["new_password2"].label = "Confirmation"
+        self.fields["new_password1"].widget.attrs["autofocus"] = True
+
+    def clean(self):
+        cleaned = super().clean()
+        new = cleaned.get("new_password2") or cleaned.get("new_password1")
+        if new and self.user.check_password(new):
+            self.add_error(
+                "new_password1",
+                "Choisissez un mot de passe différent du mot de passe actuel.",
+            )
+        return cleaned
+
+
 class ProfileSecurityForm(forms.ModelForm):
     class Meta:
         model = User
@@ -147,7 +167,8 @@ class NotificationPrefsForm(forms.ModelForm):
             "notify_frequency": (
                 "S’applique à toutes les alertes sauf exception ci-dessous. "
                 "Temps réel : tout de suite (messages de salon regroupés ~toutes "
-                "les 30 min). Les @mentions et réponses sont toujours immédiates."
+                "les 30 min). Les @mentions restent toujours immédiates ; "
+                "les réponses à vos messages ont leur propre réglage."
             ),
             "chat_auto_subscribe": (
                 "Vous pourrez désactiver les alertes salon par salon, "

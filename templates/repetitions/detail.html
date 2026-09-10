@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load page_lead %}
 
 {% block title %}{{ event.titre }} — Répétition{% endblock %}
 
@@ -39,11 +40,7 @@
   .rep-absence__row {
     display: flex; flex-wrap: wrap; gap: .45rem; align-items: center;
   }
-  .rep-absence__status {
-    font-size: .85rem; font-weight: 600;
-  }
-  .rep-absence__status.is-absent { color: var(--accent); }
-  .rep-absence__status.is-present { color: var(--ok); }
+  .rep-absence .pl-presence { width: 100%; }
   .rep-absence__cta {
     flex: 1 1 auto; min-width: 10rem; min-height: 44px; justify-content: center;
     font-size: .95rem;
@@ -67,7 +64,13 @@
     color: var(--accent); font-weight: 600; text-decoration: none;
   }
 
-  .rep-salon {
+  .rep-propose-cta {
+    display: flex;
+    min-height: 44px;
+    justify-content: center;
+    align-items: center;
+    gap: .45rem;
+    width: 100%;
     margin: 0 0 1rem;
   }
 
@@ -104,6 +107,10 @@
     <a href="{% url 'repetitions:staff_edit' event.pk %}">Éditer (staff)</a>
   </div>
   {% endif %}
+
+  {% page_lead "repetitions.detail" class="page-lead--in-head" %}
+    Proposez des morceaux dans le salon de la répé ; les autres votent avec 👍. Le staff compose ensuite la setlist.
+  {% endpage_lead %}
 
   <header class="pl-accept__head">
     <h1 class="pl-accept__title">{{ event.titre }}</h1>
@@ -147,19 +154,8 @@
            aria-labelledby="absence-title">
     <div class="rep-absence__head">
       <h2 id="absence-title">Ma présence</h2>
-      <span class="rep-absence__status"
-            :class="absent ? 'is-absent' : 'is-present'"
-            x-text="absent ? 'Absent' : 'Présent'"></span>
     </div>
-    <div class="rep-absence__row">
-      <button type="button"
-              class="pl-btn rep-absence__cta"
-              :class="absent ? 'pl-btn--yes' : 'pl-btn--no'"
-              :disabled="busy"
-              @click="toggle()">
-        <span x-text="absent ? 'Je serai présent·e' : 'Je serai absent·e'"></span>
-      </button>
-    </div>
+    {% include "planning/_presence_buttons.html" with initially_absent=is_absent %}
     {% include "planning/_rsvp_invalidate_modal.html" with prefix="rep" %}
   </section>
   {% elif not is_planning_staff %}
@@ -167,7 +163,14 @@
   {% endif %}
 
   <section class="rep-roadmap" aria-labelledby="roadmap-title">
-    <h2 id="roadmap-title">Feuille de route</h2>
+    <div class="rep-absence__head">
+      <h2 id="roadmap-title">Setlist</h2>
+      {% if is_planning_staff %}
+      <a class="pl-btn pl-btn--staff" href="{% url 'repetitions:staff_edit' event.pk %}" style="min-height:44px">
+        {% if items %}Modifier{% else %}Créer{% endif %}
+      </a>
+      {% endif %}
+    </div>
     {% if plan and plan.notes %}
     <p class="pl-row__meta" style="white-space:pre-wrap;margin:0 0 .35rem">{{ plan.notes }}</p>
     {% endif %}
@@ -185,17 +188,19 @@
     {% endif %}
   </section>
 
+  {% if participation or is_planning_staff %}
   {% if chat_link or event.chat_room %}
-  <a class="pl-day-events__salon rep-salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
-    <span>Salon « {{ event.titre }} »</span>
+  <a class="pl-btn pl-btn--primary rep-propose-cta" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
+    <span>Proposer un morceau</span>
     {% if chat_link.unread %}
     <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
     {% endif %}
   </a>
   {% endif %}
+  {% endif %}
 
   {% if is_planning_staff and attendance %}
-  <section class="rep-staff-block" aria-labelledby="staff-att-title">
+  <section class="rep-staff-block joy-staff-ui" aria-labelledby="staff-att-title">
     <h2 id="staff-att-title">Présences</h2>
     <p class="pl-row__meta" style="margin-bottom:.75rem">
       {{ attendance.n_present }} présent{{ attendance.n_present|pluralize }} ·

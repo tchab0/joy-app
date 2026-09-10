@@ -40,6 +40,12 @@
     </div>
 
     <div class="sec-card">
+      <h2 style="font-family:var(--font-d);font-size:1.2rem;margin-bottom:1rem">Mot de passe</h2>
+      <p style="margin-bottom:1rem;color:var(--muted)">Changez votre mot de passe sans ressaisir l’ancien.</p>
+      <a class="btn btn-outline" href="{% url 'account_password_change' %}">Changer de mot de passe</a>
+    </div>
+
+    <div class="sec-card">
       <h2 style="font-family:var(--font-d);font-size:1.2rem;margin-bottom:1rem">Application d’authentification</h2>
       {% if totp_enabled %}
         <p style="margin-bottom:1rem;color:var(--muted)">Statut : activée.</p>

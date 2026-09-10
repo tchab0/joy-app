@@ -77,6 +77,16 @@
   .pl-notif-banner__chat a:focus-visible {
     color: var(--accent-h);
   }
+  .pl-notif-banner__chat a.is-staff,
+  .pl-notif-banner__other a.is-staff {
+    color: var(--staff);
+  }
+  .pl-notif-banner__chat a.is-staff:hover,
+  .pl-notif-banner__chat a.is-staff:focus-visible,
+  .pl-notif-banner__other a.is-staff:hover,
+  .pl-notif-banner__other a.is-staff:focus-visible {
+    color: var(--staff-h);
+  }
   .pl-notif-banner__preview {
     display: block;
     margin-top: .15rem;
@@ -140,7 +150,7 @@
   <ul class="pl-notif-banner__chat">
     {% for g in unread_inbox_banner.chat_groups %}
     <li>
-      <a href="{% url 'account_notification_open' g.open_pk %}">{{ g.label }}{% if g.count > 1 %} ({{ g.count }}){% endif %}</a>
+      <a href="{% url 'account_notification_open' g.open_pk %}"{% if g.is_staff %} class="is-staff"{% endif %}>{{ g.label }}{% if g.count > 1 %} ({{ g.count }}){% endif %}</a>
       {% if g.preview %}<span class="pl-notif-banner__preview">{{ g.preview }}</span>{% endif %}
     </li>
     {% endfor %}
@@ -152,7 +162,7 @@
     {% for item in unread_inbox_banner.other %}
     <li>
       {% if item.url %}
-        <a href="{% url 'account_notification_open' item.pk %}">{{ item.title }}</a>
+        <a href="{% url 'account_notification_open' item.pk %}"{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} class="is-staff"{% endif %}>{{ item.title }}</a>
       {% else %}
         {{ item.title }}
       {% endif %}

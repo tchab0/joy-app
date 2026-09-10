@@ -90,6 +90,11 @@ def build_tour_config(request) -> dict[str, Any] | None:
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
         return None
+    # Sinon le guide musicien fait location.assign("/planning/") pendant que
+    # ForcePasswordChangeMiddleware renvoie sur /compte/mot-de-passe/ → boucle
+    # (logo qui clignote, champs mot de passe vidés à chaque reload).
+    if getattr(user, "must_change_password", False):
+        return None
 
     tours = _safe_tours_payload()
     if not tours:

@@ -78,7 +78,7 @@
       <div>
         <h1 class="section-title">Retours utilisateurs</h1>
         {% page_lead "feedback.admin" %}
-          Bugs, confort d’usage et demandes de fonctionnalités depuis le pied de page.
+          Bugs, confort d’usage et demandes de fonctionnalités depuis le pied de page. Vous pouvez écrire à l’émetteur et suivre ses réponses.
         {% endpage_lead %}
       </div>
       <div class="admin-filters">
@@ -124,6 +124,7 @@
               {% if item.is_in_progress %}<span class="fb-badge fb-badge-progress">En cours</span>{% endif %}
               {% if item.is_snoozed %}<span class="fb-badge fb-badge-snooze">Reporté</span>{% endif %}
               {% if item.is_treated %}<span class="fb-badge fb-badge-done">Traité</span>{% endif %}
+              {% if item.has_author_reply %}<span class="fb-badge fb-badge-reply">Réponse</span>{% endif %}
               {% if item.vote_was_opened %}<span class="fb-badge fb-badge-vote">Sondage · {{ item.vote_total_count }} vote{{ item.vote_total_count|pluralize }}</span>{% endif %}
               <span class="fb-badge">{{ item.created_at|date:"d/m/Y H:i" }}</span>
             </div>
@@ -157,6 +158,7 @@
               {% if item.page_profile %}<p style="color:var(--muted);font-size:.85rem">Rôles : {{ item.page_profile }}</p>{% endif %}
               <a href="{{ item.page_url }}">{{ item.page_url }}</a>
             </div>
+            {% include "feedback/_feedback_thread.html" with item=item thread_mode="admin" %}
           </div>
 
           <div class="fb-actions">

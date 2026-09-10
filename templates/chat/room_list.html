@@ -108,6 +108,16 @@
     align-items: center;
     justify-content: center;
   }
+  .chat-badge--staff { background: var(--staff); }
+  .chat-list a:has(.chat-kind--staff) {
+    border-color: rgba(var(--staff-rgb), .28);
+    background: rgba(var(--staff-rgb), .05);
+  }
+  .chat-list a:has(.chat-kind--staff):hover,
+  .chat-list a:has(.chat-kind--staff):focus-visible {
+    border-color: rgba(var(--staff-rgb), .45);
+    background: rgba(var(--staff-rgb), .1);
+  }
   .chat-accordion {
     border: 1px solid var(--border);
     border-radius: var(--r);

@@ -377,11 +377,11 @@
   const el = document.getElementById('stats-charts-data');
   if (!el || typeof Chart === 'undefined') return;
   const data = JSON.parse(el.textContent);
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c94f3a';
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c25a36';
   const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b6560';
-  const text = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#1a1714';
+  const text = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#12100e';
   const ok = getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() || '#2a6b3c';
-  const gold = '#8a6a1a';
+  const gold = '#8d5f16';
 
   Chart.defaults.color = muted;
   Chart.defaults.borderColor = 'rgba(0,0,0,.08)';
@@ -460,7 +460,7 @@
     'chart-participation',
     part.map(p => p.label),
     part.map(p => p.count),
-    [ok, accent, gold, muted, text, '#a83c2a', '#8a6a1a', '#6b6560'].slice(0, part.length)
+    [ok, accent, gold, muted, text, '#a34528', '#8d5f16', '#6b6560'].slice(0, part.length)
   );
 })();
 </script>

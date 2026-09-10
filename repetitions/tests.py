@@ -121,6 +121,20 @@ class RehearsalServicesTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["venue_mode"], "default")
 
+    def test_create_form_notify_musicians_opt_in(self):
+        unbound = RehearsalCreateForm()
+        self.assertFalse(unbound.fields["notify_musicians"].initial)
+        form = RehearsalCreateForm(
+            data={
+                "titre": "Répé",
+                "date": "2026-08-01",
+                "time_start": "20:00",
+                "venue_mode": "default",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertFalse(form.cleaned_data["notify_musicians"])
+
     def test_create_form_custom_requires_nom_ville(self):
         form = RehearsalCreateForm(
             data={
@@ -135,3 +149,94 @@ class RehearsalServicesTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("venue_nom", form.errors)
         self.assertIn("venue_ville", form.errors)
+
+    def test_attach_calendar_rehearsal_plans(self):
+        from planning.services import attach_calendar_rehearsal_plans
+
+        event, _ = create_rehearsal(
+            titre="Répé setlist",
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=4),
+            created_by=self.staff,
+            piece_ids=[self.piece.pk],
+        )
+        empty, _ = create_rehearsal(
+            titre="Répé vide",
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=5),
+            created_by=self.staff,
+        )
+        concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        concert = Event.objects.create(
+            titre="Concert",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=6),
+        )
+        attach_calendar_rehearsal_plans([event, empty, concert])
+        self.assertEqual(event.cal_rehearsal_plan["n_items"], 1)
+        self.assertEqual(empty.cal_rehearsal_plan["n_items"], 0)
+        self.assertIsNone(concert.cal_rehearsal_plan)
+
+    def test_notify_rehearsal_mentions_setlist_salon(self):
+        from users.models import UserNotification
+        from repetitions.services import notify_rehearsal_created
+
+        event, _ = create_rehearsal(
+            titre="Répé notif",
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=7),
+            created_by=self.staff,
+        )
+        notify_rehearsal_created(event, [self.tit])
+        notif = UserNotification.objects.filter(user=self.tit).latest("created_at")
+        self.assertIn("proposez des morceaux", notif.body.lower())
+        self.assertIn("👍", notif.body)
+
+    def test_create_rehearsal_no_notification_by_default(self):
+        from chat.models import ChatMembership, ChatMessage, ChatRoom
+        from chat.services import REHEARSAL_SETLIST_TIP_PREFIX
+        from users.models import UserNotification
+
+        before = UserNotification.objects.filter(user=self.tit).count()
+        event, _ = create_rehearsal(
+            titre="Répé silencieuse",
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=8),
+            created_by=self.staff,
+        )
+        self.assertEqual(
+            UserNotification.objects.filter(user=self.tit).count(), before
+        )
+        room = ChatRoom.objects.get(event=event)
+        tip = ChatMessage.objects.get(
+            room=room,
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_SETLIST_TIP_PREFIX,
+        )
+        membership = ChatMembership.objects.get(room=room, user=self.tit)
+        self.assertGreaterEqual(membership.last_digested_message_id, tip.pk)
+
+    def test_create_rehearsal_notifies_when_requested(self):
+        from users.models import UserNotification
+
+        before = UserNotification.objects.filter(user=self.tit).count()
+        create_rehearsal(
+            titre="Répé annoncée",
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=9),
+            created_by=self.staff,
+            notify_musicians=True,
+        )
+        self.assertEqual(
+            UserNotification.objects.filter(user=self.tit).count(), before + 1
+        )
+        notif = UserNotification.objects.filter(user=self.tit).latest("created_at")
+        self.assertEqual(notif.title, "JOY — Répétition")
+
+    def test_repetitions_detail_page_lead_known(self):
+        from users.page_leads import KNOWN_PAGE_LEAD_KEYS, dismiss_page_lead
+
+        self.assertIn("repetitions.detail", KNOWN_PAGE_LEAD_KEYS)
+        self.assertTrue(dismiss_page_lead(self.tit, "repetitions.detail"))
+        self.assertIn("repetitions.detail", self.tit.dismissed_page_leads)

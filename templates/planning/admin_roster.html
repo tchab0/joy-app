@@ -33,12 +33,21 @@
     </p>
   </header>
 
+  {% if chat_link or event.chat_room %}
+  <a class="pl-day-events__salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
+    <span>Salon « {{ event.titre }} »</span>
+    {% if chat_link.unread %}
+    <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
+    {% endif %}
+  </a>
+  {% endif %}
+
   {% if draft_proposal %}
-  <section class="pl-section pl-section--panel pl-section--pending">
+  <section class="pl-section pl-section--panel pl-section--pending joy-staff-ui">
     <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
     <p class="pl-row__meta pl-roster-lead">
       Lancez le sondage pour que les musiciens invités indiquent leur disponibilité
-      (message mis en évidence dans le salon + notification).
+      (notification).
     </p>
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
@@ -50,7 +59,7 @@
   {% endif %}
 
   {% if open_proposal %}
-  <section class="pl-section pl-section--panel pl-section--pending">
+  <section class="pl-section pl-section--panel pl-section--pending joy-staff-ui">
     <h2 style="margin-top:0;color:var(--accent)">Sondage ouvert — confirmer</h2>
     <p class="pl-row__meta pl-roster-lead">
       Consultez les votes sur
@@ -61,7 +70,7 @@
   </section>
   {% endif %}
 
-  <section class="pl-section">
+  <section class="pl-section joy-staff-ui">
     <h2>Organisation</h2>
     <p class="pl-row__meta pl-roster-lead">
       {% if event.public %}
@@ -142,7 +151,7 @@
               {% endif %}
             </div>
             {% if p.status.code == "maybe" %}
-            <p class="pl-stage__meta">
+            <p class="pl-stage__meta joy-staff-ui">
               {% if p.maybe_remind_at %}
               Relance le {{ p.maybe_remind_at|date:"d/m/Y" }}{% if p.maybe_remind_weekly %} (hebdo){% endif %}
               {% elif p.maybe_remind_weekly %}
@@ -159,7 +168,7 @@
           {% empty %}
           <div class="pl-stage__person pl-stage__person--vacant" aria-label="Poste vacant">
             {% if cell.eligible %}
-            <form class="pl-stage__invite"
+            <form class="pl-stage__invite joy-staff-ui"
                   method="post"
                   action="{% url 'planning:invite_musician' event.pk %}">
               {% csrf_token %}
@@ -174,13 +183,14 @@
               <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
             </form>
             {% else %}
-            <span class="pl-stage__invite-none">Aucun remp.</span>
+            <span class="pl-stage__invite-none joy-staff-ui">Aucun remp.</span>
             {% endif %}
+            <span class="pl-stage__invite-none joy-musician-fallback">Vacant</span>
           </div>
           {% endfor %}
           {% if cell.parts and cell.needs_substitute %}
             {% if cell.eligible %}
-            <form class="pl-stage__invite"
+            <form class="pl-stage__invite joy-staff-ui"
                   method="post"
                   action="{% url 'planning:invite_musician' event.pk %}">
               {% csrf_token %}
@@ -195,7 +205,7 @@
               <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
             </form>
             {% else %}
-            <span class="pl-stage__invite-none">Aucun remp.</span>
+            <span class="pl-stage__invite-none joy-staff-ui">Aucun remp.</span>
             {% endif %}
           {% endif %}
         </div>
@@ -222,9 +232,11 @@
           <p class="pl-stage__meta">{{ p.comment }}</p>
           {% endif %}
         </div>
+        {% empty %}
+        <span class="pl-stage__invite-none joy-musician-fallback">Vacant</span>
         {% endfor %}
         {% if cell.needs_substitute and cell.eligible %}
-        <form class="pl-stage__invite"
+        <form class="pl-stage__invite joy-staff-ui"
               method="post"
               action="{% url 'planning:invite_musician' event.pk %}">
           {% csrf_token %}
@@ -253,18 +265,20 @@
     </div>
     {% endif %}
 
-    <form class="pl-form pl-form--tight" method="post" action="{% url 'planning:invite_titulaires' event.pk %}">
+    <form class="pl-form pl-form--tight joy-staff-ui" method="post" action="{% url 'planning:invite_titulaires' event.pk %}">
       {% csrf_token %}
       <button type="submit" class="pl-btn pl-btn--primary">Convoquer tous les titulaires</button>
     </form>
 
     {% if invite_musicians %}
+    <div class="joy-staff-ui">
     {% url 'planning:invite_musician' event.pk as invite_form_action %}
     {% include "planning/_invite_musician_form.html" with form_action=invite_form_action invite_musicians=invite_musicians submit_label="Inviter" id_prefix="roster_invite" inline_submit=True %}
+    </div>
     {% endif %}
   </section>
 
-  <section class="pl-section">
+  <section class="pl-section" id="materiel">
     <h2>Matériel pour cette date</h2>
     {% for g in gear %}
     <div class="pl-gear-line">
@@ -272,14 +286,20 @@
       <span class="pl-gear-line__meta">
         {% if g.assigned_to %}{{ g.assigned_to.get_full_name|default:g.assigned_to.username }}{% else %}Non assigné{% endif %}
         · {{ g.get_status_display }}
+        {% if g.notes %} · {{ g.notes }}{% endif %}
       </span>
     </div>
     {% empty %}
     <p class="pl-empty">Aucun matériel listé.</p>
     {% endfor %}
 
-    <form class="pl-form pl-form--tight" method="post" action="{% url 'planning:add_event_equipment' event.pk %}"
-          x-data="{ itemId: '' }">
+    <div class="joy-musician-fallback" style="margin-top:1rem">
+      {% url 'planning:event_roster' event.pk as roster_next %}
+      {% include "planning/_equipment_suggest_form.html" with event=event equipment_catalog=equipment_catalog next_url=roster_next id_prefix="roster_suggest" %}
+    </div>
+
+    <form class="pl-form pl-form--tight joy-staff-ui" method="post" action="{% url 'planning:add_event_equipment' event.pk %}"
+          x-data="{ itemId: '' }" style="margin-top:1rem">
       {% csrf_token %}
       <div class="pl-form__row pl-form__row--gear">
         <div>

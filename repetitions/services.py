@@ -197,7 +197,8 @@ def notify_rehearsal_created(event: Event, users) -> int:
     url = reverse("repetitions:detail", kwargs={"pk": event.pk})
     body = (
         f"Nouvelle répétition : « {event.titre} » ({date_label}). "
-        f"Vous êtes attendu·e — signalez une absence si besoin."
+        f"Vous êtes attendu·e — signalez une absence si besoin. "
+        f"Dans le salon, proposez des morceaux et votez avec 👍."
     )
     return notify_users(
         users,

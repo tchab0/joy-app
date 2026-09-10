@@ -1,6 +1,7 @@
 from pathlib import Path
 import uuid
 
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -489,3 +490,38 @@ class PageBlock(models.Model):
             if val:
                 return str(val)[:80]
         return self.get_type_display()
+
+
+class StaffMailing(models.Model):
+    """Journal d’un envoi d’e-mails composé par un compte staff."""
+
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_mailings",
+    )
+    subject = models.CharField(max_length=200)
+    body_template = models.TextField(
+        help_text="Corps avec placeholder {{prenom}} pour les musiciens.",
+    )
+    recipients = models.JSONField(
+        default=list,
+        help_text="Liste de {email, prenom, user_id, status, error?}.",
+    )
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Envoi e-mail staff"
+        verbose_name_plural = "Envois e-mail staff"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.subject} — {self.created_at:%d/%m/%Y %H:%M} ({self.sent_count} ok)"
+
+    @property
+    def recipient_count(self) -> int:
+        return len(self.recipients or [])

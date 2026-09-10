@@ -209,7 +209,13 @@ def calendar_summaries_for_events(events) -> dict[int, dict]:
             layer = "other"
             kind_label = getattr(getattr(event, "type", None), "nom", "") or "Événement"
         type_nom = getattr(getattr(event, "type", None), "nom", "") or ""
-        proposed_by_label, deadline_label = _linked_proposal_meta(event)
+        # Métadonnées sondage / proposition : utiles tant que l’événement
+        # n’est pas confirmé (sinon le panneau jour ne doit plus parler
+        # de proposition / deadline de vote).
+        if is_confirmed:
+            proposed_by_label, deadline_label = "", ""
+        else:
+            proposed_by_label, deadline_label = _linked_proposal_meta(event)
         summaries[event.pk] = {
             "titre": event.titre,
             "is_concert": is_concert,
@@ -314,6 +320,143 @@ def attach_calendar_chat_links(events, user) -> list:
     return list(events)
 
 
+def attach_calendar_participations(events, user) -> list:
+    """Attache ``event.cal_participation`` (dict ou None) pour l’utilisateur courant."""
+    events = list(events)
+    for event in events:
+        event.cal_participation = None
+    if not events or user is None or not getattr(user, "is_authenticated", False):
+        return events
+
+    event_ids = [
+        e.pk
+        for e in events
+        if getattr(e, "pk", None) and not getattr(e, "is_poll_option", False)
+    ]
+    if not event_ids:
+        return events
+
+    try:
+        from django.db import OperationalError, ProgrammingError
+
+        from planning.models import EventParticipation
+    except ImportError:
+        return events
+
+    try:
+        rows = EventParticipation.objects.filter(
+            event_id__in=event_ids, user=user
+        ).select_related("status")
+    except (ProgrammingError, OperationalError):
+        logger.warning("attach_calendar_participations: schéma manquant")
+        return events
+
+    by_event: dict[int, dict] = {}
+    for part in rows:
+        status = part.status
+        by_event[part.event_id] = {
+            "id": part.pk,
+            "status_code": status.code if status else "invited",
+            "status_label": status.label if status else "À répondre",
+            "status_color": (
+                status.color_token if status and status.color_token else "neutral"
+            ),
+            "poste_label": part.poste_label if part.poste else "",
+            "is_absent": bool(
+                status and status.code in ("declined", "replacement_needed")
+            ),
+        }
+    for event in events:
+        if getattr(event, "is_poll_option", False):
+            continue
+        event.cal_participation = by_event.get(event.pk)
+    return events
+
+
+def attach_calendar_recent_messages(events, user, *, limit: int = 3) -> list:
+    """Attache ``event.cal_recent_messages`` (liste) si le salon est accessible."""
+    events = list(events)
+    for event in events:
+        event.cal_recent_messages = []
+    if not events or user is None or not getattr(user, "is_authenticated", False):
+        return events
+
+    room_to_event: dict[int, int] = {}
+    for event in events:
+        chat = getattr(event, "cal_chat", None)
+        if not chat or not chat.get("room_id"):
+            continue
+        room_to_event[int(chat["room_id"])] = event.pk
+    if not room_to_event:
+        return events
+
+    try:
+        from django.db import OperationalError, ProgrammingError
+
+        from chat.models import ChatMessage
+    except ImportError:
+        return events
+
+    room_ids = list(room_to_event.keys())
+    try:
+        rows = list(
+            ChatMessage.objects.filter(
+                room_id__in=room_ids,
+                deleted_at__isnull=True,
+            )
+            .select_related("author")
+            .order_by("room_id", "-created_at")
+            .only(
+                "id",
+                "room_id",
+                "body",
+                "kind",
+                "created_at",
+                "author_id",
+                "author__first_name",
+                "author__last_name",
+                "author__username",
+            )
+        )
+    except (ProgrammingError, OperationalError):
+        logger.warning("attach_calendar_recent_messages: schéma manquant")
+        return events
+
+    by_event: dict[int, list] = {eid: [] for eid in room_to_event.values()}
+    for msg in rows:
+        event_id = room_to_event.get(msg.room_id)
+        if event_id is None:
+            continue
+        bucket = by_event[event_id]
+        if len(bucket) >= limit:
+            continue
+        if msg.kind == ChatMessage.Kind.SYSTEM:
+            author = "Système"
+        elif msg.author_id:
+            author = msg.author.get_full_name() or msg.author.username
+        else:
+            author = "Compte supprimé"
+        body = (msg.body or "").strip()
+        if not body:
+            body = "pièce jointe"
+        if len(body) > 90:
+            body = body[:87].rstrip() + "…"
+        bucket.append(
+            {
+                "author": author,
+                "body": body,
+                "created_at": msg.created_at,
+                "kind": msg.kind,
+            }
+        )
+
+    for event in events:
+        msgs = by_event.get(event.pk) or []
+        # Chronologique (ancien → récent) dans le panneau.
+        event.cal_recent_messages = list(reversed(msgs))
+    return events
+
+
 def attach_calendar_setlists(events) -> list:
     """Attache ``event.cal_setlist`` ({id, title} ou None) pour la setlist active."""
     events = list(events)
@@ -345,6 +488,43 @@ def attach_calendar_setlists(events) -> list:
             by_event[eid] = {"id": row["id"], "title": row["title"]}
     for event in events:
         event.cal_setlist = by_event.get(event.pk)
+    return events
+
+
+def attach_calendar_rehearsal_plans(events) -> list:
+    """Attache ``event.cal_rehearsal_plan`` ({n_items} ou None) pour les répé."""
+    events = list(events)
+    for event in events:
+        event.cal_rehearsal_plan = None
+    if not events:
+        return events
+    try:
+        from django.db import OperationalError, ProgrammingError
+        from django.db.models import Count
+
+        from repetitions.models import RehearsalPlan
+    except ImportError:
+        return events
+
+    rehearse_ids = [e.pk for e in events if getattr(e, "is_rehearsal", False)]
+    if not rehearse_ids:
+        return events
+    try:
+        rows = (
+            RehearsalPlan.objects.filter(event_id__in=rehearse_ids)
+            .annotate(n_items=Count("items"))
+            .values("event_id", "n_items")
+        )
+    except (ProgrammingError, OperationalError):
+        logger.warning("attach_calendar_rehearsal_plans: schéma manquant")
+        return events
+
+    by_event = {row["event_id"]: {"n_items": row["n_items"]} for row in rows}
+    for event in events:
+        if not getattr(event, "is_rehearsal", False):
+            continue
+        # Plan absent = setlist encore vide (lien « Créer » côté calendrier).
+        event.cal_rehearsal_plan = by_event.get(event.pk) or {"n_items": 0}
     return events
 
 

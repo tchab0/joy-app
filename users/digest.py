@@ -77,11 +77,16 @@ def send_due_notification_digests(*, now=None, dry_run: bool = False) -> int:
             related_type="chat" if draft.chat_rooms and not draft.inbox_items else "",
             force_immediate=True,
         )
-        if not n:
-            logger.warning("Échec digest user_id=%s", user_id)
-            continue
+        # Toujours avancer curseurs / last_sent : notify_users a déjà créé
+        # l’inbox. Sans ça, un échec SMTP/push rejoue le même digest à l’infini.
         _advance_chat_cursors(draft)
         _touch_due_buckets(user, draft, now=now)
+        if not n:
+            logger.warning(
+                "Échec digest push/e-mail user_id=%s (inbox créée, curseurs avancés)",
+                user_id,
+            )
+            continue
         sent += 1
     return sent
 

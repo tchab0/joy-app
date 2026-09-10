@@ -62,4 +62,9 @@ urlpatterns = [
         views.submit_page_feedback_vote_view,
         name="submit_page_feedback_vote",
     ),
+    path(
+        "feedback/<int:feedback_id>/message/",
+        views.post_page_feedback_message_view,
+        name="post_page_feedback_message",
+    ),
 ]

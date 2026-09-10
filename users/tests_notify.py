@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from users.models import UserNotification
-from users.notify import mark_notifications_responded, notify_users
+from users.notify import mark_notifications_responded, notify_users, _relative_push_url
 
 User = get_user_model()
 
@@ -74,6 +74,60 @@ class NotifyFallbackTests(TestCase):
         n.refresh_from_db()
         self.assertFalse(n.is_unanswered)
         self.assertIsNotNone(n.responded_at)
+
+    def test_staff_alert_skipped_for_musician(self):
+        musician = User.objects.create_user(
+            username="musi_alert",
+            email="musi_alert@example.com",
+            password="x",
+            is_staff=False,
+        )
+        staff = User.objects.create_user(
+            username="staff_alert",
+            email="staff_alert@example.com",
+            password="x",
+            is_staff=True,
+        )
+        n = notify_users(
+            [musician, staff],
+            title="JOY — Présence annulée",
+            body="Un camarade ne vient plus.",
+            url="/planning/",
+            related_type="staff_alert",
+            notify_type="staff_alert",
+        )
+        self.assertEqual(n, 1)
+        self.assertEqual(
+            UserNotification.objects.filter(user=musician).count(), 0
+        )
+        self.assertEqual(
+            UserNotification.objects.filter(user=staff).count(), 1
+        )
+
+    def test_is_staff_destined_notification(self):
+        from users.notify import is_staff_destined_notification
+
+        staff_item = UserNotification(
+            title="JOY — Présence annulée",
+            body="x",
+            related_type="staff_alert",
+        )
+        chat_staff = UserNotification(
+            title="JOY — Staff",
+            body="hello",
+            related_type="chat_msg",
+            url="/chat/1/",
+        )
+        chat_orch = UserNotification(
+            title="JOY — Orchestre",
+            body="hello",
+            related_type="chat_msg",
+            url="/chat/2/",
+        )
+        self.assertTrue(is_staff_destined_notification(staff_item))
+        self.assertTrue(is_staff_destined_notification(chat_staff))
+        self.assertFalse(is_staff_destined_notification(chat_orch))
+
 
 
 @override_settings(
@@ -257,3 +311,85 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertRedirects(r, reverse("planning:dashboard"))
         notif.refresh_from_db()
         self.assertIsNotNone(notif.read_at)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    VAPID_PUBLIC_KEY="test-pub",
+    VAPID_PRIVATE_KEY="test-priv",
+    SITE_URL="https://jazz-orchestra-yonnais.fr",
+)
+class PushNotificationUrlTests(TestCase):
+    def test_relative_push_url_strips_site_origin(self):
+        self.assertEqual(
+            _relative_push_url("https://jazz-orchestra-yonnais.fr/chat/"),
+            "/chat/",
+        )
+        self.assertEqual(_relative_push_url("/planning/"), "/planning/")
+
+    def test_push_uses_open_endpoint(self):
+        from unittest.mock import patch
+
+        user = User.objects.create_user(
+            username="push1",
+            email="",
+            password="x",
+        )
+        captured = {}
+
+        def fake_push(sub, *, title, body, url):
+            captured["url"] = url
+            return True
+
+        fake_sub = type("Sub", (), {"pk": 1, "user_agent": ""})()
+
+        with patch("users.notify.vapid_configured", return_value=True), patch(
+            "users.models.PushSubscription"
+        ) as sub_cls, patch("users.notify.send_web_push", side_effect=fake_push):
+            sub_cls.objects.filter.return_value = [fake_sub]
+            notify_users([user], title="JOY", body="Salut", url="/chat/")
+
+        notif = UserNotification.objects.get(user=user)
+        self.assertEqual(
+            captured["url"],
+            reverse("account_notification_open", args=[notif.pk]),
+        )
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    VAPID_PUBLIC_KEY="",
+    VAPID_PRIVATE_KEY="",
+)
+class NotificationOpenRedirectTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="open1",
+            email="open1@example.com",
+            password="x",
+        )
+        self.client = Client()
+        self.client.login(username="open1", password="x")
+
+    def test_open_redirects_to_content_url(self):
+        notif = UserNotification.objects.create(
+            user=self.user,
+            title="Salon",
+            body="Nouveau message",
+            url="/chat/42/?msg=99",
+        )
+        r = self.client.get(reverse("account_notification_open", args=[notif.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.url, "/chat/42/?msg=99")
+        notif.refresh_from_db()
+        self.assertIsNotNone(notif.read_at)
+
+    def test_open_without_url_returns_inbox(self):
+        notif = UserNotification.objects.create(
+            user=self.user,
+            title="Info",
+            body="Sans lien",
+            url="",
+        )
+        r = self.client.get(reverse("account_notification_open", args=[notif.pk]))
+        self.assertRedirects(r, reverse("account_notifications"))

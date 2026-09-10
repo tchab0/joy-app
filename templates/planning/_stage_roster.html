@@ -1,0 +1,132 @@
+{# Disposition scène (chaises / pupitres). show_invites=True → formulaires staff. #}
+<div class="pl-stage" aria-label="Disposition orchestre"{% if show_invites %} data-roster-invite-locks{% endif %}>
+  {% for row in roster_rows %}
+  <div class="pl-stage__row">
+    {% for cell in row %}
+    <div class="pl-stage__seat{% if cell.needs_substitute %} is-open{% endif %}" data-poste="{{ cell.poste }}">
+      <div class="pl-stage__poste">{{ cell.label }}</div>
+      {% for p in cell.parts %}
+      <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+        <div class="pl-stage__line">
+          <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+          {% if p.role_kind == "remplacant" %}
+          <span class="pl-stage__role">remplaçant</span>
+          {% endif %}
+        </div>
+        {% if show_invites and p.status.code == "maybe" %}
+        <p class="pl-stage__meta joy-staff-ui">
+          {% if p.maybe_remind_at %}
+          Relance le {{ p.maybe_remind_at|date:"d/m/Y" }}{% if p.maybe_remind_weekly %} (hebdo){% endif %}
+          {% elif p.maybe_remind_weekly %}
+          Relance chaque semaine
+          {% else %}
+          Pas de date de relance
+          {% endif %}
+        </p>
+        {% endif %}
+        {% if p.comment %}
+        <p class="pl-stage__meta">{{ p.comment }}</p>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div class="pl-stage__person pl-stage__person--vacant" aria-label="Poste vacant">
+        {% if show_invites and cell.eligible %}
+        <form class="pl-stage__invite joy-staff-ui"
+              method="post"
+              action="{% url 'planning:invite_musician' event.pk %}">
+          {% csrf_token %}
+          <label class="visually-hidden" for="{{ id_prefix|default:'stage' }}_sub_{{ cell.poste }}">Remplaçant {{ cell.label }}</label>
+          <select name="invite_slot" id="{{ id_prefix|default:'stage' }}_sub_{{ cell.poste }}" required
+                  aria-label="Remplaçant pour {{ cell.label }}">
+            <option value="">Remplaçant…</option>
+            {% for e in cell.eligible %}
+            <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+        </form>
+        <span class="pl-stage__invite-none joy-musician-fallback">Vacant</span>
+        {% elif show_invites %}
+        <span class="pl-stage__invite-none joy-staff-ui">Aucun remp.</span>
+        <span class="pl-stage__invite-none joy-musician-fallback">Vacant</span>
+        {% else %}
+        <span class="pl-stage__invite-none">Vacant</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if show_invites and cell.parts and cell.needs_substitute %}
+        {% if cell.eligible %}
+        <form class="pl-stage__invite joy-staff-ui"
+              method="post"
+              action="{% url 'planning:invite_musician' event.pk %}">
+          {% csrf_token %}
+          <label class="visually-hidden" for="{{ id_prefix|default:'stage' }}_sub_filled_{{ cell.poste }}">Remplaçant {{ cell.label }}</label>
+          <select name="invite_slot" id="{{ id_prefix|default:'stage' }}_sub_filled_{{ cell.poste }}" required
+                  aria-label="Remplaçant pour {{ cell.label }}">
+            <option value="">Remplaçant…</option>
+            {% for e in cell.eligible %}
+            <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+        </form>
+        {% else %}
+        <span class="pl-stage__invite-none joy-staff-ui">Aucun remp.</span>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if roster_extras or roster_unassigned %}
+<div class="pl-stage-extras">
+  <h3>Autres</h3>
+  {% for cell in roster_extras %}
+  <div class="pl-stage__seat pl-stage__seat--extra{% if cell.needs_substitute %} is-open{% endif %}" data-poste="{{ cell.poste }}">
+    <div class="pl-stage__poste">{{ cell.label }}</div>
+    {% for p in cell.parts %}
+    <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+      <div class="pl-stage__line">
+        <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+        {% if p.role_kind == "remplacant" %}
+        <span class="pl-stage__role">remplaçant</span>
+        {% endif %}
+      </div>
+      {% if p.comment %}
+      <p class="pl-stage__meta">{{ p.comment }}</p>
+      {% endif %}
+    </div>
+    {% empty %}
+    <span class="pl-stage__invite-none">Vacant</span>
+    {% endfor %}
+    {% if show_invites and cell.needs_substitute and cell.eligible %}
+    <form class="pl-stage__invite joy-staff-ui"
+          method="post"
+          action="{% url 'planning:invite_musician' event.pk %}">
+      {% csrf_token %}
+      <select name="invite_slot" required aria-label="Remplaçant pour {{ cell.label }}">
+        <option value="">Remplaçant…</option>
+        {% for e in cell.eligible %}
+        <option value="{{ e.invite_slot }}" data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="pl-btn pl-btn--primary">Inviter</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% for p in roster_unassigned %}
+  <div class="pl-stage__person pl-stage__person--{{ p.status.code }}">
+    <div class="pl-stage__line">
+      <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+      <span class="pl-stage__role">sans poste</span>
+    </div>
+    {% if p.comment %}
+    <p class="pl-stage__meta">{{ p.comment }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

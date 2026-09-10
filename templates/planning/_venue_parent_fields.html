@@ -51,8 +51,9 @@
          $watch('venueMode', sync);
          if (typeof modalOpen !== 'undefined') {
            $watch('modalOpen', (open) => { if (open) sync(); });
+         } else {
+           sync();
          }
-         sync();
        ">
     <input type="hidden" name="venue_latitude" id="{{ p }}_venue_lat" value="">
     <input type="hidden" name="venue_longitude" id="{{ p }}_venue_lng" value="">

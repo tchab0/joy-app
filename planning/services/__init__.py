@@ -15,13 +15,17 @@ from planning.services.calendar_ops import (
     attach_calendar_summaries,
     calendar_chat_links_for_user,
     attach_calendar_chat_links,
+    attach_calendar_participations,
+    attach_calendar_recent_messages,
     attach_calendar_setlists,
+    attach_calendar_rehearsal_plans,
     attach_calendar_roadmaps,
     chat_link_for_event,
 )
 from planning.services.equipment import (
     ensure_default_equipment,
     get_or_create_equipment_item,
+    suggest_event_equipment,
 )
 from planning.services.invites import (
     titulaires_queryset,
@@ -33,6 +37,7 @@ from planning.services.invites import (
     invite_titulaires_to_event,
     notify_event_invite,
     send_event_photos_requests,
+    ensure_open_participation,
     invite_musician_to_event,
     propose_event,
 )
@@ -58,6 +63,8 @@ from planning.services.polls import (
     draft_proposal_for_event,
     open_proposal_for_event,
     user_can_edit_poll_deadline,
+    user_can_edit_poll_options,
+    update_poll_options,
 )
 from planning.services.roster import (
     roster_by_stage,
@@ -74,6 +81,8 @@ from planning.services.rsvp import (
     notify_staff_presence_invalidated,
     get_participation_for,
     require_participation,
+    BoardRow,
+    board_rows_for_user,
 )
 from planning.services.status import (
     ensure_participation_statuses,

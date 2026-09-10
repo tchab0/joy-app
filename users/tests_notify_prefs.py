@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -147,6 +148,39 @@ class NotifyFrequencyDeliveryTests(TestCase):
         )
         self.assertEqual(n, 1)
 
+    def test_chat_reply_respects_daily_override(self):
+        from users.notify_prefs import TYPE_CHAT_REPLY
+
+        user = User.objects.create_user(
+            username="rep1",
+            email="rep1@example.com",
+            password="x",
+            notify_frequency=FREQ_REALTIME,
+            notify_digest_hour=18,
+        )
+        NotificationTypePref.objects.create(
+            user=user,
+            notify_type=TYPE_CHAT_REPLY,
+            frequency=FREQ_DAILY,
+            digest_hour=18,
+        )
+        n = notify_users(
+            [user],
+            title="JOY — Salon",
+            body="Réponse",
+            url="/chat/1/?msg=2",
+            related_type="chat_reply",
+            related_id=2,
+            notify_type=TYPE_CHAT_REPLY,
+            force_immediate=False,
+        )
+        self.assertEqual(n, 0)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(
+            UserNotification.objects.filter(user=user, related_type="chat_reply").count(),
+            1,
+        )
+
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -211,6 +245,46 @@ class DigestCommandFrequencyTests(TestCase):
         self.musician.refresh_from_db()
         self.assertIsNotNone(self.musician.notify_digest_last_sent_at)
 
+    def test_failed_delivery_still_advances_chat_cursors(self):
+        """Inbox créée + échec SMTP/push ne doit pas rejouer le même digest."""
+        self.other.notify_frequency = FREQ_REALTIME
+        self.other.save(update_fields=["notify_frequency"])
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.other)
+        sync_musician_to_orchestra(self.musician)
+        # L’auteur n’est pas digesté ; seul self.other reçoit le chatter.
+        other_m = ChatMembership.objects.get(room=room, user=self.other)
+        other_m.subscribed = True
+        other_m.save(update_fields=["subscribed"])
+        musician_m = ChatMembership.objects.get(room=room, user=self.musician)
+        musician_m.subscribed = False
+        musician_m.save(update_fields=["subscribed"])
+
+        post_message(room=room, author=self.musician, body="Chatter sans push")
+
+        with patch("users.notify._try_push", return_value=False), patch(
+            "users.notify._try_email", return_value=False
+        ):
+            sent = send_due_notification_digests(now=timezone.now(), dry_run=False)
+        self.assertEqual(sent, 0)
+        other_m.refresh_from_db()
+        self.assertGreater(other_m.last_digested_message_id, 0)
+        inbox_count = UserNotification.objects.filter(
+            user=self.other, title="JOY — Chat"
+        ).count()
+        self.assertEqual(inbox_count, 1)
+
+        with patch("users.notify._try_push", return_value=False), patch(
+            "users.notify._try_email", return_value=False
+        ):
+            send_due_notification_digests(now=timezone.now(), dry_run=False)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                user=self.other, title="JOY — Chat"
+            ).count(),
+            1,
+        )
+
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -232,6 +306,11 @@ class NotifyPrefsViewTests(TestCase):
         r = self.client.get(reverse("chat:prefs"))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Fréquence par défaut")
+        self.assertContains(r, "Par salon")
+        self.assertContains(r, "Alertes collectives")
+        self.assertContains(r, "Concerts et dates")
+        self.assertContains(r, "Répétitions")
+        self.assertNotContains(r, "Aucun type disponible")
         r = self.client.post(
             reverse("chat:prefs"),
             {

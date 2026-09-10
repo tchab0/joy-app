@@ -26,6 +26,16 @@ class User(AbstractUser):
     phone_verified = models.BooleanField("Téléphone vérifié", default=False)
     email_verified = models.BooleanField("E-mail vérifié", default=False)
 
+    must_change_password = models.BooleanField(
+        "Doit changer de mot de passe",
+        default=False,
+        db_index=True,
+        help_text=(
+            "Mot de passe provisoire : la navigation est bloquée sur "
+            "« Nouveau mot de passe » jusqu’au changement."
+        ),
+    )
+
     is_musician = models.BooleanField(
         "Musicien de l’orchestre",
         default=False,

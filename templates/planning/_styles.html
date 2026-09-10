@@ -1,3 +1,16 @@
 {% load static %}
-<link rel="stylesheet" href="{% static 'planning/planning.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'planning/planning.css' %}?v=16">
+<style>
+  /* Compact sous 720px (titre module masqué) — inline pour bypass cache CSS immutable */
+  .pl { padding-top: .25rem !important; }
+  .pl-head h1.pl-head__title--module { display: none !important; }
+  .pl-head:has(h1.pl-head__title--module) { margin-bottom: .25rem !important; }
+  .pl-head:has(h1.pl-head__title--module) .page-lead--in-head { margin-top: 0 !important; }
+  @media (min-width: 720px) {
+    .pl { padding-top: 2rem !important; }
+    .pl-head h1.pl-head__title--module { display: block !important; }
+    .pl-head:has(h1.pl-head__title--module) { margin-bottom: 1.75rem !important; }
+    .pl-head:has(h1.pl-head__title--module) .page-lead--in-head { margin-top: .45rem !important; }
+  }
+</style>
 {% include "includes/_weather_styles.html" %}

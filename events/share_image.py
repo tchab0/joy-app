@@ -17,10 +17,10 @@ OG_HEIGHT = 630
 
 BG = (245, 242, 236)  # --bg
 SURFACE = (250, 248, 244)  # --surface
-TEXT = (26, 23, 20)  # --text
+TEXT = (18, 16, 14)  # --text
 MUTED = (107, 101, 96)  # --muted
-ACCENT = (201, 79, 58)  # --accent
-GOLD_TEXT = (138, 106, 26)  # --gold-text
+ACCENT = (194, 90, 54)  # --accent
+GOLD_TEXT = (141, 95, 22)  # --gold-text
 ANNULE = (180, 60, 60)
 BORDER = (230, 226, 218)
 
@@ -71,7 +71,7 @@ def content_fingerprint(event) -> str:
     """Hash des champs affichés sur l'image (invalidation sans updated_at)."""
     debut = dj_tz.localtime(event.date_debut) if event.date_debut else None
     parts = [
-        "og-v2-concert",  # bump layout (mention CONCERT)
+        "og-v3-concert",  # bump layout / logo
         event.slug or "",
         event.titre or "",
         event.statut or "",

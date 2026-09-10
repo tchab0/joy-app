@@ -267,3 +267,32 @@ class PageFeedbackRating(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} → {self.feedback_id} ({self.importance}/5)"
+
+
+class PageFeedbackMessage(models.Model):
+    """Message d’échange entre le staff et l’émetteur d’un retour."""
+
+    feedback = models.ForeignKey(
+        PageFeedback,
+        on_delete=models.CASCADE,
+        related_name="thread_messages",
+        verbose_name="Retour",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="page_feedback_messages",
+        verbose_name="Expéditeur",
+    )
+    body = models.TextField("Message")
+    is_from_staff = models.BooleanField("Message staff", default=False)
+    created_at = models.DateTimeField("Date", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Message sur un retour"
+        verbose_name_plural = "Messages sur les retours"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        who = "staff" if self.is_from_staff else "émetteur"
+        return f"{who} → {self.feedback_id} ({self.created_at:%d/%m/%Y %H:%M})"

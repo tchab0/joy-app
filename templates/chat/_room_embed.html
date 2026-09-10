@@ -1,13 +1,13 @@
 {% comment %}
 Embedded chat salon. Expects: room, membership, messages_data, messages_script_id, ws_url, api_send_url,
 api_react_url, current_user_id, is_planning_staff, draft_proposal, invite_musicians, open_proposal,
-embedded (True), show_chat_chrome (False on poll).
+embedded (True), show_chat_chrome (False on poll), compact (False), show_staff_panel (optional).
 {% endcomment %}
 {% if room %}
 {{ messages_data|json_script:messages_script_id }}
 {{ mention_members|json_script:mention_members_script_id }}
 {{ read_cursors|json_script:read_cursors_script_id }}
-<div class="chat-room{% if embedded %} chat-room--embedded{% endif %}"
+<div class="chat-room{% if embedded %} chat-room--embedded{% endif %}{% if compact %} chat-room--compact{% endif %}"
      x-data="chatRoom({
        messagesScriptId: '{{ messages_script_id|escapejs }}',
        membersScriptId: '{{ mention_members_script_id|escapejs }}',
@@ -17,22 +17,26 @@ embedded (True), show_chat_chrome (False on poll).
        apiSendUrl: '{{ api_send_url|escapejs }}',
        apiReactUrl: '{{ api_react_url|escapejs }}',
        apiEditUrl: '{{ api_edit_url|escapejs }}',
+       apiDeleteUrl: '{{ api_delete_url|escapejs }}',
        apiMembersUrl: '{{ api_members_url|escapejs }}',
        apiReadUrl: '{{ api_read_url|escapejs }}',
        csrfToken: '{{ csrf_token }}',
        initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
-       embedded: {{ embedded|yesno:'true,false' }}
+       embedded: {{ embedded|yesno:'true,false' }},
+       roomId: {{ room.pk }},
+       isRehearsalRoom: {{ is_rehearsal_room|yesno:'true,false' }},
+       composerPlaceholder: '{{ composer_placeholder|default:"Message… — @ pour mentionner"|escapejs }}'
      })"
      x-init="init()"
      @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
 
   {% if show_chat_chrome %}
   {% include "chat/_room_chrome.html" %}
-  {% else %}
+  {% elif not compact %}
   <p class="chat-room__embed-title">Salon « {{ room.title }} »</p>
   {% endif %}
 
-  {% if is_planning_staff and room.event %}
+  {% if show_staff_panel %}
   {% include "chat/_room_staff_panel.html" %}
   {% endif %}
 
@@ -46,6 +50,17 @@ embedded (True), show_chat_chrome (False on poll).
     </form>
   </div>
   {% endif %}
+
+  <div class="chat-setlist-tip" x-show="setlistTipVisible" x-cloak x-transition.opacity.duration.200ms>
+    <div class="chat-setlist-tip__text">
+      <strong>Setlist de la répé</strong>
+      Proposez un morceau ici — les autres votent avec 👍. Le staff compose ensuite la setlist.
+    </div>
+    <button type="button" class="chat-setlist-tip__dismiss" @click="dismissSetlistTip()"
+            aria-label="Masquer ce rappel" title="Masquer">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
 
   {% include "chat/_room_thread_composer.html" %}
 </div>

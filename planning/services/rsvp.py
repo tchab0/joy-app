@@ -5,6 +5,7 @@ import json
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
@@ -108,7 +109,7 @@ def set_participation_response(
     old_code = participation.status.code if participation.status_id else None
     new_code = RESPOND_MAP[response]
     comment = (comment or "").strip()
-    # Confirmé → Non (invalidation) ok ; Confirmé → Peut-être interdit.
+    # Dispo → Non (invalidation) ok ; Dispo → Peut-être interdit.
     if old_code == "confirmed" and new_code == "maybe":
         raise ValueError(
             "Une présence confirmée ne peut pas passer en « peut-être »."
@@ -274,7 +275,9 @@ def notify_staff_presence_invalidated(
             url = reverse("planning:event_roster", kwargs={"pk": event.pk})
     except Exception:
         url = "/planning/moi/"
-    staff = User.objects.filter(is_active=True, is_staff=True)
+    staff = User.objects.filter(is_active=True, is_staff=True).exclude(
+        pk=musician.pk
+    )
     try:
         return notify_users(
             staff,
@@ -307,5 +310,59 @@ def require_participation(event, user) -> EventParticipation:
         event=event,
         user=user,
     )
+
+
+class BoardRow:
+    """Ligne « Mes dates » : participation réelle ou date encore sans réponse."""
+
+    __slots__ = ("event", "participation", "pk", "status", "poste")
+
+    def __init__(self, event, participation: EventParticipation | None = None):
+        self.event = event
+        self.participation = participation
+        if participation is not None:
+            self.pk = participation.pk
+            self.status = participation.status
+            self.poste = participation.poste
+        else:
+            self.pk = None
+            self.status = SimpleNamespace(
+                code="invited",
+                label="À répondre",
+                color_token="warning",
+            )
+            self.poste = ""
+
+    @property
+    def poste_label(self) -> str:
+        if self.participation is not None:
+            return self.participation.poste_label
+        return ""
+
+
+def board_rows_for_user(user, *, limit: int = 40) -> list[BoardRow]:
+    """
+    Toutes les dates à venir (confirmées ou non), pour positionnement libre.
+
+    Plus besoin d’avoir été invité : une ligne sans participation = « À répondre ».
+    """
+    now = timezone.now()
+    events = list(
+        Event.objects.filter(
+            date_debut__gte=now,
+            statut__in=[Event.Statut.CONFIRME, Event.Statut.TENTATIVE],
+        )
+        .select_related("venue", "type")
+        .order_by("date_debut")[:limit]
+    )
+    if not events:
+        return []
+    parts = {
+        p.event_id: p
+        for p in EventParticipation.objects.filter(
+            user=user, event_id__in=[e.pk for e in events]
+        ).select_related("status")
+    }
+    return [BoardRow(event, parts.get(event.pk)) for event in events]
 
 

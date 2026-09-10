@@ -29,12 +29,16 @@ INSTALLED_APPS = [
     "stats.apps.StatsConfig",
 ]
 
+# Permet l’aperçu iframe same-origin (présentation staff, etc.)
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "users.middleware.ForcePasswordChangeMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.NoIndexPrivateMiddleware",
@@ -165,10 +169,41 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "admin@jazz-orchestra-yonnai
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "JOY <admin@jazz-orchestra-yonnais.fr>")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@jazz-orchestra-yonnais.fr")
+# Coupe tous les envois SMTP (notif, OTP, mailings) sans toucher inbox / push.
+EMAIL_SENDING_ENABLED = os.environ.get("EMAIL_SENDING_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+if not EMAIL_SENDING_ENABLED:
+    EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+
+# IMAP — purge spam SEO EN (purge_seo_spam_mail). Réutilise le mot de passe SMTP si IMAP_PASSWORD vide.
+IMAP_HOST = os.environ.get("IMAP_HOST", "imap.hostinger.com")
+IMAP_PORT = int(os.environ.get("IMAP_PORT", "993"))
+IMAP_USER = os.environ.get("IMAP_USER", "")  # défaut : EMAIL_HOST_USER
+IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD", "")  # défaut : EMAIL_HOST_PASSWORD
+IMAP_MAILBOX = os.environ.get("IMAP_MAILBOX", "INBOX")
 SITE_URL = os.environ.get("SITE_URL", "https://jazz-orchestra-yonnais.fr")
 GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "")
 GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
 USAGE_EVENT_RETENTION_DAYS = int(os.environ.get("USAGE_EVENT_RETENTION_DAYS", "90"))
+
+# Coordonnées / réseaux (JSON-LD MusicGroup + sameAs)
+ORG_STREET_ADDRESS = os.environ.get("ORG_STREET_ADDRESS", "51 Rue de la Vergne")
+ORG_POSTAL_CODE = os.environ.get("ORG_POSTAL_CODE", "85000")
+ORG_TELEPHONE = os.environ.get("ORG_TELEPHONE", "")
+SOCIAL_FACEBOOK_URL = os.environ.get(
+    "SOCIAL_FACEBOOK_URL",
+    "https://www.facebook.com/jazzorchestrayonnais",
+)
+SOCIAL_INSTAGRAM_URL = os.environ.get("SOCIAL_INSTAGRAM_URL", "")
+SOCIAL_YOUTUBE_URL = os.environ.get("SOCIAL_YOUTUBE_URL", "")
+SOCIAL_LINKABAND_URL = os.environ.get(
+    "SOCIAL_LINKABAND_URL",
+    "https://linkaband.com/jazz-orchestra-yonnais",
+)
 
 CACHES = {
     "default": {
@@ -183,4 +218,5 @@ CACHE_TTL_CONCERTS = 300
 CACHE_TTL_GOODIES = 1800
 CACHE_TTL_DON = 1800
 CACHE_TTL_ADHESION = 1800
+CACHE_TTL_PRESTATIONS = 1800
 

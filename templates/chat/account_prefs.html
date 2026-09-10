@@ -95,6 +95,38 @@
     line-height: 1.35;
     margin: 0 0 .55rem;
   }
+  .chat-prefs__badge {
+    display: inline-block;
+    margin-left: .4rem;
+    padding: .1rem .4rem;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--accent-h);
+    font-size: .72rem;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .chat-prefs__badge--muted {
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .chat-prefs__badge--staff {
+    color: var(--staff);
+    border-color: rgba(var(--staff-rgb), .35);
+    background: rgba(var(--staff-rgb), .08);
+    font-weight: 600;
+  }
+  .chat-prefs__row--staff {
+    border-left: 3px solid var(--staff);
+    padding-left: .75rem;
+  }
+  .chat-prefs__row--staff .chat-prefs__row-title { color: var(--staff); }
+  .chat-prefs__empty {
+    color: var(--muted);
+    font-size: .9rem;
+    margin: 0;
+  }
   .chat-prefs__row-controls {
     display: flex;
     flex-direction: column;
@@ -185,8 +217,8 @@
 <section class="chat-prefs" x-data="joyPushPrefs()" x-init="init()">
   <h1>Préférences de notifications</h1>
   {% page_lead "chat.prefs" %}
-    Choisissez la fréquence des alertes (push ou e-mail), puis affinez
-    par type ou par salon si besoin. L’historique in-app reste à jour.
+    Fréquence par défaut, puis exceptions : chaque salon, et les alertes
+    collectives (concerts, répétitions, sondages…). L’historique in-app reste à jour.
   {% endpage_lead %}
 
   {% if form.errors %}
@@ -249,25 +281,32 @@
     </div>
 
     <div class="chat-prefs__section">
-      <h2>Exceptions par type</h2>
+      <h2>Par salon</h2>
       <p>
-        Contournez le choix par défaut : temps réel, ou une fois par jour
-        à l’heure indiquée. Laissez « Comme le défaut » pour ne rien changer.
+        Chaque salon peut contourner le défaut : temps réel, ou une fois par jour.
+        Si les alertes sont coupées dans le salon, réactivez-les depuis le menu ⋯ du salon.
       </p>
-      {% for row in type_rows %}
-      <div class="chat-prefs__row"
+      {% for row in room_rows %}
+      <div class="chat-prefs__row{% if row.membership.room.kind == 'staff' %} chat-prefs__row--staff{% endif %}"
            x-data="{ mode: '{{ row.mode|escapejs }}' }">
-        <p class="chat-prefs__row-title">{{ row.spec.label }}</p>
-        <p class="chat-prefs__row-help">{{ row.spec.help_text }}</p>
+        <p class="chat-prefs__row-title">
+          {{ row.membership.room.title }}
+          {% if not row.subscribed %}
+          <span class="chat-prefs__badge{% if row.membership.room.kind == 'staff' %} chat-prefs__badge--staff{% endif %}">alertes off</span>
+          {% else %}
+          <span class="chat-prefs__badge {% if row.membership.room.kind == 'staff' %}chat-prefs__badge--staff{% else %}chat-prefs__badge--muted{% endif %}">{{ row.kind_label }}</span>
+          {% endif %}
+        </p>
         <div class="chat-prefs__row-controls">
-          <select name="ov_type_{{ row.spec.key }}" x-model="mode" aria-label="Fréquence {{ row.spec.label }}">
+          <select name="ov_room_{{ row.membership.pk }}" x-model="mode"
+                  aria-label="Fréquence {{ row.membership.room.title }}">
             <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
             <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
             <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
           </select>
-          <select name="ov_type_{{ row.spec.key }}_hour"
+          <select name="ov_room_{{ row.membership.pk }}_hour"
                   x-show="mode === 'daily'" x-cloak
-                  aria-label="Heure {{ row.spec.label }}">
+                  aria-label="Heure {{ row.membership.room.title }}">
             {% for h, label in hour_choices %}
             <option value="{{ h }}" {% if row.hour == h %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
@@ -275,42 +314,40 @@
         </div>
       </div>
       {% empty %}
-      <p>Aucun type disponible.</p>
+      <p class="chat-prefs__empty">Aucun salon pour le moment. Les salons apparaîtront ici dès que vous y aurez accès.</p>
       {% endfor %}
     </div>
 
-    {% if room_rows %}
-    <details class="chat-prefs__section" {% if room_rows|length <= 8 %}open{% endif %}>
-      <summary>Exceptions par salon ({{ room_rows|length }})</summary>
-      <div class="chat-prefs__details-body">
-        <p style="color:var(--muted);font-size:.9rem;line-height:1.4;margin:0 0 .85rem">
-          Prioritaire sur le type « Messages des salons ».
-          Les salons sans alertes n’apparaissent pas — réactivez-les depuis le salon.
-        </p>
-        {% for row in room_rows %}
-        <div class="chat-prefs__row"
-             x-data="{ mode: '{{ row.mode|escapejs }}' }">
-          <p class="chat-prefs__row-title">{{ row.membership.room.title }}</p>
-          <div class="chat-prefs__row-controls">
-            <select name="ov_room_{{ row.membership.pk }}" x-model="mode"
-                    aria-label="Fréquence {{ row.membership.room.title }}">
-              <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
-              <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
-              <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
-            </select>
-            <select name="ov_room_{{ row.membership.pk }}_hour"
-                    x-show="mode === 'daily'" x-cloak
-                    aria-label="Heure {{ row.membership.room.title }}">
-              {% for h, label in hour_choices %}
-              <option value="{{ h }}" {% if row.hour == h %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
+    <div class="chat-prefs__section">
+      <h2>Alertes collectives</h2>
+      <p>
+        Concerts, répétitions, sondages… — indépendamment des salons.
+        Contournez le défaut (temps réel ou une fois par jour), ou laissez « Comme le défaut ».
+      </p>
+      {% for row in type_rows %}
+      <div class="chat-prefs__row{% if row.key == 'staff_alert' or row.key == 'contact' %} chat-prefs__row--staff{% endif %}"
+           x-data="{ mode: '{{ row.mode|escapejs }}' }">
+        <p class="chat-prefs__row-title">{{ row.label }}</p>
+        <p class="chat-prefs__row-help">{{ row.help_text }}</p>
+        <div class="chat-prefs__row-controls">
+          <select name="ov_type_{{ row.key }}" x-model="mode" aria-label="Fréquence {{ row.label }}">
+            <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
+            <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
+            <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
+          </select>
+          <select name="ov_type_{{ row.key }}_hour"
+                  x-show="mode === 'daily'" x-cloak
+                  aria-label="Heure {{ row.label }}">
+            {% for h, label in hour_choices %}
+            <option value="{{ h }}" {% if row.hour == h %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
         </div>
-        {% endfor %}
       </div>
-    </details>
-    {% endif %}
+      {% empty %}
+      <p class="chat-prefs__empty">Impossible de charger les types d’alertes. Réessayez après rechargement.</p>
+      {% endfor %}
+    </div>
 
     <div class="chat-prefs__section">
       <label class="chat-prefs__opt" style="border:0;padding:0">

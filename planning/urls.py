@@ -42,6 +42,11 @@ urlpatterns = [
         name="respond",
     ),
     path(
+        "events/<int:pk>/respond/",
+        views.RespondEventView.as_view(),
+        name="respond_event",
+    ),
+    path(
         "participations/<int:pk>/propose-sub/",
         views.ProposeSubstituteView.as_view(),
         name="propose_sub",
@@ -87,6 +92,11 @@ urlpatterns = [
         name="update_poll_deadline",
     ),
     path(
+        "admin/polls/<int:pk>/options/",
+        views.UpdatePollOptionsView.as_view(),
+        name="update_poll_options",
+    ),
+    path(
         "admin/polls/<int:pk>/launch/",
         views.LaunchPollView.as_view(),
         name="launch_poll",
@@ -110,6 +120,11 @@ urlpatterns = [
         "admin/events/<int:pk>/invite-titulaires/",
         views.InviteTitulairesView.as_view(),
         name="invite_titulaires",
+    ),
+    path(
+        "events/<int:pk>/equipment/suggest/",
+        views.SuggestEventEquipmentView.as_view(),
+        name="suggest_event_equipment",
     ),
     path(
         "admin/events/<int:pk>/equipment/",

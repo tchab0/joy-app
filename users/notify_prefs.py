@@ -24,6 +24,7 @@ DIGEST_FREQUENCIES = frozenset(
 OVERRIDE_FREQUENCIES = frozenset({FREQ_REALTIME, FREQ_DAILY})
 
 TYPE_CHAT = "chat"
+TYPE_CHAT_REPLY = "chat_reply"
 TYPE_EVENT = "event"
 TYPE_PROPOSAL = "proposal"
 TYPE_ROADMAP = "event_roadmap"
@@ -32,12 +33,16 @@ TYPE_REHEARSAL = "rehearsal"
 TYPE_PHOTOS = "photos"
 TYPE_CONTACT = "contact"
 TYPE_STAFF_ALERT = "staff_alert"
+TYPE_FEEDBACK = "feedback"
 
+# Types exclus du récap inbox (déjà couverts par le digest salon).
+# chat_reply reste digéré via l’inbox selon la préf. dédiée.
 CHAT_RELATED_TYPES = frozenset({"chat_msg", "chat"})
 
 RELATED_TO_TYPE = {
     "chat_msg": TYPE_CHAT,
     "chat": TYPE_CHAT,
+    "chat_reply": TYPE_CHAT_REPLY,
     "event": TYPE_EVENT,
     "proposal": TYPE_PROPOSAL,
     "event_roadmap": TYPE_ROADMAP,
@@ -46,6 +51,7 @@ RELATED_TO_TYPE = {
     "photos": TYPE_PHOTOS,
     "contact": TYPE_CONTACT,
     "staff_alert": TYPE_STAFF_ALERT,
+    "feedback": TYPE_FEEDBACK,
 }
 
 WEEKDAY_LABELS = (
@@ -71,39 +77,51 @@ class NotifyTypeSpec:
 
 TYPE_CATALOG: tuple[NotifyTypeSpec, ...] = (
     NotifyTypeSpec(
-        TYPE_CHAT,
-        "Messages des salons",
-        "Nouveaux messages regroupés. Les @mentions et réponses partent toujours tout de suite.",
+        TYPE_EVENT,
+        "Concerts et dates",
+        "Invitations / convocations aux concerts et autres dates (hors répétitions).",
     ),
     NotifyTypeSpec(
-        TYPE_EVENT,
-        "Invitations aux événements",
-        "Quand vous êtes ajouté·e à un concert ou une date.",
+        TYPE_REHEARSAL,
+        "Répétitions",
+        "Création d’une répétition à laquelle vous êtes attendu·e.",
     ),
     NotifyTypeSpec(
         TYPE_PROPOSAL,
         "Sondages de disponibilité",
-        "Lancement d’un sondage et rappels de deadline.",
+        "Lancement d’un sondage et rappels avant la deadline.",
     ),
     NotifyTypeSpec(
         TYPE_ROADMAP,
         "Feuilles de route",
-        "Quand une feuille de route est publiée ou mise à jour.",
+        "Publication ou mise à jour d’une feuille de route.",
     ),
     NotifyTypeSpec(
         TYPE_PARTICIPATION,
-        "Relances et remplacements",
+        "Relances de disponibilité",
         "Relances « peut-être » et propositions de remplacement.",
-    ),
-    NotifyTypeSpec(
-        TYPE_REHEARSAL,
-        "Nouvelles répétitions",
-        "Création d’une répétition à laquelle vous êtes attendu·e.",
     ),
     NotifyTypeSpec(
         TYPE_PHOTOS,
         "Demandes de photos",
-        "Rappel une semaine après un événement pour partager vos médias.",
+        "Rappel après un événement pour partager photos et vidéos.",
+    ),
+    NotifyTypeSpec(
+        TYPE_FEEDBACK,
+        "Retours utilisateurs",
+        "Nouveaux retours (staff) et réponses du staff sur vos propres retours.",
+    ),
+    NotifyTypeSpec(
+        TYPE_CHAT,
+        "Chat — réglage commun",
+        "Messages de salon sans exception individuelle ci-dessous. "
+        "Les @mentions restent toujours immédiates.",
+    ),
+    NotifyTypeSpec(
+        TYPE_CHAT_REPLY,
+        "Réponses à mes messages",
+        "Quand quelqu’un répond à un de vos messages (hors @mention). "
+        "Temps réel, une fois par jour, ou suivre le réglage par défaut.",
     ),
     NotifyTypeSpec(
         TYPE_CONTACT,
@@ -120,6 +138,22 @@ TYPE_CATALOG: tuple[NotifyTypeSpec, ...] = (
 )
 
 TYPE_LABELS = {spec.key: spec.label for spec in TYPE_CATALOG}
+
+STAFF_ONLY_TYPES = frozenset(spec.key for spec in TYPE_CATALOG if spec.staff_only)
+
+
+def is_staff_only_notify_type(notify_type: str) -> bool:
+    """True si le type d’alerte est réservé au staff (ex. annulations de présence)."""
+    key = pref_type_for_related(notify_type or "")
+    return key in STAFF_ONLY_TYPES
+
+
+def user_is_staff_recipient(user) -> bool:
+    return bool(
+        user is not None
+        and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+    )
+
 
 
 @dataclass

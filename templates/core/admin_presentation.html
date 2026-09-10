@@ -1,0 +1,989 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Présentation du site — JOY{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block extra_css %}
+<style>
+  .pres {
+    --pres-pad: 1rem;
+    --pres-split-left: 50;
+    --pres-zoom: 100;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: var(--pres-pad) var(--pres-pad) 6rem;
+    color: var(--text);
+  }
+  .pres__head {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+    flex-shrink: 0;
+  }
+  .pres__back {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: .9rem;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .pres h1 {
+    font-family: var(--font-d);
+    font-size: 1.6rem;
+    margin: 0;
+    color: var(--text);
+  }
+  .pres__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+  }
+  .pres__toolbar .btn,
+  .pres__toolbar button {
+    min-height: 44px;
+    font-size: .88rem;
+  }
+  .pres__counter {
+    color: var(--muted);
+    font-size: .88rem;
+    margin-left: auto;
+  }
+
+  /* Body: slide + demo panel */
+  .pres__body {
+    display: block;
+  }
+  .pres__main {
+    min-width: 0;
+  }
+  .pres__demo {
+    display: none;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .pres__demo-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .pres__demo-label {
+    font-size: .78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+  }
+  .pres__demo-url {
+    flex: 1;
+    font-size: .78rem;
+    color: var(--accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pres__demo-ext {
+    min-height: 36px;
+    padding: .35rem .6rem;
+    font-size: .78rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .pres__demo-ext:hover { border-color: var(--accent); color: var(--accent); }
+  .pres__demo-toolbar {
+    display: none;
+    flex-wrap: wrap;
+    gap: .5rem .75rem;
+    align-items: center;
+    padding: .45rem .75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .pres__ctrl-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+  }
+  .pres__ctrl-label {
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    margin-right: .15rem;
+  }
+  .pres__ctrl-group button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: .4rem .65rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--text);
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pres__ctrl-group button:hover { border-color: var(--accent); color: var(--accent); }
+  .pres__ctrl-group button.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .pres__zoom-reset { min-width: 3.5rem; }
+  .pres__splitter {
+    display: none;
+    width: 10px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    touch-action: none;
+    background: var(--border);
+    position: relative;
+    z-index: 2;
+  }
+  .pres__splitter::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 2.5rem;
+    border-radius: 2px;
+    background: var(--muted);
+    opacity: .45;
+  }
+  .pres__splitter.is-dragging { background: var(--accent); opacity: .85; }
+  .pres__iframe-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    background: #fff;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pres__iframe-scaler {
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  .pres__iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+  .pres__iframe-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: .92rem;
+    line-height: 1.45;
+    background: var(--bg);
+  }
+  .pres__iframe-empty[hidden],
+  .pres__iframe[hidden] { display: none; }
+
+  /* Mobile toggle (fullscreen only) */
+  .pres__view-toggle {
+    display: none;
+    gap: .35rem;
+    padding: .5rem var(--pres-pad);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .pres__view-toggle button {
+    flex: 1;
+    min-height: 44px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--text);
+    font-weight: 600;
+    font-size: .88rem;
+    cursor: pointer;
+  }
+  .pres__view-toggle button.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* Slides */
+  .pres__stage {
+    position: relative;
+    min-height: 40vh;
+  }
+  .pres__slide {
+    display: none;
+    animation: presIn .25s ease;
+  }
+  .pres__slide.is-active { display: block; }
+  @keyframes presIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  .pres__section-badge {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--gold-text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: .25rem .55rem;
+    margin-bottom: .65rem;
+  }
+  .pres__slide--section .pres__title {
+    font-size: 1.85rem;
+    color: var(--accent);
+  }
+  .pres__title {
+    font-family: var(--font-d);
+    font-size: 1.5rem;
+    line-height: 1.2;
+    margin: 0 0 .65rem;
+    color: var(--text);
+  }
+  .pres__summary {
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 1.1rem;
+    font-size: 1rem;
+  }
+  .pres__steps {
+    list-style: none;
+    margin: 0 0 1.1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+  }
+  .pres__steps li {
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
+    gap: .6rem;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: .7rem .85rem;
+    font-size: .95rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+  .pres__step-n {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: .9rem;
+    line-height: 1.45;
+  }
+  .pres__demo-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    gap: .35rem;
+  }
+
+  /* Bottom nav */
+  .pres__nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    gap: .5rem;
+    padding: .65rem var(--pres-pad);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 20px rgba(0,0,0,.06);
+  }
+  .pres__nav button {
+    flex: 1;
+    min-height: 48px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--text);
+    font-weight: 600;
+    font-size: .95rem;
+    cursor: pointer;
+  }
+  .pres__nav button:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+  }
+  .pres__nav button.pres__nav--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    flex: 1.4;
+  }
+
+  /* Index drawer */
+  .pres__index-toggle {
+    position: fixed;
+    top: auto;
+    bottom: 5.5rem;
+    right: var(--pres-pad);
+    z-index: 41;
+    min-height: 44px;
+    min-width: 44px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0 .75rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  .pres__index {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0,0,0,.35);
+    padding: 1rem;
+    overflow: auto;
+  }
+  .pres__index.is-open { display: block; }
+  .pres__index-panel {
+    max-width: 420px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 1rem;
+    color: var(--text);
+    max-height: 85vh;
+    overflow: auto;
+  }
+  .pres__index-panel h2 {
+    font-family: var(--font-d);
+    font-size: 1.15rem;
+    margin: 0 0 .75rem;
+    color: var(--text);
+  }
+  .pres__index-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+  }
+  .pres__index-list button {
+    width: 100%;
+    text-align: left;
+    min-height: 44px;
+    padding: .55rem .7rem;
+    border: none;
+    border-radius: var(--r);
+    background: transparent;
+    color: var(--text);
+    font-size: .88rem;
+    cursor: pointer;
+  }
+  .pres__index-list button:hover,
+  .pres__index-list button.is-current {
+    background: var(--bg);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pres__index-list .idx-section {
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    padding: .6rem .7rem .2rem;
+  }
+  .pres__index-close {
+    margin-top: .75rem;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Fullscreen split layout */
+  .pres.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .pres.is-fullscreen .pres__head {
+    margin: 0;
+    padding: .65rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .pres.is-fullscreen .pres__back { display: none; }
+  .pres.is-fullscreen .page-lead { display: none; }
+  .pres.is-fullscreen h1 { font-size: 1.15rem; }
+  .pres.is-fullscreen .pres__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .pres.is-fullscreen .pres__view-toggle { display: flex; }
+  .pres.is-fullscreen .pres__main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem var(--pres-pad);
+    min-height: 0;
+  }
+  .pres.is-fullscreen .pres__demo {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+    border-top: 1px solid var(--border);
+  }
+  .pres.is-fullscreen .pres__demo-link { display: none; }
+  .pres.is-fullscreen .pres__demo-toolbar { display: flex; }
+  .pres.is-fullscreen .pres__nav {
+    position: relative;
+    flex-shrink: 0;
+    box-shadow: none;
+  }
+  .pres.is-fullscreen .pres__index-toggle {
+    bottom: 4.5rem;
+  }
+  /* Mobile fullscreen: toggle between slide and demo */
+  .pres.is-fullscreen.pres--show-slide .pres__demo { display: none; }
+  .pres.is-fullscreen.pres--show-slide .pres__main { flex: 1; }
+  .pres.is-fullscreen.pres--show-demo .pres__main { display: none; }
+  .pres.is-fullscreen.pres--show-demo .pres__demo { flex: 1; display: flex; }
+
+  body.pres-fs-active nav,
+  body.pres-fs-active footer,
+  body.pres-fs-active .footer-staff {
+    display: none !important;
+  }
+  body.pres-fs-active main { padding-top: 0 !important; }
+
+  @media (min-width: 768px) {
+    .pres { padding-top: 1.5rem; }
+    .pres h1 { font-size: 1.85rem; }
+    .pres__title { font-size: 1.75rem; }
+    .pres__slide--section .pres__title { font-size: 2.1rem; }
+    .pres__nav { padding: .75rem 1.5rem; }
+
+    .pres.is-fullscreen .pres__view-toggle { display: none; }
+    .pres.is-fullscreen .pres__body {
+      flex-direction: row;
+    }
+    .pres.is-fullscreen .pres__splitter { display: block; }
+    .pres.is-fullscreen .pres__main {
+      flex: 0 0 calc(var(--pres-split-left, 52) * 1%);
+      max-width: calc(var(--pres-split-left, 52) * 1%);
+      min-width: 22%;
+      border-right: none;
+      padding: 1.25rem 1.5rem;
+    }
+    .pres.is-fullscreen .pres__demo {
+      flex: 1 1 0;
+      min-width: 22%;
+      border-top: none;
+      display: flex;
+    }
+    .pres.is-fullscreen.pres--show-slide .pres__demo,
+    .pres.is-fullscreen.pres--show-demo .pres__main {
+      display: flex;
+    }
+    .pres.is-fullscreen.pres--show-demo .pres__main {
+      display: flex;
+      flex: 0 0 calc(var(--pres-split-left, 52) * 1%);
+      max-width: calc(var(--pres-split-left, 52) * 1%);
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 767px) {
+    .pres.is-fullscreen .pres__main,
+    .pres.is-fullscreen .pres__demo {
+      flex: 1;
+      min-height: 38vh;
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pres pres--show-slide" id="pres" data-slide-count="{{ slide_count }}">
+  <header class="pres__head">
+    <a class="pres__back" href="{% url 'admin_hub' %}">← Administration</a>
+    <h1>Présentation du site</h1>
+    {% page_lead "core.admin_presentation" %}
+      Diaporama pour présenter le site aux musiciens. En plein écran (F) : explications à gauche, site en direct à droite.
+    {% endpage_lead %}
+    <div class="pres__toolbar">
+      <button type="button" class="btn btn-outline" id="pres-fs-btn">Plein écran (F)</button>
+      <span class="pres__counter" id="pres-counter" aria-live="polite">1 / {{ slide_count }}</span>
+    </div>
+  </header>
+
+  <div class="pres__body">
+    <div class="pres__view-toggle" role="tablist" aria-label="Affichage plein écran">
+      <button type="button" class="is-active" id="pres-tab-slide" role="tab" aria-selected="true">Diapo</button>
+      <button type="button" id="pres-tab-demo" role="tab" aria-selected="false">Site en direct</button>
+    </div>
+
+    <div class="pres__main">
+      <div class="pres__stage" id="pres-stage" aria-live="polite">
+        {% for slide in slides %}
+        <article
+          class="pres__slide{% if slide.is_section %} pres__slide--section{% endif %}{% if forloop.first %} is-active{% endif %}"
+          id="slide-{{ slide.id }}"
+          data-index="{{ forloop.counter0 }}"
+          data-demo-url="{{ slide.demo_url }}"
+          {% if not forloop.first %}hidden{% endif %}
+          aria-hidden="{% if forloop.first %}false{% else %}true{% endif %}"
+        >
+          {% if slide.section %}
+          <span class="pres__section-badge">{{ slide.section }}</span>
+          {% endif %}
+          <h2 class="pres__title">{{ slide.title }}</h2>
+          <p class="pres__summary">{{ slide.summary }}</p>
+          {% if slide.steps %}
+          <ol class="pres__steps">
+            {% for step in slide.steps %}
+            <li>
+              <span class="pres__step-n" aria-hidden="true">{{ forloop.counter }}</span>
+              <span>{{ step }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+          {% endif %}
+          {% if slide.demo_url %}
+          <a class="btn pres__demo-link" href="{{ slide.demo_url }}" target="_blank" rel="noopener">
+            {{ slide.demo_label }} ↗
+          </a>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="pres__splitter" id="pres-splitter" hidden aria-hidden="true" title="Glisser pour redimensionner"></div>
+
+    <aside class="pres__demo" id="pres-demo" aria-label="Aperçu du site en direct">
+      <div class="pres__demo-head">
+        <span class="pres__demo-label">Site en direct</span>
+        <span class="pres__demo-url" id="pres-demo-url"></span>
+        <a class="pres__demo-ext" id="pres-demo-ext" href="#" target="_blank" rel="noopener" hidden>Nouvel onglet ↗</a>
+      </div>
+      <div class="pres__demo-toolbar" id="pres-demo-toolbar">
+        <div class="pres__ctrl-group pres__split-presets">
+          <span class="pres__ctrl-label">Largeur</span>
+          <button type="button" data-split="35" title="Plus de place pour le site">◧ Site</button>
+          <button type="button" data-split="50" class="is-active" title="Moitié-moitié">50/50</button>
+          <button type="button" data-split="65" title="Plus de place pour la diapo">Diapo ◨</button>
+        </div>
+        <div class="pres__ctrl-group pres__zoom-controls">
+          <span class="pres__ctrl-label">Zoom</span>
+          <button type="button" id="pres-zoom-out" aria-label="Réduire le zoom">−</button>
+          <button type="button" id="pres-zoom-reset" class="pres__zoom-reset">100%</button>
+          <button type="button" id="pres-zoom-in" aria-label="Agrandir le zoom">+</button>
+        </div>
+      </div>
+      <div class="pres__iframe-wrap" id="pres-iframe-wrap">
+        <div class="pres__iframe-scaler" id="pres-iframe-scaler">
+          <iframe class="pres__iframe" id="pres-iframe" title="Aperçu du site JOY" hidden></iframe>
+        </div>
+        <div class="pres__iframe-empty" id="pres-iframe-empty">
+          Aucune page de démo pour cette diapo.<br>
+          Passez à une diapo avec un lien « Ouvrir en direct ».
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <button type="button" class="pres__index-toggle" id="pres-index-btn" aria-expanded="false">
+    Sommaire
+  </button>
+
+  <nav class="pres__nav" aria-label="Navigation diaporama">
+    <button type="button" id="pres-prev" disabled>← Préc.</button>
+    <button type="button" class="pres__nav--primary" id="pres-next">Suiv. →</button>
+  </nav>
+</div>
+
+<div class="pres__index" id="pres-index" hidden>
+  <div class="pres__index-panel" role="dialog" aria-labelledby="pres-index-title">
+    <h2 id="pres-index-title">Sommaire</h2>
+    <ul class="pres__index-list" id="pres-index-list">
+      {% for slide in slides %}
+        {% if slide.is_section and slide.section %}
+        <li class="idx-section">{{ slide.section }}</li>
+        {% endif %}
+        <li>
+          <button type="button" data-goto="{{ forloop.counter0 }}"{% if forloop.first %} class="is-current"{% endif %}>
+            {{ slide.title }}
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+    <button type="button" class="btn pres__index-close" id="pres-index-close">Fermer</button>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  const root = document.getElementById('pres');
+  if (!root) return;
+
+  const slides = Array.from(root.querySelectorAll('.pres__slide'));
+  const total = slides.length;
+  let current = 0;
+
+  const SPLIT_KEY = 'joy-pres-split';
+  const ZOOM_KEY = 'joy-pres-zoom';
+  const SPLIT_MIN = 25;
+  const SPLIT_MAX = 75;
+  const ZOOM_MIN = 75;
+  const ZOOM_MAX = 150;
+  const ZOOM_STEP = 10;
+
+  const counter = document.getElementById('pres-counter');
+  const prevBtn = document.getElementById('pres-prev');
+  const nextBtn = document.getElementById('pres-next');
+  const fsBtn = document.getElementById('pres-fs-btn');
+  const indexBtn = document.getElementById('pres-index-btn');
+  const indexPanel = document.getElementById('pres-index');
+  const indexClose = document.getElementById('pres-index-close');
+  const indexButtons = Array.from(document.querySelectorAll('[data-goto]'));
+  const iframe = document.getElementById('pres-iframe');
+  const iframeWrap = document.getElementById('pres-iframe-wrap');
+  const iframeScaler = document.getElementById('pres-iframe-scaler');
+  const iframeEmpty = document.getElementById('pres-iframe-empty');
+  const demoUrlEl = document.getElementById('pres-demo-url');
+  const demoExt = document.getElementById('pres-demo-ext');
+  const tabSlide = document.getElementById('pres-tab-slide');
+  const tabDemo = document.getElementById('pres-tab-demo');
+  const splitter = document.getElementById('pres-splitter');
+  const splitButtons = Array.from(document.querySelectorAll('[data-split]'));
+  const zoomOutBtn = document.getElementById('pres-zoom-out');
+  const zoomInBtn = document.getElementById('pres-zoom-in');
+  const zoomResetBtn = document.getElementById('pres-zoom-reset');
+  const presBody = root.querySelector('.pres__body');
+
+  let splitLeft = Number(sessionStorage.getItem(SPLIT_KEY)) || 50;
+  let zoom = Number(sessionStorage.getItem(ZOOM_KEY)) || 100;
+  let draggingSplit = false;
+
+  function isFullscreen() {
+    return root.classList.contains('is-fullscreen');
+  }
+
+  function isDesktopSplit() {
+    return window.matchMedia('(min-width: 768px)').matches;
+  }
+
+  function setSplit(pct, persist) {
+    splitLeft = Math.max(SPLIT_MIN, Math.min(SPLIT_MAX, Math.round(pct)));
+    root.style.setProperty('--pres-split-left', splitLeft);
+    splitButtons.forEach((btn) => {
+      btn.classList.toggle('is-active', Number(btn.dataset.split) === splitLeft);
+    });
+    if (persist !== false) {
+      sessionStorage.setItem(SPLIT_KEY, splitLeft);
+    }
+  }
+
+  function syncIframeSize() {
+    if (!iframeWrap || !iframeScaler || iframe.hidden) return;
+    const factor = zoom / 100;
+    const w = iframeWrap.clientWidth;
+    const h = iframeWrap.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    iframeScaler.style.transform = 'scale(' + factor + ')';
+    iframeScaler.style.width = (w / factor) + 'px';
+    iframeScaler.style.height = (h / factor) + 'px';
+  }
+
+  function setZoom(val, persist) {
+    zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(val)));
+    root.style.setProperty('--pres-zoom', zoom);
+    if (zoomResetBtn) zoomResetBtn.textContent = zoom + '%';
+    syncIframeSize();
+    if (persist !== false) {
+      sessionStorage.setItem(ZOOM_KEY, zoom);
+    }
+  }
+
+  function updateSplitterVisibility() {
+    if (!splitter) return;
+    const show = isFullscreen() && isDesktopSplit();
+    splitter.hidden = !show;
+    splitter.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+
+  function normalizeDemoUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('/') || url.startsWith(window.location.origin)) {
+      return url.startsWith('/') ? url : url.replace(window.location.origin, '');
+    }
+    return url;
+  }
+
+  function updateDemoPanel() {
+    const raw = slides[current].dataset.demoUrl || '';
+    const url = normalizeDemoUrl(raw);
+    demoUrlEl.textContent = url || '—';
+    if (url) {
+      iframe.hidden = false;
+      iframeEmpty.hidden = true;
+      demoExt.hidden = false;
+      demoExt.href = url;
+      if (iframe.getAttribute('src') !== url) {
+        iframe.src = url;
+      }
+      requestAnimationFrame(syncIframeSize);
+    } else {
+      iframe.hidden = true;
+      iframe.removeAttribute('src');
+      iframeEmpty.hidden = false;
+      demoExt.hidden = true;
+      demoExt.removeAttribute('href');
+    }
+  }
+
+  function setMobileView(mode) {
+    root.classList.remove('pres--show-slide', 'pres--show-demo');
+    root.classList.add(mode === 'demo' ? 'pres--show-demo' : 'pres--show-slide');
+    const demoActive = mode === 'demo';
+    tabSlide.classList.toggle('is-active', !demoActive);
+    tabDemo.classList.toggle('is-active', demoActive);
+    tabSlide.setAttribute('aria-selected', demoActive ? 'false' : 'true');
+    tabDemo.setAttribute('aria-selected', demoActive ? 'true' : 'false');
+    if (demoActive) requestAnimationFrame(syncIframeSize);
+  }
+
+  function show(i) {
+    current = Math.max(0, Math.min(total - 1, i));
+    slides.forEach((el, idx) => {
+      const active = idx === current;
+      el.classList.toggle('is-active', active);
+      el.hidden = !active;
+      el.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
+    counter.textContent = (current + 1) + ' / ' + total;
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+    nextBtn.textContent = current === total - 1 ? 'Fin' : 'Suiv. →';
+    indexButtons.forEach((btn) => {
+      btn.classList.toggle('is-current', Number(btn.dataset.goto) === current);
+    });
+    history.replaceState(null, '', '#slide-' + slides[current].id.replace('slide-', ''));
+    updateDemoPanel();
+  }
+
+  function next() { if (current < total - 1) show(current + 1); }
+  function prev() { if (current > 0) show(current - 1); }
+
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+
+  tabSlide.addEventListener('click', () => setMobileView('slide'));
+  tabDemo.addEventListener('click', () => setMobileView('demo'));
+
+  splitButtons.forEach((btn) => {
+    btn.addEventListener('click', () => setSplit(Number(btn.dataset.split)));
+  });
+
+  zoomOutBtn.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
+  zoomInBtn.addEventListener('click', () => setZoom(zoom + ZOOM_STEP));
+  zoomResetBtn.addEventListener('click', () => setZoom(100));
+
+  function splitFromPointer(clientX) {
+    if (!presBody) return;
+    const rect = presBody.getBoundingClientRect();
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    setSplit(pct);
+  }
+
+  function startSplitDrag(e) {
+    if (!isFullscreen() || !isDesktopSplit()) return;
+    draggingSplit = true;
+    splitter.classList.add('is-dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    splitFromPointer(e.clientX ?? e.touches[0].clientX);
+    e.preventDefault();
+  }
+
+  function moveSplitDrag(e) {
+    if (!draggingSplit) return;
+    splitFromPointer(e.clientX ?? e.touches[0].clientX);
+  }
+
+  function endSplitDrag() {
+    if (!draggingSplit) return;
+    draggingSplit = false;
+    splitter.classList.remove('is-dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  splitter.addEventListener('mousedown', startSplitDrag);
+  splitter.addEventListener('touchstart', startSplitDrag, { passive: false });
+  document.addEventListener('mousemove', moveSplitDrag);
+  document.addEventListener('touchmove', moveSplitDrag, { passive: false });
+  document.addEventListener('mouseup', endSplitDrag);
+  document.addEventListener('touchend', endSplitDrag);
+
+  iframe.addEventListener('load', syncIframeSize);
+
+  function toggleFullscreen() {
+    const on = !isFullscreen();
+    root.classList.toggle('is-fullscreen', on);
+    document.body.classList.toggle('pres-fs-active', on);
+    fsBtn.textContent = on ? 'Quitter plein écran (F)' : 'Plein écran (F)';
+    updateSplitterVisibility();
+    if (on) {
+      setMobileView('slide');
+      setSplit(splitLeft, false);
+      setZoom(zoom, false);
+      updateDemoPanel();
+      requestAnimationFrame(syncIframeSize);
+      if (root.requestFullscreen) {
+        root.requestFullscreen().catch(() => {});
+      }
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  fsBtn.addEventListener('click', toggleFullscreen);
+
+  function openIndex() {
+    indexPanel.hidden = false;
+    indexPanel.classList.add('is-open');
+    indexBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeIndex() {
+    indexPanel.classList.remove('is-open');
+    indexPanel.hidden = true;
+    indexBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  indexBtn.addEventListener('click', openIndex);
+  indexClose.addEventListener('click', closeIndex);
+  indexPanel.addEventListener('click', (e) => {
+    if (e.target === indexPanel) closeIndex();
+  });
+  indexButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      show(Number(btn.dataset.goto));
+      closeIndex();
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest('input, textarea, select')) return;
+    if (e.target.closest('iframe')) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      e.preventDefault();
+      next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      prev();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      show(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      show(total - 1);
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if ((e.key === '+' || e.key === '=') && isFullscreen()) {
+      e.preventDefault();
+      setZoom(zoom + ZOOM_STEP);
+    } else if (e.key === '-' && isFullscreen()) {
+      e.preventDefault();
+      setZoom(zoom - ZOOM_STEP);
+    } else if (e.key === '0' && isFullscreen()) {
+      e.preventDefault();
+      setZoom(100);
+    } else if (e.key === 'Escape') {
+      closeIndex();
+      if (isFullscreen()) {
+        root.classList.remove('is-fullscreen');
+        document.body.classList.remove('pres-fs-active');
+        fsBtn.textContent = 'Plein écran (F)';
+        updateSplitterVisibility();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    }
+  });
+
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && isFullscreen()) {
+      root.classList.remove('is-fullscreen');
+      document.body.classList.remove('pres-fs-active');
+      fsBtn.textContent = 'Plein écran (F)';
+      updateSplitterVisibility();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    updateSplitterVisibility();
+    syncIframeSize();
+  });
+
+  window.matchMedia('(min-width: 768px)').addEventListener('change', updateSplitterVisibility);
+
+  const hash = location.hash.replace('#slide-', '');
+  if (hash) {
+    const idx = slides.findIndex((el) => el.id === 'slide-' + hash);
+    if (idx >= 0) current = idx;
+  }
+
+  setSplit(splitLeft, false);
+  setZoom(zoom, false);
+  updateSplitterVisibility();
+  show(current);
+})();
+</script>
+{% endblock %}

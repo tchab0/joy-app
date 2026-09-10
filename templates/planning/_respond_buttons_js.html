@@ -2,13 +2,14 @@
 function respondButtons(pk, initialCode, opts) {
   opts = opts || {};
   const labels = {
-    invited: 'Invité', confirmed: 'Confirmé', maybe: 'Peut-être',
-    declined: 'Refusé', replacement_needed: 'Remplacement demandé'
+    invited: 'À répondre', confirmed: 'Dispo', maybe: 'Peut-être',
+    declined: 'Pas dispo', replacement_needed: 'Remplacement demandé'
   };
   const today = new Date();
   const todayISO = today.toISOString().slice(0, 10);
   return {
-    pk,
+    pk: pk == null ? null : pk,
+    eventPk: opts.eventPk || null,
     code: initialCode,
     label: labels[initialCode] || initialCode,
     busy: false,
@@ -24,6 +25,15 @@ function respondButtons(pk, initialCode, opts) {
     showMaybeRemind: false,
     maybeRemindDate: '',
     maybeRemindError: '',
+    respondUrl() {
+      if (this.pk != null) {
+        return `/planning/participations/${this.pk}/respond/`;
+      }
+      if (this.eventPk) {
+        return `/planning/events/${this.eventPk}/respond/`;
+      }
+      return null;
+    },
     closeInvalidate() {
       this.showInvalidate = false;
       this.pendingResponse = null;
@@ -86,6 +96,11 @@ function respondButtons(pk, initialCode, opts) {
       if (ok) this.closeMaybeRemind();
     },
     async _submit(response, comment, extra) {
+      const url = this.respondUrl();
+      if (!url) {
+        window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Erreur' }));
+        return false;
+      }
       this.busy = true;
       this.invalidateError = '';
       this.maybeRemindError = '';
@@ -94,7 +109,7 @@ function respondButtons(pk, initialCode, opts) {
           { response, comment: comment || '' },
           extra || {}
         );
-        const r = await fetch(`/planning/participations/${this.pk}/respond/`, {
+        const r = await fetch(url, {
           method: 'POST',
           headers: {
             'X-CSRFToken': '{{ csrf_token }}',
@@ -106,6 +121,7 @@ function respondButtons(pk, initialCode, opts) {
         if (d.ok) {
           this.code = d.status.code;
           this.label = d.status.label;
+          if (d.participation_id) this.pk = d.participation_id;
           window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
           return true;
         }
@@ -140,13 +156,18 @@ function rehearsalAbsence(url, initialAbsent) {
       this.invalidateError = '';
     },
     toggle() {
-      if (!this.absent) {
-        this.justification = '';
-        this.invalidateError = '';
-        this.showInvalidate = true;
-        return;
-      }
+      if (!this.absent) this.chooseAbsent();
+      else this.choosePresent();
+    },
+    choosePresent() {
+      if (this.busy || !this.absent) return;
       this._submit(false, '');
+    },
+    chooseAbsent() {
+      if (this.busy || this.absent) return;
+      this.justification = '';
+      this.invalidateError = '';
+      this.showInvalidate = true;
     },
     async confirmInvalidate() {
       const text = (this.justification || '').trim();

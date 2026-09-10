@@ -16,13 +16,14 @@ from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 from chat.services import (
     active_membership,
     build_room_embed_context,
+    delete_message,
     edit_message,
     ensure_staff_membership,
     ensure_staff_room,
     mark_room_read,
     post_message,
     room_mention_members,
-    serialize_mention_member,
+    serialize_mention_members,
     serialize_message,
     sync_user_to_staff_room,
     toggle_reaction,
@@ -224,7 +225,52 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
     ctx = build_room_embed_context(request, room)
     ctx["embedded"] = False
     ctx["show_chat_chrome"] = True
+    if room.kind == ChatRoom.Kind.STAFF:
+        # Teinte slate (joy-staff-page) aussi via /chat/<id>/, pas seulement /chat/staff/
+        request.joy_force_staff_surface = True
     return render(request, "chat/room_detail.html", ctx)
+
+
+@login_required
+@require_GET
+def room_embed_fragment(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Fragment HTML salon compact (calendrier panneau jour)."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(
+        ChatRoom.objects.select_related(
+            "event",
+            "event__venue",
+            "event__type",
+            "event__parent",
+            "piece",
+        ),
+        pk=room_id,
+        is_active=True,
+    )
+    if room.kind == ChatRoom.Kind.STAFF and not (
+        request.user.is_staff or request.user.is_superuser
+    ):
+        return HttpResponseForbidden("Salon réservé au staff.")
+    if not user_can_access_room(request.user, room):
+        is_staff = request.user.is_staff or request.user.is_superuser
+        if not is_staff:
+            return HttpResponseForbidden("Vous n’êtes pas membre de ce salon.")
+
+    ctx = build_room_embed_context(
+        request,
+        room,
+        compact=True,
+        show_staff_panel=False,
+    )
+    # IDs uniques si plusieurs embeds potentiels dans la même page.
+    suffix = f"cal-{room.pk}"
+    ctx["messages_script_id"] = f"chat-messages-{suffix}"
+    ctx["mention_members_script_id"] = f"chat-members-{suffix}"
+    ctx["read_cursors_script_id"] = f"chat-reads-{suffix}"
+    return render(request, "chat/_room_embed.html", ctx)
 
 
 @login_required
@@ -263,19 +309,22 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
     from users.models import NotificationTypePref
 
     form = NotificationPrefsForm(request.POST or None, instance=request.user)
+    # Tous les salons encore rejoints (y compris alertes coupées).
     memberships = list(
         ChatMembership.objects.filter(
             user=request.user,
             left_at__isnull=True,
-            subscribed=True,
         )
         .select_related("room", "room__event", "room__piece")
         .order_by("room__kind", "room__title")
     )
-    type_prefs = {
-        p.notify_type: p
-        for p in NotificationTypePref.objects.filter(user=request.user)
-    }
+    try:
+        type_prefs = {
+            p.notify_type: p
+            for p in NotificationTypePref.objects.filter(user=request.user)
+        }
+    except Exception:
+        type_prefs = {}
     type_specs = types_for_user(request.user)
 
     if request.method == "POST" and form.is_valid():
@@ -293,26 +342,37 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
             ChatMembership.objects.filter(
                 user=request.user,
                 left_at__isnull=True,
-                subscribed=True,
             )
             .select_related("room", "room__event", "room__piece")
             .order_by("room__kind", "room__title")
         )
-        type_prefs = {
-            p.notify_type: p
-            for p in NotificationTypePref.objects.filter(user=request.user)
-        }
+        try:
+            type_prefs = {
+                p.notify_type: p
+                for p in NotificationTypePref.objects.filter(user=request.user)
+            }
+        except Exception:
+            type_prefs = {}
 
     type_rows = []
     for spec in type_specs:
         pref = type_prefs.get(spec.key)
         mode = OVERRIDE_FOLLOW
-        hour = request.user.notify_digest_hour
+        hour = getattr(request.user, "notify_digest_hour", 18) or 18
         if pref is not None:
             mode = pref.frequency
             if pref.digest_hour is not None:
                 hour = pref.digest_hour
-        type_rows.append({"spec": spec, "mode": mode, "hour": hour})
+        # Dict plat : évite tout souci d’accès dataclass dans le template.
+        type_rows.append(
+            {
+                "key": spec.key,
+                "label": spec.label,
+                "help_text": spec.help_text,
+                "mode": mode,
+                "hour": hour,
+            }
+        )
 
     room_rows = []
     for m in memberships:
@@ -320,9 +380,18 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
         hour = (
             m.notify_digest_hour
             if m.notify_digest_hour is not None
-            else request.user.notify_digest_hour
+            else (getattr(request.user, "notify_digest_hour", 18) or 18)
         )
-        room_rows.append({"membership": m, "mode": mode, "hour": hour})
+        kind_label = m.room.get_kind_display() if hasattr(m.room, "get_kind_display") else m.room.kind
+        room_rows.append(
+            {
+                "membership": m,
+                "mode": mode,
+                "hour": hour,
+                "subscribed": bool(m.subscribed),
+                "kind_label": kind_label,
+            }
+        )
 
     return render(
         request,
@@ -403,6 +472,31 @@ def api_edit(request: HttpRequest, room_id: int) -> JsonResponse:
 
 
 @login_required
+@require_POST
+def api_delete(request: HttpRequest, room_id: int) -> JsonResponse:
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    try:
+        message_id = int(request.POST.get("message_id") or 0)
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Message invalide."}, status=400)
+    message = get_object_or_404(ChatMessage, pk=message_id, room=room)
+    try:
+        message = delete_message(message=message, actor=request.user)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse(
+        {"ok": True, "message": serialize_message(message, viewer=request.user)}
+    )
+
+
+@login_required
 @require_GET
 def api_members(request: HttpRequest, room_id: int) -> JsonResponse:
     """Liste des musiciens mentionnables (@) pour le salon."""
@@ -414,9 +508,7 @@ def api_members(request: HttpRequest, room_id: int) -> JsonResponse:
     if not user_can_access_room(request.user, room):
         return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
 
-    members = [
-        serialize_mention_member(u) for u in room_mention_members(room)
-    ]
+    members = serialize_mention_members(room_mention_members(room))
     return JsonResponse({"ok": True, "members": members})
 
 

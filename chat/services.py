@@ -86,7 +86,7 @@ SECTION_ROOM_DEFS: tuple[tuple[str, str, frozenset[str]], ...] = (
 )
 SECTION_ROOM_BY_KEY = {key: (title, postes) for key, title, postes in SECTION_ROOM_DEFS}
 CHANT_POSTE = "chant"
-# @identifiant : lettres unicode, chiffres, . _ -
+# @identifiant simple (username) : lettres unicode, chiffres, . _ -
 MENTION_TOKEN_RE = re.compile(
     r"(?<![\w.])@([^\W\d_][\w.-]{0,49})",
     re.UNICODE,
@@ -181,6 +181,70 @@ def seed_staff_members(room: ChatRoom) -> int:
     return n
 
 
+REHEARSAL_SETLIST_TIP_PREFIX = "Proposez ici les morceaux à travailler"
+
+
+def _rehearsal_setlist_tip_body() -> str:
+    return (
+        f"{REHEARSAL_SETLIST_TIP_PREFIX}. "
+        "Les autres votent avec 👍. "
+        "Le staff compose ensuite la setlist."
+    )
+
+
+def _mark_digested_through(room: ChatRoom, message_id: int) -> None:
+    """Avance last_digested_message_id pour ne pas alerter sur un message auto."""
+    if not message_id:
+        return
+    ChatMembership.objects.filter(
+        room=room,
+        left_at__isnull=True,
+        last_digested_message_id__lt=message_id,
+    ).update(last_digested_message_id=message_id)
+
+
+def _rehearsal_setlist_tip_id(room: ChatRoom) -> int | None:
+    return (
+        ChatMessage.objects.filter(
+            room=room,
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_SETLIST_TIP_PREFIX,
+            deleted_at__isnull=True,
+        )
+        .order_by("-pk")
+        .values_list("pk", flat=True)
+        .first()
+    )
+
+
+def ensure_rehearsal_setlist_tip(room: ChatRoom) -> ChatMessage | None:
+    """
+    Message système (idempotent) pour rappeler aux musiciens de proposer
+    des morceaux et de voter avec 👍 dans le salon d’une répé.
+
+    Ne déclenche pas de digest « nouveau message » : le tip reste visible
+    dans le salon, mais n’envoie pas d’alerte push/e-mail à lui seul.
+    """
+    event = getattr(room, "event", None)
+    if event is None or room.kind != ChatRoom.Kind.EVENT:
+        return None
+    if not getattr(event, "is_rehearsal", False):
+        return None
+    existing_id = _rehearsal_setlist_tip_id(room)
+    if existing_id:
+        _mark_digested_through(room, existing_id)
+        return None
+    msg = post_message(
+        room=room,
+        author=None,
+        body=_rehearsal_setlist_tip_body(),
+        kind=ChatMessage.Kind.SYSTEM,
+    )
+    if msg is not None:
+        _mark_digested_through(room, msg.pk)
+    return msg
+
+
 def ensure_event_room(event) -> ChatRoom:
     title = event.titre
     room, created = ChatRoom.objects.get_or_create(
@@ -201,6 +265,10 @@ def ensure_event_room(event) -> ChatRoom:
         room.save(update_fields=updates)
     if created:
         seed_staff_members(room)
+    # Tip setlist : aussi pour les salons répé déjà créés (idempotent).
+    if not hasattr(room, "event") or room.event_id != event.pk:
+        room.event = event
+    ensure_rehearsal_setlist_tip(room)
     return room
 
 
@@ -430,7 +498,15 @@ def sync_all_musicians_to_section_rooms() -> tuple[int, int]:
 
 def sync_participation_to_chat(participation) -> ChatMembership:
     room = ensure_event_room(participation.event)
-    return add_member(room, participation.user)
+    membership = add_member(room, participation.user)
+    # Tip setlist auto : ne pas déclencher de digest « nouveau chat » à l’ajout.
+    event = participation.event
+    if getattr(event, "is_rehearsal", False):
+        tip_id = _rehearsal_setlist_tip_id(room)
+        if tip_id and membership.last_digested_message_id < tip_id:
+            membership.last_digested_message_id = tip_id
+            membership.save(update_fields=["last_digested_message_id"])
+    return membership
 
 
 def active_membership(room: ChatRoom, user) -> ChatMembership | None:
@@ -496,8 +572,9 @@ def _reply_preview(message: ChatMessage) -> dict | None:
     parent = message.reply_to
     if parent is None:
         return None
+    # Parent soft-deleted : pas de trace (« Message supprimé ») — preview neutre.
     if parent.is_deleted:
-        preview = "Message supprimé"
+        preview = "…"
     elif parent.body:
         preview = parent.body.strip()
         if len(preview) > 120:
@@ -567,7 +644,11 @@ def serialize_message(message: ChatMessage, viewer=None) -> dict:
         "author_name": _author_display_name(message),
         "author_username": author.username if author else "",
         "reply_to": _reply_preview(message),
-        "attachments": [serialize_attachment(a) for a in message.attachments.all()],
+        "attachments": (
+            []
+            if message.is_deleted
+            else [serialize_attachment(a) for a in message.attachments.all()]
+        ),
     }
     data.update(_replies_meta(message))
     data.update(_reaction_payload(message, viewer))
@@ -611,13 +692,84 @@ def unread_counts_for_memberships(memberships) -> dict[int, int]:
     )
 
 
-def serialize_mention_member(user) -> dict:
+def _last_name_letters(last_name: str) -> str:
+    """Lettres du nom (sans espaces / tirets) pour désambiguïser les @Prénom."""
+    return "".join(c for c in (last_name or "") if c.isalpha())
+
+
+def assign_mention_handles(users: list) -> dict[int, str]:
+    """
+    Handle visible pour @mention : prénom seul ; si homonymes dans la liste,
+    « Prénom » + préfixe progressif des lettres du nom jusqu’à unicité
+    (ex. Stéphane G / Stéphane P).
+    """
+    from collections import defaultdict
+
+    groups: dict[str, list] = defaultdict(list)
+    first_by_id: dict[int, str] = {}
+    for u in users:
+        first = (getattr(u, "first_name", "") or "").strip() or (
+            getattr(u, "username", "") or ""
+        ).strip()
+        first_by_id[u.pk] = first
+        groups[first.casefold()].append(u)
+
+    handles: dict[int, str] = {}
+    for group in groups.values():
+        if len(group) == 1:
+            u = group[0]
+            handles[u.pk] = first_by_id[u.pk]
+            continue
+
+        letters_by_id = {
+            u.pk: _last_name_letters(getattr(u, "last_name", "") or "")
+            for u in group
+        }
+        max_len = max((len(s) for s in letters_by_id.values()), default=0)
+        n = 1
+        while n <= max_len:
+            prefixes = [letters_by_id[u.pk][:n] for u in group]
+            if all(prefixes) and len({p.casefold() for p in prefixes}) == len(group):
+                break
+            n += 1
+
+        used: dict[str, int] = {}
+        for u in group:
+            first = first_by_id[u.pk]
+            letters = letters_by_id[u.pk]
+            if letters and n <= max_len:
+                handle = f"{first} {letters[:n]}"
+            elif letters:
+                handle = f"{first} {letters}"
+            else:
+                handle = first
+            key = handle.casefold()
+            if key in used:
+                # Homonymes complets → repli username
+                handle = (getattr(u, "username", "") or "").strip() or handle
+                key = handle.casefold()
+            used[key] = u.pk
+            handles[u.pk] = handle
+    return handles
+
+
+def serialize_mention_member(user, *, handle: str | None = None) -> dict:
     name = (user.get_full_name() or "").strip() or user.username
+    if handle is None:
+        handle = assign_mention_handles([user]).get(user.pk) or (
+            (user.first_name or "").strip() or user.username
+        )
     return {
         "id": user.pk,
         "username": user.username,
         "name": name,
+        "handle": handle,
     }
+
+
+def serialize_mention_members(users: list) -> list:
+    handles = assign_mention_handles(users)
+    return [serialize_mention_member(u, handle=handles[u.pk]) for u in users]
 
 
 def room_mention_members(room: ChatRoom) -> list:
@@ -644,27 +796,68 @@ def room_mention_members(room: ChatRoom) -> list:
     return list(qs.order_by("last_name", "first_name", "username")[:300])
 
 
-def extract_mention_tokens(body: str) -> list[str]:
+def _mention_tokens_for_users(users: list) -> list[str]:
+    handles = assign_mention_handles(users)
+    tokens: list[str] = []
+    for u in users:
+        if getattr(u, "username", None):
+            tokens.append(u.username)
+        h = handles.get(u.pk)
+        if h:
+            tokens.append(h)
+    return tokens
+
+
+def _mention_alternation_re(tokens: list[str]):
+    cleaned = sorted({t for t in tokens if t}, key=len, reverse=True)
+    if not cleaned:
+        return None
+    return re.compile(
+        r"(?<![\w.])@(" + "|".join(re.escape(t) for t in cleaned) + r")(?![\w.-])",
+        re.UNICODE | re.IGNORECASE,
+    )
+
+
+def extract_mention_tokens(body: str, *, known_tokens: list[str] | None = None) -> list[str]:
     if not body:
         return []
-    return MENTION_TOKEN_RE.findall(body)
+    found: list[str] = []
+    spans: list[tuple[int, int]] = []
+    if known_tokens:
+        pat = _mention_alternation_re(known_tokens)
+        if pat is not None:
+            for m in pat.finditer(body):
+                found.append(m.group(1))
+                spans.append(m.span())
+    for m in MENTION_TOKEN_RE.finditer(body):
+        start, end = m.span()
+        if any(start < e and end > s for s, e in spans):
+            continue
+        found.append(m.group(1))
+        spans.append((start, end))
+    return found
 
 
 def resolve_mentioned_users(room: ChatRoom, body: str, *, exclude_user=None) -> list:
     """
-    Résout les @username vers des utilisateurs mentionnables.
+    Résout les @handle / @username vers des utilisateurs mentionnables.
     Si la personne n’est pas encore membre du salon, elle y est ajoutée
     (pour pouvoir ouvrir le lien de la notification).
     """
-    tokens = {t.lower() for t in extract_mention_tokens(body)}
+    candidates = room_mention_members(room)
+    known = _mention_tokens_for_users(candidates)
+    raw_tokens = extract_mention_tokens(body, known_tokens=known)
+    tokens = {t.casefold() for t in raw_tokens}
     if not tokens:
         return []
-    candidates = room_mention_members(room)
+    handles = assign_mention_handles(candidates)
     exclude_id = getattr(exclude_user, "pk", None)
     matched = []
     seen: set[int] = set()
     for u in candidates:
-        if not u.username or u.username.lower() not in tokens:
+        uname = (u.username or "").casefold()
+        handle = (handles.get(u.pk) or "").casefold()
+        if uname not in tokens and handle not in tokens:
             continue
         if exclude_id and u.pk == exclude_id:
             continue
@@ -697,7 +890,10 @@ def message_targets_instant_notify(
     *,
     username: str = "",
 ) -> bool:
-    """True si l’utilisateur a déjà reçu (ou devrait recevoir) une notif instantanée."""
+    """
+    True si l’utilisateur est couvert par une notif dédiée (mention / réponse)
+    et ne doit pas être compté dans le digest « chatter » du salon.
+    """
     if message.author_id == user_id:
         return False
     if (
@@ -706,38 +902,58 @@ def message_targets_instant_notify(
         and message.reply_to.author_id == user_id
     ):
         return True
-    tokens = {t.lower() for t in extract_mention_tokens(message.body or "")}
+    room = message.room
+    candidates = room_mention_members(room) if room is not None else []
+    known = _mention_tokens_for_users(candidates)
+    tokens = {t.casefold() for t in extract_mention_tokens(message.body or "", known_tokens=known)}
     if not tokens:
         return False
+    user_tokens: set[str] = set()
     uname = (username or "").strip()
     if not uname:
         User = get_user_model()
         try:
             uname = User.objects.only("username").get(pk=user_id).username
         except User.DoesNotExist:
-            return False
-    return bool(uname) and uname.lower() in tokens
+            uname = ""
+    if uname:
+        user_tokens.add(uname.casefold())
+    handles = assign_mention_handles(candidates)
+    handle = handles.get(user_id)
+    if handle:
+        user_tokens.add(handle.casefold())
+    return bool(user_tokens & tokens)
+
+
+def _chat_notify_preview(message: ChatMessage) -> str:
+    preview = (message.body or "").strip()
+    if not preview:
+        preview = "pièce jointe"
+    if len(preview) > 140:
+        preview = preview[:137].rstrip() + "…"
+    return preview
 
 
 def notify_chat_message_targets(message: ChatMessage) -> int:
     """
-    Notification instantanée (push / e-mail / inbox) pour @mentions
-    et auteur du message cité. L’auteur du message n’est jamais notifié.
-    Ne lève jamais : les échecs sont logués.
+    Notifie les @mentions (toujours immédiat) et l’auteur du message cité
+    (selon la préf. « réponses à mes messages »).
+    L’auteur du message n’est jamais notifié. Ne lève jamais.
     """
     if message.kind == ChatMessage.Kind.SYSTEM:
         return 0
     if message.is_deleted:
         return 0
 
-    recipients: dict[int, object] = {}
+    mention_recipients: dict[int, object] = {}
     for u in resolve_mentioned_users(
         message.room,
         message.body or "",
         exclude_user=message.author,
     ):
-        recipients[u.pk] = u
+        mention_recipients[u.pk] = u
 
+    reply_recipients: dict[int, object] = {}
     parent = message.reply_to
     if (
         parent
@@ -746,43 +962,57 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
         and parent.author is not None
         and parent.author.is_active
     ):
-        recipients[parent.author_id] = parent.author
+        reply_recipients[parent.author_id] = parent.author
 
-    # Filet de sécurité : jamais notifier l’auteur de son propre message
+    # Filet : jamais notifier l’auteur ; pas de double notif mention+réponse
     if message.author_id:
-        recipients.pop(message.author_id, None)
+        mention_recipients.pop(message.author_id, None)
+        reply_recipients.pop(message.author_id, None)
+    for uid in mention_recipients:
+        reply_recipients.pop(uid, None)
 
-    if not recipients:
+    if not mention_recipients and not reply_recipients:
         return 0
 
     author_name = _author_display_name(message)
     room_title = message.room.title
-    preview = (message.body or "").strip()
-    if not preview:
-        preview = "pièce jointe"
-    if len(preview) > 140:
-        preview = preview[:137].rstrip() + "…"
+    preview = _chat_notify_preview(message)
     url = chat_room_url(message.room_id, message_id=message.pk)
     title = f"JOY — {room_title}"
-    body = f"{author_name} vous a cité : {preview}"
+    sent = 0
 
     try:
         from users.notify import notify_users
+        from users.notify_prefs import TYPE_CHAT, TYPE_CHAT_REPLY
 
-        return notify_users(
-            recipients.values(),
-            title=title,
-            body=body,
-            url=url,
-            related_type="chat_msg",
-            related_id=message.pk,
-            notify_type="chat",
-            room=message.room,
-            force_immediate=True,
-        )
+        if mention_recipients:
+            sent += notify_users(
+                mention_recipients.values(),
+                title=title,
+                body=f"{author_name} vous a cité : {preview}",
+                url=url,
+                related_type="chat_msg",
+                related_id=message.pk,
+                notify_type=TYPE_CHAT,
+                room=message.room,
+                force_immediate=True,
+            )
+        if reply_recipients:
+            sent += notify_users(
+                reply_recipients.values(),
+                title=title,
+                body=f"{author_name} a répondu à votre message : {preview}",
+                url=url,
+                related_type="chat_reply",
+                related_id=message.pk,
+                notify_type=TYPE_CHAT_REPLY,
+                room=message.room,
+                force_immediate=False,
+            )
+        return sent
     except Exception:
         logger.exception(
-            "Échec notif mention chat message_id=%s", message.pk
+            "Échec notif mention/réponse chat message_id=%s", message.pk
         )
         return 0
 
@@ -1040,6 +1270,33 @@ def edit_message(
     return message
 
 
+@transaction.atomic
+def delete_message(*, message: ChatMessage, actor) -> ChatMessage:
+    """
+    Soft-delete d’un message (auteur uniquement). La ligne reste en base pour
+    les FK reply_to, mais le message disparaît du fil (pas de placeholder).
+    """
+    if message.is_deleted:
+        raise ValueError("Message déjà supprimé.")
+    if message.kind != ChatMessage.Kind.NORMAL:
+        raise ValueError("Ce message ne peut pas être supprimé.")
+    if message.author_id != getattr(actor, "pk", None):
+        raise ValueError("Seul l’auteur peut supprimer ce message.")
+
+    message.deleted_at = timezone.now()
+    message.save(update_fields=["deleted_at"])
+
+    message = (
+        ChatMessage.objects.select_related(
+            "author", "related_proposal", "reply_to", "reply_to__author"
+        )
+        .prefetch_related("attachments", "reactions", "reply_to__attachments")
+        .get(pk=message.pk)
+    )
+    broadcast_message_edit(message)
+    return message
+
+
 def broadcast_message(message: ChatMessage) -> None:
     layer = get_channel_layer()
     if layer is None:
@@ -1156,9 +1413,16 @@ def ensure_staff_membership(room: ChatRoom, user) -> ChatMembership:
     return membership
 
 
-def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
+def build_room_embed_context(
+    request: HttpRequest,
+    room: ChatRoom,
+    *,
+    compact: bool = False,
+    show_staff_panel: bool = True,
+    history_limit: int | None = None,
+) -> dict:
     """
-    Contexte partagé salon chat (page dédiée ou embed poll).
+    Contexte partagé salon chat (page dédiée ou embed poll / calendrier).
     Prérequis : l'utilisateur a déjà accès (membre actif ou staff).
     """
     user = request.user
@@ -1167,6 +1431,12 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
     if membership is None and is_staff:
         membership = ensure_staff_membership(room, user)
 
+    is_rehearsal_room = bool(
+        room.event_id and getattr(getattr(room, "event", None), "is_rehearsal", False)
+    )
+    if room.event_id:
+        ensure_rehearsal_setlist_tip(room)
+
     # Curseur avant mark_room_read : pour scroller vers le 1er non-lu à l’ouverture
     initial_last_read_at = (
         membership.last_read_at.isoformat()
@@ -1174,10 +1444,13 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         else None
     )
     mark_room_read(room, user, broadcast=True)
+    limit = history_limit if history_limit is not None else CHAT_HISTORY_LIMIT
+    if compact and history_limit is None:
+        limit = min(CHAT_HISTORY_LIMIT, 40)
     history = list(
         reversed(
             list(
-                ChatMessage.objects.filter(room=room)
+                ChatMessage.objects.filter(room=room, deleted_at__isnull=True)
                 .select_related(
                     "author", "related_proposal", "reply_to", "reply_to__author"
                 )
@@ -1187,7 +1460,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
                     "reply_to__attachments",
                     replies_prefetch(),
                 )
-                .order_by("-created_at")[:CHAT_HISTORY_LIMIT]
+                .order_by("-created_at")[:limit]
             )
         )
     )
@@ -1208,7 +1481,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         )
         if participation and participation.status.code == "declined":
             show_leave_hint = True
-        if is_staff:
+        if is_staff and show_staff_panel:
             from planning.models import DateProposal
             from planning.services import (
                 draft_proposal_for_event,
@@ -1245,14 +1518,13 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
     api_send_url = reverse("chat:api_send", kwargs={"room_id": room.pk})
     api_react_url = reverse("chat:api_react", kwargs={"room_id": room.pk})
     api_edit_url = reverse("chat:api_edit", kwargs={"room_id": room.pk})
+    api_delete_url = reverse("chat:api_delete", kwargs={"room_id": room.pk})
     # ?v=3 : Staff = staff only (no full orchestra in @ mentions)
     api_members_url = (
-        reverse("chat:api_members", kwargs={"room_id": room.pk}) + "?v=3"
+        reverse("chat:api_members", kwargs={"room_id": room.pk}) + "?v=4"
     )
     messages_data = [serialize_message(m, viewer=user) for m in history]
-    mention_members = [
-        serialize_mention_member(u) for u in room_mention_members(room)
-    ]
+    mention_members = serialize_mention_members(room_mention_members(room))
     read_cursors = room_read_cursors(room)
 
     return {
@@ -1272,6 +1544,7 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         "api_send_url": api_send_url,
         "api_react_url": api_react_url,
         "api_edit_url": api_edit_url,
+        "api_delete_url": api_delete_url,
         "api_members_url": api_members_url,
         "api_read_url": reverse("chat:api_read", kwargs={"room_id": room.pk}),
         "current_user_id": user.pk,
@@ -1282,8 +1555,16 @@ def build_room_embed_context(request: HttpRequest, room: ChatRoom) -> dict:
         "invite_choices": invite_choices,
         "open_proposal": open_proposal,
         "lock_options": lock_options,
+        "is_rehearsal_room": is_rehearsal_room,
+        "composer_placeholder": (
+            "Proposez un morceau… (votez avec 👍)"
+            if is_rehearsal_room
+            else "Message… — @ pour mentionner"
+        ),
         "embedded": True,
+        "compact": bool(compact),
         "show_chat_chrome": False,
+        "show_staff_panel": bool(show_staff_panel) and is_staff and bool(room.event_id),
     }
 
 

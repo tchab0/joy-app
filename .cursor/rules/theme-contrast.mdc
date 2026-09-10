@@ -13,9 +13,9 @@ Toute nouvelle page ou style doit **réutiliser le thème défini dans `template
 |-------|--------|
 | `--bg` / `--surface` | Fonds page / panneaux |
 | `--text` / `--muted` | Texte principal / secondaire |
-| `--accent` / `--accent-h` | CTA, liens, accents terracotta |
+| `--accent` / `--accent-h` | CTA, liens, accents cuivre |
 | `--gold` | Décoratif (bordures, étoiles) — **pas** comme couleur de texte |
-| `--gold-text` (`#8a6a1a`) | Texte sur fond cream/or clair |
+| `--gold-text` (`#8d5f16`) | Texte sur fond cream/or clair |
 | `--ok` | Succès / traité |
 | `--staff` / `--staff-rgb` | Blocs / actions staff dans les Coulisses (slate) |
 | `--font-d` / `--font-b` | Titres (Playfair) / corps (Work Sans) |

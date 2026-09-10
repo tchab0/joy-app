@@ -1,0 +1,10 @@
+[Unit]
+Description=JOY — purge mails spam SEO anglophones (IMAP)
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/srv/jazz-orchestra-yonnais/repo
+EnvironmentFile=/srv/jazz-orchestra-yonnais/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+ExecStart=/srv/jazz-orchestra-yonnais/.venv/bin/python manage.py purge_seo_spam_mail

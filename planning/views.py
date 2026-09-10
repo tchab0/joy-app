@@ -34,7 +34,10 @@ from planning.models import (
 )
 from planning.services import (
     attach_calendar_chat_links,
+    attach_calendar_participations,
+    attach_calendar_recent_messages,
     attach_calendar_setlists,
+    attach_calendar_rehearsal_plans,
     attach_calendar_summaries,
     attach_calendar_roadmaps,
     attach_open_poll_info_to_events,
@@ -45,6 +48,7 @@ from planning.services import (
     open_proposal_for_event,
     eligible_substitutes_for,
     ensure_default_equipment,
+    ensure_open_participation,
     ensure_participation_statuses,
     EQUIPMENT_CATEGORIES,
     format_poll_vote_counts,
@@ -53,6 +57,7 @@ from planning.services import (
     get_participation_for,
     get_or_create_roadmap,
     get_roadmap,
+    board_rows_for_user,
     invite_musician_to_event,
     invite_musicians_for_form,
     invite_titulaires_to_event,
@@ -66,11 +71,14 @@ from planning.services import (
     respond_substitute_request,
     roster_by_stage,
     suggest_defaults,
+    suggest_event_equipment,
     sync_known_fields,
     user_can_access_poll,
     user_can_view_roadmap,
     set_participation_response,
     user_can_edit_poll_deadline,
+    user_can_edit_poll_options,
+    update_poll_options,
     vote_counts_for_option,
 )
 from users.roles import (
@@ -325,18 +333,17 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
         user = self.request.user
         now = timezone.now()
 
-        my_parts = (
-            EventParticipation.objects.filter(
-                user=user,
-                event__date_debut__gte=now,
-                event__statut__in=[Event.Statut.CONFIRME, Event.Statut.TENTATIVE],
-            )
-            .select_related("event", "event__venue", "event__type", "status")
-            .order_by("event__date_debut")[:20]
-        )
-
-        pending = [p for p in my_parts if p.status.code in ("invited", "maybe")]
-        upcoming = list(my_parts)
+        # Toutes les dates à venir (confirmées ou non) — positionnement libre.
+        all_rows = board_rows_for_user(user, limit=40)
+        pending = [
+            row
+            for row in all_rows
+            if (not row.event.is_rehearsal)
+            and row.status.code in ("invited", "maybe")
+        ]
+        pending_event_ids = {row.event.pk for row in pending}
+        # « Prochaines dates » = le reste (pas de doublon avec « À répondre »).
+        upcoming = [row for row in all_rows if row.event.pk not in pending_event_ids]
 
         sub_offers = (
             SubstituteRequest.objects.filter(
@@ -413,7 +420,10 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         attach_calendar_summaries(events)
         attach_open_poll_info_to_events(events, user)
         attach_calendar_chat_links(events, user)
+        attach_calendar_participations(events, user)
+        attach_calendar_recent_messages(events, user)
         attach_calendar_setlists(events)
+        attach_calendar_rehearsal_plans(events)
         attach_calendar_roadmaps(events)
         events_by_day: dict[date, list] = defaultdict(list)
         for event in events:
@@ -665,7 +675,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
         participation = get_participation_for(event, user)
         chat_link = chat_link_for_event(event, user)
 
-        parts = (
+        parts = list(
             EventParticipation.objects.filter(event=event)
             .select_related("user", "status", "user__musician_profile__section")
             .order_by(
@@ -673,8 +683,6 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "user__first_name",
             )
         )
-        by_section: dict[str, list] = defaultdict(list)
-        section_order: dict[str, int] = {}
         counts = {
             "confirmed": 0,
             "invited": 0,
@@ -682,16 +690,50 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
             "declined": 0,
             "replacement_needed": 0,
         }
+        sections_by_code = {
+            s.code: s
+            for s in OrchestraSection.objects.filter(is_active=True).only(
+                "code", "name", "sort_order"
+            )
+        }
+        by_section: dict[str, list] = defaultdict(list)
+        section_order: dict[str, int] = {}
         for p in parts:
-            section = p.section_for_roster()
-            section_name = section.name if section else "Sans pupitre"
-            by_section[section_name].append(p)
-            if section_name not in section_order:
-                section_order[section_name] = (
-                    section.sort_order if section else 999
-                )
             if p.status.code in counts:
                 counts[p.status.code] += 1
+            section = None
+            if p.poste:
+                code = MusicianProfile.POSTE_SECTION_CODE.get(p.poste)
+                if code:
+                    section = sections_by_code.get(code)
+            if section is None:
+                try:
+                    section = p.user.musician_profile.section
+                except MusicianProfile.DoesNotExist:
+                    section = None
+            if section:
+                section_name = section.name
+                section_order.setdefault(section_name, section.sort_order)
+            else:
+                section_name = "Sans pupitre"
+                section_order.setdefault(section_name, 9999)
+            by_section[section_name].append(p)
+        by_section = {
+            name: by_section[name]
+            for name in sorted(
+                by_section.keys(),
+                key=lambda n: (section_order.get(n, 9999), n),
+            )
+        }
+
+        stage = roster_by_stage(parts)
+        taken_ids = {
+            p.user_id
+            for p in parts
+            if getattr(getattr(p, "status", None), "code", None)
+            in ("confirmed", "invited", "maybe")
+        }
+        attach_roster_substitutes(stage, taken_user_ids=taken_ids)
 
         eligible = eligible_substitutes_for(participation) if participation else []
         my_sub_requests = []
@@ -721,22 +763,22 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
 
         setlist_pdf = _setlist_pdf_context(self.request, user, participation, setlist)
         roadmap = get_roadmap(event)
+        attach_calendar_summaries([event])
 
         context.update(
             {
                 "event": event,
                 "participation": participation,
-                "by_section": {
-                    name: by_section[name]
-                    for name in sorted(
-                        by_section.keys(),
-                        key=lambda n: (section_order.get(n, 999), n),
-                    )
-                },
                 "counts": counts,
+                "by_section": by_section,
+                "cal_summary": getattr(event, "cal_summary", None) or {},
+                "roster_rows": stage["rows"],
+                "roster_extras": stage["extras"],
+                "roster_unassigned": stage["unassigned"],
                 "eligible_subs": eligible,
                 "my_sub_requests": my_sub_requests,
                 "gear": gear,
+                "equipment_catalog": ensure_default_equipment(),
                 "chat_link": chat_link,
                 "is_planning_staff": is_staff,
                 "setlist": setlist,
@@ -873,6 +915,12 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "options_data": options_data,
                 "is_planning_staff": is_staff,
                 "can_edit_deadline": user_can_edit_poll_deadline(user, proposal),
+                "can_edit_options": user_can_edit_poll_options(user, proposal)
+                and proposal.status
+                not in (
+                    DateProposal.Status.LOCKED,
+                    DateProposal.Status.CANCELLED,
+                ),
                 "hide_pending_polls_banner": True,
             }
         )
@@ -929,45 +977,76 @@ class RespondParticipationView(MusicianRequiredMixin, View):
             pk=pk,
             user=request.user,
         )
-        data = _parse_json_body(request)
-        response = data.get("response", "")
-        maybe_remind_weekly = data.get("maybe_remind_weekly")
-        if isinstance(maybe_remind_weekly, str):
-            maybe_remind_weekly = maybe_remind_weekly.strip().lower() in (
-                "1",
-                "true",
-                "yes",
-                "on",
+        return _respond_participation(request, participation)
+
+
+class RespondEventView(MusicianRequiredMixin, View):
+    """Se positionner sur une date sans invitation préalable."""
+
+    def post(self, request, pk):
+        event = get_object_or_404(
+            Event.objects.select_related("type"),
+            pk=pk,
+        )
+        if event.statut == Event.Statut.ANNULE:
+            return _json_error("Cet événement est annulé.")
+        if event.is_rehearsal:
+            return _json_error(
+                "Pour une répétition, utilisez le signalement d’absence."
             )
         try:
-            set_participation_response(
-                participation,
-                response,
-                comment=data.get("comment", "") or "",
-                maybe_remind_at=data.get("maybe_remind_at"),
-                maybe_remind_weekly=maybe_remind_weekly,
-            )
+            participation, _ = ensure_open_participation(event, request.user)
         except ValueError as exc:
             return _json_error(str(exc))
-        participation.refresh_from_db()
-        payload = {
-            "ok": True,
-            "status": {
-                "code": participation.status.code,
-                "label": participation.status.label,
-                "color_token": participation.status.color_token,
-            },
+        participation = (
+            EventParticipation.objects.select_related("status", "event").get(
+                pk=participation.pk
+            )
+        )
+        return _respond_participation(request, participation)
+
+
+def _respond_participation(request, participation: EventParticipation):
+    data = _parse_json_body(request)
+    response = data.get("response", "")
+    maybe_remind_weekly = data.get("maybe_remind_weekly")
+    if isinstance(maybe_remind_weekly, str):
+        maybe_remind_weekly = maybe_remind_weekly.strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+    try:
+        set_participation_response(
+            participation,
+            response,
+            comment=data.get("comment", "") or "",
+            maybe_remind_at=data.get("maybe_remind_at"),
+            maybe_remind_weekly=maybe_remind_weekly,
+        )
+    except ValueError as exc:
+        return _json_error(str(exc))
+    participation.refresh_from_db()
+    payload = {
+        "ok": True,
+        "participation_id": participation.pk,
+        "status": {
+            "code": participation.status.code,
+            "label": participation.status.label,
+            "color_token": participation.status.color_token,
+        },
+    }
+    if participation.status.code == "maybe":
+        payload["maybe_remind"] = {
+            "at": (
+                participation.maybe_remind_at.isoformat()
+                if participation.maybe_remind_at
+                else None
+            ),
+            "weekly": participation.maybe_remind_weekly,
         }
-        if participation.status.code == "maybe":
-            payload["maybe_remind"] = {
-                "at": (
-                    participation.maybe_remind_at.isoformat()
-                    if participation.maybe_remind_at
-                    else None
-                ),
-                "weekly": participation.maybe_remind_weekly,
-            }
-        return JsonResponse(payload)
+    return JsonResponse(payload)
 
 
 class ProposeSubstituteView(MusicianRequiredMixin, View):
@@ -1137,7 +1216,7 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         event = get_object_or_404(
-            Event.objects.select_related("venue", "type", "parent"),
+            Event.objects.select_related("venue", "type", "parent", "chat_room"),
             pk=kwargs["pk"],
         )
         parts = list(
@@ -1180,6 +1259,8 @@ class EventRosterView(PlanningStaffRequiredMixin, TemplateView):
                 "organismes": _organismes_qs(),
                 "draft_proposal": draft_proposal_for_event(event),
                 "open_proposal": open_proposal_for_event(event),
+                "chat_link": chat_link_for_event(event, self.request.user),
+                "is_planning_staff": True,
             }
         )
         return context
@@ -1298,8 +1379,83 @@ class UpdatePollDeadlineView(MusicianRequiredMixin, View):
         return redirect("planning:poll_detail", pk=pk)
 
 
+class UpdatePollOptionsView(MusicianRequiredMixin, View):
+    """Auteur (ou staff) : modifier / ajouter / retirer des options de date."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(
+            DateProposal.objects.prefetch_related("options"), pk=pk
+        )
+        if not user_can_edit_poll_options(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Seul l’auteur ou le staff peut modifier les dates du sondage."
+            )
+
+        existing_ids = {o.pk for o in proposal.options.all()}
+        updates = []
+        delete_ids = []
+        for opt_id in existing_ids:
+            if request.POST.get(f"option_delete_{opt_id}"):
+                delete_ids.append(opt_id)
+                continue
+            starts_raw = (request.POST.get(f"option_starts_{opt_id}") or "").strip()
+            starts = _parse_local_dt(starts_raw) if starts_raw else None
+            if starts is None:
+                messages.error(
+                    request,
+                    "Chaque option conservée doit avoir une date et une heure de début.",
+                )
+                return redirect("planning:poll_detail", pk=pk)
+            ends_raw = (request.POST.get(f"option_ends_{opt_id}") or "").strip()
+            ends = _parse_local_dt(ends_raw) if ends_raw else None
+            updates.append(
+                {
+                    "id": opt_id,
+                    "starts_at": starts,
+                    "ends_at": ends,
+                    "label": (request.POST.get(f"option_label_{opt_id}") or "").strip(),
+                }
+            )
+
+        new_options = []
+        for i in range(20):
+            starts_raw = (request.POST.get(f"new_option_starts_{i}") or "").strip()
+            if not starts_raw:
+                continue
+            starts = _parse_local_dt(starts_raw)
+            if starts is None:
+                continue
+            ends_raw = (request.POST.get(f"new_option_ends_{i}") or "").strip()
+            ends = _parse_local_dt(ends_raw) if ends_raw else None
+            new_options.append(
+                {
+                    "starts_at": starts,
+                    "ends_at": ends,
+                    "label": (
+                        request.POST.get(f"new_option_label_{i}") or ""
+                    ).strip(),
+                }
+            )
+
+        try:
+            update_poll_options(
+                proposal,
+                updates=updates,
+                new_options=new_options,
+                delete_ids=delete_ids,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:poll_detail", pk=pk)
+
+        messages.success(request, "Dates / heures du sondage mises à jour.")
+        return redirect("planning:poll_detail", pk=pk)
+
+
 class LaunchPollView(PlanningStaffRequiredMixin, View):
-    """Autorise / lance le sondage de disponibilité (+ highlight chat + notification)."""
+    """Autorise / lance le sondage de disponibilité (+ notification)."""
 
     def post(self, request, pk):
         proposal = get_object_or_404(DateProposal, pk=pk)
@@ -1310,8 +1466,7 @@ class LaunchPollView(PlanningStaffRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
         messages.success(
             request,
-            "Sondage lancé — mis en évidence dans le salon, "
-            "notifications envoyées aux invités.",
+            "Sondage lancé — notifications envoyées aux invités.",
         )
         return redirect("planning:poll_detail", pk=pk)
 
@@ -1529,6 +1684,36 @@ class AddEventEquipmentView(PlanningStaffRequiredMixin, View):
         )
         messages.success(request, f"{item.name} ajouté.")
         return redirect("planning:event_roster", pk=pk)
+
+
+class SuggestEventEquipmentView(MusicianRequiredMixin, View):
+    """Demande / suggestion de matériel par un musicien (pas d’assignation)."""
+
+    def post(self, request, pk):
+        event = get_object_or_404(Event, pk=pk)
+        next_url = (request.POST.get("next") or "").strip()
+        if not next_url.startswith("/"):
+            if request.user.is_staff or request.user.is_superuser:
+                next_url = reverse("planning:event_roster", kwargs={"pk": pk})
+            else:
+                next_url = reverse("planning:event_detail", kwargs={"pk": pk})
+        try:
+            assignment = suggest_event_equipment(
+                event,
+                request.user,
+                item_id=request.POST.get("item_id") or "",
+                item_name=request.POST.get("item_name") or "",
+                note=request.POST.get("note") or "",
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc) or "Proposition invalide.")
+            return redirect(next_url)
+        messages.success(
+            request,
+            f"Proposition enregistrée : {assignment.item.name}. "
+            "Le staff pourra l’assigner.",
+        )
+        return redirect(next_url)
 
 
 class CreateEquipmentItemView(PlanningStaffRequiredMixin, View):

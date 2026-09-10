@@ -116,6 +116,7 @@ class UserAdmin(DjangoUserAdmin):
         "is_musician",
         "is_association_member",
         "membership_expires_at",
+        "must_change_password",
         "two_factor_enabled",
         "totp_enabled",
         "is_staff",
@@ -124,6 +125,7 @@ class UserAdmin(DjangoUserAdmin):
     list_filter = (
         "is_musician",
         "is_association_member",
+        "must_change_password",
         "two_factor_enabled",
         "totp_enabled",
         "is_staff",
@@ -145,6 +147,7 @@ class UserAdmin(DjangoUserAdmin):
                     "is_musician",
                     "is_association_member",
                     "membership_expires_at",
+                    "must_change_password",
                 )
             },
         ),

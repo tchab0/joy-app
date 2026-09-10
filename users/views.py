@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import HttpRequest, HttpResponse
@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import (
     IdentifierAuthenticationForm,
+    NewPasswordForm,
     OTPVerifyForm,
     PasswordlessStartForm,
     ProfileSecurityForm,
@@ -238,6 +239,7 @@ def logout_view(request: HttpRequest) -> HttpResponse:
 def account_home(request: HttpRequest) -> HttpResponse:
     from feedback.services.page_feedback import (
         build_page_feedback_author_responses_context,
+        build_page_feedback_threads_context,
         build_page_feedback_vote_requests_context,
     )
 
@@ -310,6 +312,7 @@ def account_home(request: HttpRequest) -> HttpResponse:
     }
     context.update(build_page_feedback_author_responses_context(request.user))
     context.update(build_page_feedback_vote_requests_context(request.user))
+    context.update(build_page_feedback_threads_context(request.user))
     return render(request, "users/account.html", context)
 
 
@@ -357,6 +360,34 @@ def tour_complete(request: HttpRequest) -> HttpResponse:
     if not ok:
         return JsonResponse({"ok": False, "error": "audience_invalide"}, status=400)
     return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def password_change_view(request: HttpRequest) -> HttpResponse:
+    """Définition d’un nouveau mot de passe — obligatoire si ``must_change_password``."""
+    user = request.user
+    forced = bool(getattr(user, "must_change_password", False))
+    form = NewPasswordForm(user, data=request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        if forced:
+            user.must_change_password = False
+            user.save(update_fields=["must_change_password"])
+        update_session_auth_hash(request, user)
+        messages.success(request, "Mot de passe enregistré.")
+        return redirect(_safe_next(request) if forced else reverse("account_security"))
+
+    return render(
+        request,
+        "users/password_change.html",
+        {
+            "form": form,
+            "forced": forced,
+            "next": request.POST.get("next") or request.GET.get("next", ""),
+        },
+    )
 
 
 @login_required
@@ -440,15 +471,19 @@ def member_area(request: HttpRequest) -> HttpResponse:
 def account_notifications(request: HttpRequest) -> HttpResponse:
     """Inbox des notifications de l’utilisateur connecté."""
     from users.models import UserNotification
+    from users.notify import is_staff_destined_notification
 
     qs = UserNotification.objects.filter(user=request.user)
     unread = qs.filter(read_at__isnull=True)
     unanswered = qs.filter(requires_response=True, responded_at__isnull=True)
+    notifications = list(qs[:100])
+    for item in notifications:
+        item.is_staff_destined = is_staff_destined_notification(item)
     return render(
         request,
         "users/notifications.html",
         {
-            "notifications": qs[:100],
+            "notifications": notifications,
             "unread_count": unread.count(),
             "unanswered_count": unanswered.count(),
             "can_planning": user_can_access_planning(request.user),

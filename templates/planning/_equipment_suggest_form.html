@@ -1,0 +1,42 @@
+{# Proposition matériel musicien — expects: event, equipment_catalog, next_url (optional) #}
+<form class="pl-form pl-form--tight" method="post"
+      action="{% url 'planning:suggest_event_equipment' event.pk %}"
+      x-data="{ itemId: '' }">
+  {% csrf_token %}
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+  <p class="pl-row__meta pl-roster-lead" style="margin-top:0">
+    Proposez un matériel à prévoir pour cette date (le staff assignera ensuite).
+  </p>
+  <div class="pl-form__row pl-form__row--gear">
+    <div>
+      <label for="{{ id_prefix|default:'suggest' }}_item_id">Matériel</label>
+      <select name="item_id" id="{{ id_prefix|default:'suggest' }}_item_id" x-model="itemId">
+        <option value="">— Catalogue… —</option>
+        {% regroup equipment_catalog by category as catalog_groups %}
+        {% for group in catalog_groups %}
+        <optgroup label="{{ group.grouper|default:'Divers' }}">
+          {% for item in group.list %}
+          <option value="{{ item.pk }}">{{ item.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+        <option value="__new__">+ Autre proposition…</option>
+      </select>
+    </div>
+    <div x-show="itemId === '__new__'" x-cloak>
+      <label for="{{ id_prefix|default:'suggest' }}_item_name">Votre proposition</label>
+      <input type="text" name="item_name" id="{{ id_prefix|default:'suggest' }}_item_name"
+             placeholder="ex. Pied de partition supplémentaire"
+             :required="itemId === '__new__'">
+    </div>
+    <div>
+      <label for="{{ id_prefix|default:'suggest' }}_note">Précision <span class="pl-row__meta">(optionnel)</span></label>
+      <input type="text" name="note" id="{{ id_prefix|default:'suggest' }}_note"
+             maxlength="200" placeholder="ex. utile pour le solo">
+    </div>
+    <div class="pl-form__submit">
+      <button type="submit" class="pl-btn pl-btn--primary"
+              :disabled="!itemId">Proposer</button>
+    </div>
+  </div>
+</form>

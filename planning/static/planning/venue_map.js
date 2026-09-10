@@ -126,6 +126,7 @@ window.PlVenueMap = (function () {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
+      referrerPolicy: 'origin',
     }).addTo(map);
 
     let marker = null;

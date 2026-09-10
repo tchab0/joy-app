@@ -4,9 +4,8 @@ from django.db import migrations
 
 
 ACCUEIL_META = (
-    "Jazz Orchestra Yonnais (JOY) : big band associatif à La Roche-sur-Yon. "
-    "Concerts jazz & swing en Vendée, festivals et prestations pour mariages, "
-    "galas et entreprises."
+    "Jazz Orchestra Yonnais (JOY) — big band à La Roche-sur-Yon. "
+    "Concerts jazz & swing en Vendée, prestations pour mariages, galas et entreprises."
 )
 
 HERO = {
@@ -73,8 +72,8 @@ def seed_accueil(apps, schema_editor):
         contenu={
             "titre": "Le Big Band",
             "body": ABOUT_BODY,
-            "cta_label": "Demande de prestation",
-            "cta_url": "/contact/?mode=prestation",
+            "cta_label": "Prestations & devis",
+            "cta_url": "/prestations/",
         },
     )
 

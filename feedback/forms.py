@@ -138,3 +138,24 @@ class PageFeedbackVoteOpenForm(forms.Form):
         if len(formulation) > 2000:
             raise forms.ValidationError("La formulation ne peut pas dépasser 2000 caractères.")
         return formulation
+
+
+class PageFeedbackThreadForm(forms.Form):
+    body = forms.CharField(
+        label="Message",
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "maxlength": "2000",
+                "placeholder": "Écrire un message…",
+            }
+        ),
+    )
+
+    def clean_body(self):
+        body = (self.cleaned_data.get("body") or "").strip()
+        if not body:
+            raise forms.ValidationError("Le message ne peut pas être vide.")
+        if len(body) > 2000:
+            raise forms.ValidationError("Le message ne peut pas dépasser 2000 caractères.")
+        return body

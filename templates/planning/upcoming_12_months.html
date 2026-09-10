@@ -5,6 +5,11 @@
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
+{% include "chat/_room_styles.html" %}
+{% endblock %}
+
+{% block extra_head %}
+<script defer src="{% static 'chat/room.js' %}?v=9"></script>
 {% endblock %}
 
 {% block content %}
@@ -15,10 +20,11 @@
        year: {{ calendar_year }},
        rehearsalCreateUrl: '{% url "repetitions:staff_create" %}'
      })"
-     @keydown.escape.window="closeAll(); hoverDay = null">
+     @keydown.escape.window="closeAll(); hoverDay = null"
+     @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
 
   <header class="pl-head">
-    <h1>Planning</h1>
+    <h1 class="pl-head__title--module">Planning</h1>
     {% page_lead "planning.calendar" class="page-lead--in-head" %}
       {{ range_label }} — concerts et répétitions sur 12 mois.
       Survolez une date pour l’aperçu ; touchez-la pour le détail.
@@ -35,10 +41,10 @@
   </div>
 
   <div class="pl-layers" role="group" aria-label="Calques du calendrier">
-    <button type="button" class="pl-layers__btn" :class="layer === 'all' && 'is-active'" @click="setLayer('all')">Tout</button>
-    <button type="button" class="pl-layers__btn" :class="layer === 'confirmed' && 'is-active'" @click="setLayer('confirmed')">Confirmés</button>
-    <button type="button" class="pl-layers__btn" :class="layer === 'proposals' && 'is-active'" @click="setLayer('proposals')">Propositions</button>
-    <button type="button" class="pl-layers__btn" :class="layer === 'rehearsals' && 'is-active'" @click="setLayer('rehearsals')">Répétitions</button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'all' && 'is-active'" @click="setLayer('all')" aria-label="Tout">Tout</button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'confirmed' && 'is-active'" @click="setLayer('confirmed')" aria-label="Confirmés"><span class="pl-layers__short">Conf.</span><span class="pl-layers__full">Confirmés</span></button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'proposals' && 'is-active'" @click="setLayer('proposals')" aria-label="Propositions"><span class="pl-layers__short">Prop.</span><span class="pl-layers__full">Propositions</span></button>
+    <button type="button" class="pl-layers__btn" :class="layer === 'rehearsals' && 'is-active'" @click="setLayer('rehearsals')" aria-label="Répétitions"><span class="pl-layers__short">Répét.</span><span class="pl-layers__full">Répétitions</span></button>
   </div>
   <ul class="pl-legend" aria-label="Légende">
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--confirmed" aria-hidden="true"></span> Événement confirmé</li>
@@ -71,7 +77,10 @@
                       }"
                       role="gridcell"
                       aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if can_propose_event or is_planning_staff %} — ajouter{% endif %}"
-                      @click="onDayClick('{{ day.iso }}', {{ day.events|length }}, dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
+                      {% if day.events|length == 1 and day.events.0.cal_summary.is_rehearsal %}
+                      data-direct-url="{% if day.events.0.cal_chat %}{% url 'chat:room' day.events.0.cal_chat.room_id %}{% else %}{% url 'repetitions:detail' day.events.0.pk %}{% endif %}"
+                      {% endif %}
+                      @click="onDayClick('{{ day.iso }}', {{ day.events|length }}, dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}), $event.currentTarget.dataset.directUrl || '')"
                       @focus="onDayHover('{{ day.iso }}', dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
                       @blur="onDayLeave('{{ day.iso }}')">
                 <span class="pl-cal__num">{{ day.day }}</span>
@@ -92,13 +101,16 @@
                   <p class="pl-cal-tip__title">{{ event.titre }}</p>
                   <p class="pl-cal-tip__line">{{ s.date_label }} · {{ s.time_label }}</p>
                   {% if s.lieu %}<p class="pl-cal-tip__line">{{ s.lieu }}</p>{% endif %}
-                  {% if s.proposed_by_label %}
+                  {% if s.proposed_by_label and not s.is_confirmed %}
                   <p class="pl-cal-tip__line">Proposé par {{ s.proposed_by_label }}</p>
                   {% endif %}
-                  {% if s.deadline_label %}
+                  {% if s.deadline_label and not s.is_confirmed %}
                   <p class="pl-cal-tip__line">Répondre avant le {{ s.deadline_label }}</p>
                   {% endif %}
                   {% if not s.is_poll_option %}
+                  {% if s.is_rehearsal %}
+                  {% if is_planning_staff %}
+                  <div class="joy-staff-ui">
                   <p class="pl-cal-tip__line">
                     Présents : {{ s.n_presents }}
                     <span>({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)</span>
@@ -112,19 +124,47 @@
                     {% for mb in s.maybe_detail %}{% if not forloop.first %}, {% endif %}{{ mb.name }}{% if mb.remind_at %} (relance {{ mb.remind_at|date:"d/m" }}){% endif %}{% endfor %}
                   </p>
                   {% endif %}
+                  </div>
+                  {% endif %}
+                  <p class="pl-cal-tip__line{% if is_planning_staff %} joy-musician-fallback{% endif %}">
+                    {% if event.cal_rehearsal_plan.n_items %}
+                    Setlist : {{ event.cal_rehearsal_plan.n_items }} morceau{{ event.cal_rehearsal_plan.n_items|pluralize }}
+                    {% else %}
+                    Setlist : pas encore de morceaux
+                    {% endif %}
+                  </p>
+                  {% else %}
+                  {% if is_planning_staff %}
+                  <div class="joy-staff-ui">
+                  <p class="pl-cal-tip__line">
+                    Présents : {{ s.n_presents }}
+                    <span>({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)</span>
+                  </p>
+                  <p class="pl-cal-tip__line {% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
+                    Manquants : {{ s.instruments_manquants_label }}
+                  </p>
+                  {% if s.n_maybe %}
+                  <p class="pl-cal-tip__line is-warn">
+                    Peut-être : {{ s.n_maybe }}
+                    {% for mb in s.maybe_detail %}{% if not forloop.first %}, {% endif %}{{ mb.name }}{% if mb.remind_at %} (relance {{ mb.remind_at|date:"d/m" }}){% endif %}{% endfor %}
+                  </p>
+                  {% endif %}
+                  </div>
+                  {% endif %}
+                  {% endif %}
                   {% endif %}
                   {% if s.is_poll_option or s.has_open_poll %}
+                  {% if not s.is_confirmed %}
                   <p class="pl-cal-tip__line">
                     {% if s.poll_answered %}
-                      Sondage de dates — réponse enregistrée
-                    {% elif s.my_poll_vote_label %}
-                      Sondage de dates — {{ s.my_poll_vote_label }}
+                      Sondage de dates — vote enregistré
                     {% else %}
                       Sondage de dates — à répondre
                     {% endif %}
                   </p>
                   {% if s.poll_vote_counts_label %}
                   <p class="pl-cal-tip__line">{{ s.poll_vote_counts_label }}</p>
+                  {% endif %}
                   {% endif %}
                   {% endif %}
                 </div>
@@ -150,8 +190,13 @@
             {% with s=event.cal_summary %}
             <article class="pl-day-events__card{% if s.is_confirmed %} is-confirmed{% endif %}{% if s.is_proposal %} is-proposal{% endif %}{% if s.is_rehearsal %} is-rehearsal{% endif %}"
                      x-show="eventVisible('{{ s.layer|default:'other' }}')">
-              <a class="pl-day-events__item" href="{% if s.is_poll_option %}{% url 'planning:poll_detail' s.poll_id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
-                <strong>{{ event.titre }}</strong>
+              <a class="pl-day-events__item" href="{% if s.is_poll_option %}{% url 'planning:poll_detail' s.poll_id %}{% elif s.is_rehearsal and event.cal_chat %}{% url 'chat:room' event.cal_chat.room_id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
+                <span class="pl-day-events__title-row">
+                  <strong>{{ event.titre }}</strong>
+                  {% if s.is_rehearsal and event.cal_chat and event.cal_chat.unread %}
+                  <span class="pl-chat-badge" aria-label="{{ event.cal_chat.unread }} non lus">{{ event.cal_chat.unread }}</span>
+                  {% endif %}
+                </span>
                 <span class="pl-day-events__type">
                   {{ s.kind_label }}{% if s.type_nom and s.type_nom != s.kind_label %} · {{ s.type_nom }}{% endif %}
                 </span>
@@ -165,13 +210,13 @@
                   <dt>Lieu</dt>
                   <dd>{% if s.lieu %}{{ s.lieu }}{% else %}—{% endif %}</dd>
                 </div>
-                {% if s.proposed_by_label %}
+                {% if s.proposed_by_label and not s.is_confirmed %}
                 <div>
                   <dt>Proposé par</dt>
                   <dd>{{ s.proposed_by_label }}</dd>
                 </div>
                 {% endif %}
-                {% if s.deadline_label %}
+                {% if s.deadline_label and not s.is_confirmed %}
                 <div>
                   <dt>Deadline</dt>
                   <dd>Répondre avant le {{ s.deadline_label }}</dd>
@@ -182,9 +227,7 @@
                   <dt>Statut</dt>
                   <dd>
                     {% if s.poll_answered %}
-                      {% if s.my_poll_vote_label %}Votre réponse : {{ s.my_poll_vote_label }}{% else %}Réponse enregistrée{% endif %}
-                    {% elif s.my_poll_vote_label %}
-                      Votre réponse : {{ s.my_poll_vote_label }} — sondage à compléter
+                      Vote enregistré
                     {% else %}
                       Sondage ouvert — votez pour cette date
                     {% endif %}
@@ -197,14 +240,12 @@
                 </div>
                 {% endif %}
                 {% else %}
-                {% if s.has_open_poll %}
+                {% if s.has_open_poll and not s.is_confirmed %}
                 <div>
                   <dt>Sondage</dt>
                   <dd>
                     {% if s.poll_answered %}
-                      {% if s.my_poll_vote_label %}Votre réponse : {{ s.my_poll_vote_label }}{% else %}Réponse enregistrée{% endif %}
-                    {% elif s.my_poll_vote_label %}
-                      Votre réponse : {{ s.my_poll_vote_label }} — sondage à compléter
+                      Vote enregistré
                     {% else %}
                       Sondage ouvert — votez pour cette date
                     {% endif %}
@@ -223,7 +264,9 @@
                   <dd data-calendar-weather="{{ event.pk }}" hidden></dd>
                 </div>
                 {% endif %}
-                <div>
+                {% if s.is_rehearsal %}
+                {% if is_planning_staff %}
+                <div class="joy-staff-ui">
                   <dt>Présents</dt>
                   <dd>
                     {{ s.n_presents }}
@@ -232,7 +275,82 @@
                     </span>
                   </dd>
                 </div>
-                <div class="pl-event-stats__missing">
+                <div class="pl-event-stats__missing joy-staff-ui">
+                  <dt>Instruments manquants</dt>
+                  <dd class="{% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
+                    {% if s.instruments_manquants_detail %}
+                    <ul class="pl-missing__list" data-missing-invite-locks>
+                      {% for m in s.instruments_manquants_detail %}
+                      <li class="pl-missing__item">
+                        <span class="pl-missing__name">{{ m.name }}</span>
+                        {% if m.maybe %}
+                        <ul class="pl-missing__maybe">
+                          {% for mb in m.maybe %}
+                          <li>
+                            <span class="pl-badge pl-badge--warning">Peut-être</span>
+                            {{ mb.name }}{% if mb.poste_label %} · {{ mb.poste_label }}{% endif %}
+                            {% if mb.remind_at %}
+                            <span class="pl-missing__remind">— relance le {{ mb.remind_at|date:"d/m/Y" }}</span>
+                            {% elif mb.remind_weekly %}
+                            <span class="pl-missing__remind">— relance chaque semaine</span>
+                            {% endif %}
+                          </li>
+                          {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if m.eligible %}
+                        <form class="pl-missing__invite"
+                              method="post"
+                              action="{% url 'planning:invite_musician' event.pk %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="next"
+                                 value="{% url 'planning:dashboard' %}?year={{ calendar_year }}&day={{ day.iso }}">
+                          <select name="invite_slot" required
+                                  aria-label="Remplaçant pour {{ m.name }}">
+                            <option value="">Remplaçant…</option>
+                            {% for e in m.eligible %}
+                            <option value="{{ e.invite_slot }}"
+                                    data-user-id="{{ e.user_id }}">{{ e.name }}</option>
+                            {% endfor %}
+                          </select>
+                          <button type="submit" class="pl-btn pl-btn--primary">
+                            Inviter
+                          </button>
+                        </form>
+                        {% else %}
+                        <span class="pl-missing__none">Aucun remplaçant éligible</span>
+                        {% endif %}
+                      </li>
+                      {% endfor %}
+                    </ul>
+                    {% else %}
+                    Aucun
+                    {% endif %}
+                  </dd>
+                </div>
+                {% endif %}
+                <div{% if is_planning_staff %} class="joy-musician-fallback"{% endif %}>
+                  <dt>Setlist</dt>
+                  <dd>
+                    {% if event.cal_rehearsal_plan.n_items %}
+                    {{ event.cal_rehearsal_plan.n_items }} morceau{{ event.cal_rehearsal_plan.n_items|pluralize }}
+                    {% else %}
+                    Pas encore de morceaux
+                    {% endif %}
+                  </dd>
+                </div>
+                {% else %}
+                {% if is_planning_staff %}
+                <div class="joy-staff-ui">
+                  <dt>Présents</dt>
+                  <dd>
+                    {{ s.n_presents }}
+                    <span class="pl-event-stats__split">
+                      ({{ s.n_titulaires }} tit. · {{ s.n_remplacants }} remp.)
+                    </span>
+                  </dd>
+                </div>
+                <div class="pl-event-stats__missing joy-staff-ui">
                   <dt>Instruments manquants</dt>
                   <dd class="{% if s.instruments_manquants %}is-warn{% else %}is-ok{% endif %}">
                     {% if s.instruments_manquants_detail %}
@@ -277,7 +395,7 @@
                             </button>
                           </form>
                           {% else %}
-                          <span class="pl-missing__none">Aucun remplaçant éligible</span>
+                          <span class="pl-missing__none joy-staff-ui">Aucun remplaçant éligible</span>
                           {% endif %}
                         {% endif %}
                       </li>
@@ -289,22 +407,107 @@
                   </dd>
                 </div>
                 {% endif %}
+                {% endif %}
+                {% endif %}
               </dl>
               {% if not s.is_poll_option %}
+              {% with part=event.cal_participation %}
+              {% if not s.is_rehearsal or part %}
+              <section class="pl-day-events__presence" aria-label="Ma présence"
+                {% if s.is_rehearsal %}
+                x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' event.pk %}', {{ part.is_absent|yesno:'true,false' }})"
+                {% else %}
+                x-data="respondButtons({% if part %}{{ part.id }}{% else %}null{% endif %}, '{% if part %}{{ part.status_code }}{% else %}invited{% endif %}', { eventPk: {{ event.pk }}, eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if part %}{{ part.poste_label|escapejs }}{% endif %}' })"
+                {% endif %}>
+                {% if s.is_rehearsal %}
+                <div class="pl-day-events__presence-head">
+                  <h3>Ma présence</h3>
+                </div>
+                {% include "planning/_presence_buttons.html" with initially_absent=part.is_absent %}
+                {% include "planning/_rsvp_invalidate_modal.html" with prefix=part.id %}
+                {% else %}
+                <div class="pl-day-events__presence-head">
+                  <h3>Ma présence</h3>
+                  {% if part and part.poste_label %}
+                  <span class="pl-day-events__poste">{{ part.poste_label }}</span>
+                  {% endif %}
+                </div>
+                <div class="pl-row__actions pl-accept__actions pl-accept__actions--inline pl-day-events__presence-actions" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
+                  <span class="pl-badge pl-badge--{% if part %}{{ part.status_color }}{% else %}warning{% endif %}" x-text="label">{% if part %}{{ part.status_label }}{% else %}À répondre{% endif %}</span>
+                  <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
+                  <button type="button" class="pl-btn pl-btn--maybe" x-show="code !== 'confirmed'" :class="code === 'maybe' && 'is-active'" :disabled="busy" @click="respond('maybe')">Peut-être</button>
+                  <button type="button" class="pl-btn pl-btn--no" :class="{ 'is-active': code === 'declined' || code === 'replacement_needed', 'is-invalidate': code === 'confirmed' }" :disabled="busy"
+                    @click="respond('no')">Non</button>
+                </div>
+                {% include "planning/_rsvp_invalidate_modal.html" with prefix=part.id|default:event.pk %}
+                {% include "planning/_rsvp_maybe_remind_modal.html" with prefix=part.id|default:event.pk %}
+                {% endif %}
+              </section>
+              {% endif %}
+              {% endwith %}
+
               {% if event.cal_chat %}
-              <a class="pl-day-events__salon" href="{% url 'chat:room' event.cal_chat.room_id %}">
-                <span>Salon « {{ event.titre }} »</span>
+              <section class="pl-day-events__chat" aria-label="Salon">
+                <div class="pl-day-events__presence-head">
+                  <h3>Salon</h3>
+                  {% if event.cal_chat.unread %}
+                  <span class="pl-chat-badge" aria-label="{{ event.cal_chat.unread }} non lus">{{ event.cal_chat.unread }}</span>
+                  {% endif %}
+                </div>
+                <template x-if="selectedDay === '{{ day.iso }}'">
+                  <div class="pl-day-events__chat-live"
+                       x-data="calendarChatEmbed('{% url 'chat:room_embed' event.cal_chat.room_id %}')"
+                       x-init="load()">
+                    <p class="pl-day-events__msgs-empty" x-show="loading" x-cloak>Chargement du salon…</p>
+                    <p class="pl-day-events__msgs-empty" x-show="error" x-cloak x-text="error"></p>
+                    <div x-ref="mount"></div>
+                  </div>
+                </template>
+              </section>
+              {% endif %}
+
+              {% if s.is_rehearsal and event.cal_chat %}
+              <a class="pl-btn pl-btn--primary pl-day-events__propose" href="{% url 'chat:room' event.cal_chat.room_id %}">
+                <span>Proposer un morceau</span>
                 {% if event.cal_chat.unread %}
                 <span class="pl-chat-badge" aria-label="{{ event.cal_chat.unread }} non lus">{{ event.cal_chat.unread }}</span>
                 {% endif %}
               </a>
               {% endif %}
-              {% if event.cal_setlist %}
-              <a class="pl-day-events__salon{% if is_planning_staff %} pl-day-events__salon--staff{% endif %}" href="{% if is_planning_staff %}{% url 'repertoire:staff_setlist_edit' event.cal_setlist.id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}#setlist{% endif %}">
-                <span>Setlist — {{ event.cal_setlist.title }}</span>
-                <span>{% if is_planning_staff %}Éditer{% else %}Voir{% endif %}</span>
+
+              {% if s.is_rehearsal %}
+              {% if is_planning_staff %}
+              <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repetitions:staff_edit' event.pk %}">
+                <span>{% if event.cal_rehearsal_plan.n_items %}Setlist — {{ event.cal_rehearsal_plan.n_items }} morceau{{ event.cal_rehearsal_plan.n_items|pluralize }}{% else %}Setlist{% endif %}</span>
+                <span>{% if event.cal_rehearsal_plan.n_items %}Éditer{% else %}Créer{% endif %}</span>
               </a>
-              {% elif is_planning_staff and not s.is_rehearsal %}
+              <a class="pl-day-events__salon joy-musician-fallback" href="{% url 'repetitions:detail' event.pk %}">
+                <span>{% if event.cal_rehearsal_plan.n_items %}Setlist — {{ event.cal_rehearsal_plan.n_items }} morceau{{ event.cal_rehearsal_plan.n_items|pluralize }}{% else %}Setlist{% endif %}</span>
+                <span>Voir</span>
+              </a>
+              {% else %}
+              <a class="pl-day-events__salon" href="{% url 'repetitions:detail' event.pk %}">
+                <span>{% if event.cal_rehearsal_plan.n_items %}Setlist — {{ event.cal_rehearsal_plan.n_items }} morceau{{ event.cal_rehearsal_plan.n_items|pluralize }}{% else %}Setlist{% endif %}</span>
+                <span>Voir</span>
+              </a>
+              {% endif %}
+              {% elif event.cal_setlist %}
+              {% if is_planning_staff %}
+              <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repertoire:staff_setlist_edit' event.cal_setlist.id %}">
+                <span>Setlist — {{ event.cal_setlist.title }}</span>
+                <span>Éditer</span>
+              </a>
+              <a class="pl-day-events__salon joy-musician-fallback" href="{% url 'planning:event_detail' event.pk %}#setlist">
+                <span>Setlist — {{ event.cal_setlist.title }}</span>
+                <span>Voir</span>
+              </a>
+              {% else %}
+              <a class="pl-day-events__salon" href="{% url 'planning:event_detail' event.pk %}#setlist">
+                <span>Setlist — {{ event.cal_setlist.title }}</span>
+                <span>Voir</span>
+              </a>
+              {% endif %}
+              {% elif is_planning_staff %}
               <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
                 <span>Setlist</span>
                 <span>Créer</span>
@@ -316,14 +519,11 @@
                 <span>Voir</span>
               </a>
               {% endif %}
-              {% if s.has_open_poll %}
+              {% if s.has_open_poll and not s.is_confirmed %}
               <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
                 {% if s.poll_answered %}
-                <span>Votre vote est enregistré</span>
+                <span>Sondage — vote enregistré</span>
                 <span>Voir / modifier</span>
-                {% elif s.my_poll_vote_label %}
-                <span>Réponse : {{ s.my_poll_vote_label }}</span>
-                <span>Compléter</span>
                 {% else %}
                 <span>Répondre au sondage</span>
                 <span>Voter</span>
@@ -350,11 +550,8 @@
               {% else %}
               <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
                 {% if s.poll_answered %}
-                <span>Votre vote est enregistré</span>
+                <span>Sondage — vote enregistré</span>
                 <span>Voir / modifier</span>
-                {% elif s.my_poll_vote_label %}
-                <span>Réponse : {{ s.my_poll_vote_label }}</span>
-                <span>Modifier</span>
                 {% else %}
                 <span>Répondre au sondage</span>
                 <span>Voter</span>
@@ -382,7 +579,7 @@
             {% endwith %}
             {% endfor %}
             {% if can_propose_event or is_planning_staff %}
-            <div class="pl-day-add">
+            <div class="pl-day-add{% if not can_propose_event %} joy-staff-ui{% endif %}"{% if can_propose_event and is_planning_staff %} x-show="canCreate || staffUi"{% endif %}>
               <p class="pl-day-events__label">Ajouter</p>
               <div class="pl-day-add__actions">
                 {% if can_propose_event %}
@@ -391,7 +588,7 @@
                 </button>
                 {% endif %}
                 {% if is_planning_staff %}
-                <a class="pl-btn pl-btn--staff" :href="rehearsalUrl('{{ day.iso }}')">Répétition</a>
+                <a class="pl-btn pl-btn--staff" :href="rehearsalUrl('{{ day.iso }}')" x-show="staffUi">Répétition</a>
                 {% endif %}
               </div>
             </div>
@@ -421,7 +618,7 @@
         </button>
         {% endif %}
         {% if is_planning_staff %}
-        <a class="pl-btn pl-btn--staff" :href="rehearsalUrl(formDate)">Répétition</a>
+        <a class="pl-btn pl-btn--staff" :href="rehearsalUrl(formDate)" x-show="staffUi">Répétition</a>
         {% endif %}
       </div>
     </div>
@@ -515,6 +712,8 @@
     </div>
   </div>
   {% endif %}
+
+  <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
 <script>
@@ -598,6 +797,7 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     canCreateRehearsal,
     year,
     rehearsalCreateUrl,
+    staffUi: !document.body.classList.contains('joy-mode-musician'),
     layer: savedLayer,
     selectedDay: (new URLSearchParams(window.location.search)).get('day') || null,
     hoverDay: null,
@@ -609,7 +809,14 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     venueMode: 'existing',
     parentMode: 'none',
     finePointer: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    toast: '',
     init() {
+      window.addEventListener('joy-ui-mode', (e) => {
+        this.staffUi = e.detail !== 'musician';
+        if (!this.staffUi && this.choiceOpen && !this.canCreate) {
+          this.choiceOpen = false;
+        }
+      });
       if (!this.selectedDay) return;
       this.revealSelectedDay();
     },
@@ -648,8 +855,11 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
       if (this.layer === 'rehearsals') return !!hasRehearsal;
       return true;
     },
+    canCreateRehearsalActive() {
+      return !!(this.canCreateRehearsal && this.staffUi);
+    },
     canAdd() {
-      return !!(this.canCreate || this.canCreateRehearsal);
+      return !!(this.canCreate || this.canCreateRehearsalActive());
     },
     setFormDate(iso) {
       this.formDate = iso;
@@ -670,9 +880,14 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     onDayLeave(iso) {
       if (this.hoverDay === iso) this.hoverDay = null;
     },
-    onDayClick(iso, eventCount, hasVisible) {
+    onDayClick(iso, eventCount, hasVisible, directUrl) {
       this.hoverDay = null;
       if (eventCount > 0) {
+        // Mobile + une seule répé → salon (ou fiche). Desktop : panneau détail.
+        if (directUrl && hasVisible && !this.finePointer) {
+          window.location.href = directUrl;
+          return;
+        }
         const opening = this.selectedDay !== iso;
         this.selectedDay = opening ? iso : null;
         if (opening) this.revealSelectedDay();
@@ -688,11 +903,11 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
       if (!this.canAdd()) return;
       this.setFormDate(iso);
       // Un seul choix possible → aller directement.
-      if (this.canCreate && !this.canCreateRehearsal) {
+      if (this.canCreate && !this.canCreateRehearsalActive()) {
         this.openCreate(iso);
         return;
       }
-      if (!this.canCreate && this.canCreateRehearsal) {
+      if (!this.canCreate && this.canCreateRehearsalActive()) {
         window.location.href = this.rehearsalUrl(iso);
         return;
       }
@@ -732,10 +947,52 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     },
   };
 }
+function calendarChatEmbed(url) {
+  return {
+    url: url,
+    loading: true,
+    error: '',
+    _loaded: false,
+    async load() {
+      if (this._loaded) return;
+      this.loading = true;
+      this.error = '';
+      try {
+        const r = await fetch(this.url, {
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'text/html' }
+        });
+        if (!r.ok) throw new Error('Salon indisponible');
+        const html = await r.text();
+        const mount = this.$refs.mount;
+        if (!mount) return;
+        mount.innerHTML = html;
+        if (window.Alpine && typeof Alpine.initTree === 'function') {
+          Alpine.initTree(mount);
+        }
+        this._loaded = true;
+        this.loading = false;
+      } catch (e) {
+        this.loading = false;
+        this.error = (e && e.message) || 'Impossible de charger le salon';
+      }
+    },
+    destroy() {
+      const mount = this.$refs.mount;
+      if (!mount) return;
+      if (window.Alpine && typeof Alpine.destroyTree === 'function') {
+        try { Alpine.destroyTree(mount); } catch (_) {}
+      }
+      mount.innerHTML = '';
+      this._loaded = false;
+    }
+  };
+}
 </script>
+{% include "planning/_respond_buttons_js.html" %}
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'planning/venue_map.js' %}"></script>
+<script src="{% static 'planning/venue_map.js' %}?v=2"></script>
 <script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endblock %}

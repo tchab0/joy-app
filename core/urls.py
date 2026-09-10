@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("concerts/", views.concerts, name="concerts"),
     path("goodies/", views.goodies, name="goodies"),
+    path("prestations/", views.prestations, name="prestations"),
     path("medias/", views.medias, name="medias"),
     path("medias/proposer/", views.proposer_media, name="proposer_media"),
     path("medias/<int:pk>/vote/", views.media_vote, name="media_vote"),
@@ -16,6 +17,7 @@ urlpatterns = [
     path("admin-medias/", views.admin_medias, name="admin_medias"),
     path("admin-contact/", views.admin_contact, name="admin_contact"),
     path("admin-contact/<int:pk>/supprimer/", views.admin_contact_delete, name="admin_contact_delete"),
+    path("admin-emails/", views.admin_emails, name="admin_emails"),
     path(
         "admin-notifications/",
         views.admin_notifications,
@@ -29,6 +31,11 @@ urlpatterns = [
     path("admin-medias/<int:pk>/action/", views.admin_media_action, name="admin_media_action"),
     path("admin-medias/<int:pk>/editer/", views.admin_media_edit, name="admin_media_edit"),
     path("administration/", views.admin_hub, name="admin_hub"),
+    path(
+        "administration/presentation/",
+        views.admin_presentation,
+        name="admin_presentation",
+    ),
     path('admin-concerts/', views.admin_concerts, name='admin_concerts'),
     path('admin-repetitions/', views.admin_repetitions, name='admin_repetitions'),
     path('admin-concerts/ajouter/', views.admin_concert_edit, name='admin_concert_add'),

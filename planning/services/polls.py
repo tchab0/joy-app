@@ -177,8 +177,8 @@ def send_due_poll_deadline_reminders(
 @transaction.atomic
 def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProposal:
     """
-    Autorise / lance le sondage : statut OPEN, message mis en évidence dans
-    le salon, alerte (push ou e-mail) aux musiciens du salon / roster.
+    Autorise / lance le sondage : statut OPEN, alerte (push ou e-mail)
+    aux musiciens du salon / roster.
     """
     if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
         raise ValueError("Sondage déjà lancé")
@@ -197,31 +197,10 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
         update_fields=["status", "launched_at", "launched_by", "updated_at"]
     )
 
-    event = proposal.linked_event
-    poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
-
-    if event is not None:
-        from chat.models import ChatMessage
-        from chat.services import ensure_event_room, post_message
-
-        room = ensure_event_room(event)
-        local = timezone.localtime(event.date_debut)
-        body = (
-            f"Sondage de disponibilité lancé pour « {proposal.title} » "
-            f"({local.strftime('%d/%m/%Y %H:%M')}).\n"
-            f"Répondez au sondage : {poll_path}"
-        )
-        post_message(
-            room=room,
-            author=launched_by,
-            body=body,
-            kind=ChatMessage.Kind.POLL_LAUNCH,
-            related_proposal=proposal,
-        )
+    if proposal.linked_event is not None:
         notify_availability_poll(proposal)
 
     return proposal
-
 
 @transaction.atomic
 def lock_date_proposal(
@@ -285,6 +264,103 @@ def user_can_edit_poll_deadline(user, proposal: DateProposal) -> bool:
     if user.is_staff or user.is_superuser:
         return True
     return proposal.created_by_id == getattr(user, "pk", None)
+
+
+def user_can_edit_poll_options(user, proposal: DateProposal) -> bool:
+    """Mêmes droits que pour la deadline (auteur ou staff)."""
+    return user_can_edit_poll_deadline(user, proposal)
+
+
+def update_poll_options(
+    proposal: DateProposal,
+    *,
+    updates: list[dict],
+    new_options: list[dict] | None = None,
+    delete_ids: list[int] | None = None,
+) -> DateProposal:
+    """
+    Met à jour les dates/heures (et libellés) des options d’un sondage.
+
+    ``updates`` : [{id, starts_at, ends_at?, label?}, ...]
+    ``new_options`` : [{starts_at, ends_at?, label?}, ...]
+    ``delete_ids`` : pks à supprimer (votes en cascade).
+
+    Refusé si le sondage est verrouillé / annulé.
+    Conserve au moins une option. Si l’événement lié est encore
+    ``tentative`` et qu’il ne reste qu’une option, synchronise
+    ``date_debut`` / ``date_fin`` de l’événement.
+    """
+    from events.models import Event
+
+    if proposal.status in (
+        DateProposal.Status.LOCKED,
+        DateProposal.Status.CANCELLED,
+    ):
+        raise ValueError("Ce sondage est clos — dates non modifiables.")
+
+    existing = {o.pk: o for o in proposal.options.all()}
+    delete_ids = list(delete_ids or [])
+    new_options = list(new_options or [])
+
+    remaining_ids = set(existing) - set(delete_ids)
+    if not remaining_ids and not new_options:
+        raise ValueError("Il faut au moins une option de date.")
+
+    for raw in updates:
+        opt_id = raw.get("id")
+        if opt_id not in remaining_ids:
+            continue
+        starts = raw.get("starts_at")
+        if starts is None:
+            raise ValueError("Chaque option doit avoir une date/heure de début.")
+        opt = existing[opt_id]
+        opt.starts_at = starts
+        opt.ends_at = raw.get("ends_at")
+        if "label" in raw:
+            opt.label = (raw.get("label") or "").strip()
+        opt.save(update_fields=["starts_at", "ends_at", "label"])
+
+    for opt_id in delete_ids:
+        opt = existing.get(opt_id)
+        if opt is not None:
+            opt.delete()
+
+    next_order = (
+        proposal.options.order_by("-sort_order")
+        .values_list("sort_order", flat=True)
+        .first()
+    )
+    sort_order = (next_order + 1) if next_order is not None else 0
+    for raw in new_options:
+        starts = raw.get("starts_at")
+        if starts is None:
+            continue
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=starts,
+            ends_at=raw.get("ends_at"),
+            label=(raw.get("label") or "").strip(),
+            sort_order=sort_order,
+        )
+        sort_order += 1
+
+    if not proposal.options.exists():
+        raise ValueError("Il faut au moins une option de date.")
+
+    event = proposal.linked_event
+    options = list(proposal.options.order_by("sort_order", "starts_at"))
+    if (
+        event is not None
+        and event.statut == Event.Statut.TENTATIVE
+        and len(options) == 1
+    ):
+        only = options[0]
+        event.date_debut = only.starts_at
+        event.date_fin = only.ends_at
+        event.save(update_fields=["date_debut", "date_fin"])
+
+    proposal.save(update_fields=["updated_at"])
+    return proposal
 
 
 def user_has_answered_poll(user, proposal: DateProposal) -> bool:
@@ -514,11 +590,19 @@ def open_poll_calendar_markers_for_user(
         linked = proposal.linked_event
         linked_day = None
         linked_is_proposal = False
+        linked_is_confirmed = False
         if linked is not None:
             linked_day = timezone.localtime(linked.date_debut).date()
+            linked_statut = getattr(linked, "statut", "")
             linked_is_proposal = (not _is_rehearsal_type(linked)) and (
-                getattr(linked, "statut", "") == Event.Statut.TENTATIVE
+                linked_statut == Event.Statut.TENTATIVE
             )
+            linked_is_confirmed = (not _is_rehearsal_type(linked)) and (
+                linked_statut == Event.Statut.CONFIRME
+            )
+        # Événement déjà confirmé : plus de cartes « proposition / sondage ».
+        if linked_is_confirmed:
+            continue
         answered = user_has_answered_poll(user, proposal)
         for option in proposal.options.all():
             starts = option.starts_at
@@ -576,6 +660,12 @@ def attach_open_poll_info_to_events(events, user) -> list:
     for event in events:
         proposal = by_event.get(event.pk)
         if proposal is None:
+            continue
+        # Confirmé : le sondage de dates n’a plus sa place sur la fiche jour.
+        if (
+            not _is_rehearsal_type(event)
+            and getattr(event, "statut", "") == Event.Statut.CONFIRME
+        ):
             continue
         summary = dict(getattr(event, "cal_summary", None) or {})
         event_day = timezone.localtime(event.date_debut).date()

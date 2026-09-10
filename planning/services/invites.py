@@ -304,6 +304,64 @@ def send_event_photos_requests(events, members) -> int:
     return total
 
 
+def _default_self_position_slot(musician) -> tuple[str, str]:
+    """
+    Meilleur poste pour un auto-positionnement (sans choix staff).
+
+    Ne lève pas : multi-postes / profil incomplet → chaise vide.
+    """
+    try:
+        return resolve_invite_slot(musician, "")
+    except ValueError:
+        try:
+            profile = musician.musician_profile
+        except MusicianProfile.DoesNotExist:
+            return "", ""
+        if profile.poste_titulaire:
+            return (
+                profile.poste_titulaire,
+                EventParticipation.RoleKind.TITULAIRE,
+            )
+        return "", ""
+
+
+@transaction.atomic
+def ensure_open_participation(
+    event,
+    musician,
+) -> tuple[EventParticipation, bool]:
+    """
+    Garantit une participation pour que le musicien puisse se positionner.
+
+    Pas de notification d’invitation : utilisé dates / détail listent toutes les
+    dates ; la participation naît au premier affichage utile ou à la réponse.
+    """
+    if not getattr(musician, "is_musician", False) or not musician.is_active:
+        raise ValueError("Utilisateur non musicien ou inactif")
+    poste, role_kind = _default_self_position_slot(musician)
+    invited = get_status("invited")
+    try:
+        part, created = EventParticipation.objects.get_or_create(
+            event=event,
+            user=musician,
+            defaults={
+                "status": invited,
+                "poste": poste,
+                "role_kind": role_kind,
+            },
+        )
+    except IntegrityError:
+        part = EventParticipation.objects.select_related("status").get(
+            event=event, user=musician
+        )
+        created = False
+    if created:
+        from chat.services import sync_participation_to_chat
+
+        sync_participation_to_chat(part)
+    return part, created
+
+
 @transaction.atomic
 def invite_musician_to_event(
     event,

@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}E-mails — Administration JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .mail-page { max-width: 720px; margin: 0 auto; padding: 1.25rem 1rem 2.5rem; color: var(--text); }
+  .mail-page h1 {
+    font-family: var(--font-d);
+    font-size: 1.75rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .mail-lead { color: var(--muted); margin: 0 0 1.25rem; line-height: 1.45; font-size: .95rem; }
+  .mail-from {
+    font-size: .85rem;
+    color: var(--muted);
+    margin: 0 0 1rem;
+  }
+  .mail-form { display: flex; flex-direction: column; gap: 1rem; }
+  .mail-field label {
+    display: block;
+    font-weight: 600;
+    font-size: .9rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .mail-hint {
+    margin: .35rem 0 0;
+    font-size: .82rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .mail-hint code {
+    font-size: .8rem;
+    background: rgba(var(--staff-rgb), .08);
+    padding: .1rem .35rem;
+    border-radius: calc(var(--r) * .5);
+    color: var(--staff);
+  }
+  .mail-errors {
+    background: #fde8e8;
+    border: 1px solid #b43c3c;
+    color: #7a2020;
+    border-radius: var(--r);
+    padding: .75rem 1rem;
+    font-size: .9rem;
+  }
+  .mail-errors ul { margin: .35rem 0 0; padding-left: 1.1rem; }
+  .mail-musicians {
+    border: 1px solid rgba(var(--staff-rgb), .25);
+    border-radius: var(--r);
+    background: var(--surface);
+    max-height: 280px;
+    overflow: auto;
+    padding: .35rem .5rem;
+  }
+  .mail-musicians .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: .55rem;
+    min-height: 44px;
+    padding: .45rem .35rem;
+    border-bottom: 1px solid rgba(var(--staff-rgb), .1);
+  }
+  .mail-musicians .checkbox-row:last-child { border-bottom: 0; }
+  .mail-musicians input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: .2rem;
+    flex-shrink: 0;
+  }
+  .mail-musicians label {
+    font-weight: 400;
+    font-size: .9rem;
+    margin: 0;
+    line-height: 1.35;
+  }
+  .mail-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin: .5rem 0 0;
+  }
+  .mail-tools button {
+    min-height: 44px;
+    padding: .5rem .9rem;
+    border-radius: var(--r);
+    border: 1px solid rgba(var(--staff-rgb), .3);
+    background: rgba(var(--staff-rgb), .06);
+    color: var(--staff);
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  .mail-check {
+    display: flex;
+    align-items: flex-start;
+    gap: .55rem;
+    min-height: 44px;
+  }
+  .mail-check input { width: 1.15rem; height: 1.15rem; margin-top: .15rem; }
+  .mail-check label { font-weight: 400; margin: 0; }
+  .mail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .25rem;
+  }
+  .mail-actions .btn { min-height: 44px; padding: .6rem 1.1rem; }
+  .mail-confirm {
+    background: var(--surface);
+    border: 1px solid rgba(var(--staff-rgb), .25);
+    border-radius: var(--r);
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.25rem;
+  }
+  .mail-confirm h2 {
+    font-family: var(--font-d);
+    font-size: 1.2rem;
+    margin: 0 0 .75rem;
+    color: var(--staff);
+  }
+  .mail-confirm__meta { color: var(--muted); font-size: .9rem; margin: 0 0 .75rem; }
+  .mail-preview {
+    white-space: pre-wrap;
+    background: var(--bg);
+    border-radius: var(--r);
+    padding: .85rem 1rem;
+    font-size: .92rem;
+    margin: 0 0 1rem;
+    border: 1px solid var(--border);
+  }
+  .mail-recip-list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    max-height: 200px;
+    overflow: auto;
+    font-size: .88rem;
+  }
+  .mail-recip-list li {
+    padding: .4rem 0;
+    border-bottom: 1px solid rgba(var(--staff-rgb), .1);
+  }
+  .mail-history { margin-top: 2rem; }
+  .mail-history h2 {
+    font-family: var(--font-d);
+    font-size: 1.25rem;
+    margin: 0 0 .75rem;
+    color: var(--text);
+  }
+  .mail-hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+  .mail-hist-item {
+    background: var(--surface);
+    border: 1px solid rgba(var(--staff-rgb), .2);
+    border-radius: var(--r);
+    padding: .75rem 1rem;
+  }
+  .mail-hist-item strong { color: var(--staff); display: block; margin-bottom: .2rem; }
+  .mail-hist-meta { color: var(--muted); font-size: .82rem; }
+  .mail-empty { color: var(--muted); font-size: .95rem; }
+  @media (min-width: 640px) {
+    .mail-page { padding-top: 1.75rem; }
+    .mail-page h1 { font-size: 2rem; }
+    .mail-musicians { max-height: 360px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="mail-page" data-tour="admin-emails">
+  <h1>E-mails</h1>
+  {% page_lead "core.admin_emails" %}
+    Envoyer un e-mail réel aux musiciens (prénom personnalisé) ou à des adresses libres.
+  {% endpage_lead %}
+  <p class="mail-lead">SMTP du site — pas de notification push. Utilisez <code>{% templatetag openvariable %}prenom{% templatetag closevariable %}</code> pour le prénom de chaque musicien.</p>
+  <p class="mail-from">Expéditeur : {{ default_from }}</p>
+
+  {% if confirm %}
+  <div class="mail-confirm">
+    <h2>Confirmer l’envoi</h2>
+    <p class="mail-confirm__meta">
+      {{ recipients|length }} destinataire{{ recipients|length|pluralize }} —
+      aperçu avec le prénom « {{ preview_prenom }} »
+    </p>
+    <p><strong>Sujet :</strong> {{ preview_subject }}</p>
+    <div class="mail-preview">{{ preview_body }}</div>
+    <ul class="mail-recip-list">
+      {% for r in recipients %}
+        <li>
+          {% if r.prenom %}{{ r.prenom }} — {% endif %}{{ r.email }}
+          {% if not r.user_id %}<span class="mail-hist-meta">(adresse libre)</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    <form method="post" class="mail-actions">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send">
+      <input type="hidden" name="subject" value="{{ form.subject.value }}">
+      <textarea name="body" hidden>{{ form.body.value }}</textarea>
+      <textarea name="free_emails" hidden>{{ form.free_emails.value }}</textarea>
+      {% if form.include_fake.value %}<input type="hidden" name="include_fake" value="on">{% endif %}
+      {% for id in form.musician_ids.value %}
+        <input type="hidden" name="musician_ids" value="{{ id }}">
+      {% endfor %}
+      <button type="submit" class="btn btn-primary">Envoyer maintenant</button>
+      <a href="{% url 'admin_emails' %}" class="btn btn-outline">Annuler</a>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" class="mail-form" id="mail-compose-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="preview">
+
+    {% if form.non_field_errors %}
+      <div class="mail-errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="mail-field">
+      <label for="id_subject">{{ form.subject.label }}</label>
+      {{ form.subject }}
+      {% if form.subject.errors %}<div class="mail-errors">{{ form.subject.errors }}</div>{% endif %}
+    </div>
+
+    <div class="mail-field">
+      <label for="id_body">{{ form.body.label }}</label>
+      {{ form.body }}
+      <p class="mail-hint">
+        Le placeholder <code>{% templatetag openvariable %}prenom{% templatetag closevariable %}</code> est remplacé par le prénom de chaque musicien.
+        Pour les adresses libres, il est omis (ex. « Bonjour, »).
+      </p>
+      {% if form.body.errors %}<div class="mail-errors">{{ form.body.errors }}</div>{% endif %}
+    </div>
+
+    <div class="mail-field">
+      <label>{{ form.musician_ids.label }}</label>
+      <div class="mail-musicians" id="mail-musician-list">
+        {% for choice in form.musician_ids %}
+          <div class="checkbox-row">{{ choice.tag }} <label for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label></div>
+        {% empty %}
+          <p class="mail-empty" style="padding:.75rem">Aucun musicien actif avec e-mail.</p>
+        {% endfor %}
+      </div>
+      <div class="mail-tools">
+        <button type="button" id="mail-select-all">Tout cocher</button>
+        <button type="button" id="mail-select-none">Tout décocher</button>
+      </div>
+      {% if form.musician_ids.errors %}<div class="mail-errors">{{ form.musician_ids.errors }}</div>{% endif %}
+    </div>
+
+    <div class="mail-field">
+      <label for="id_free_emails">{{ form.free_emails.label }}</label>
+      {{ form.free_emails }}
+      <p class="mail-hint">Séparées par virgule ou retour ligne. Optionnel.</p>
+      {% if form.free_emails.errors %}<div class="mail-errors">{{ form.free_emails.errors }}</div>{% endif %}
+    </div>
+
+    <div class="mail-check">
+      {{ form.include_fake }}
+      <label for="id_include_fake">{{ form.include_fake.label }}</label>
+    </div>
+
+    <div class="mail-actions">
+      <button type="submit" class="btn btn-primary">Prévisualiser</button>
+      <a href="{% url 'admin_hub' %}" class="btn btn-outline">Retour hub</a>
+    </div>
+  </form>
+  {% endif %}
+
+  <section class="mail-history" aria-labelledby="mail-hist-title">
+    <h2 id="mail-hist-title">Derniers envois</h2>
+    {% if history %}
+      <ul class="mail-hist-list">
+        {% for item in history %}
+          <li class="mail-hist-item">
+            <strong>{{ item.subject }}</strong>
+            <span class="mail-hist-meta">
+              {{ item.created_at|date:"d/m/Y H:i" }}
+              {% if item.sent_by %} · {{ item.sent_by.get_full_name|default:item.sent_by.username }}{% endif %}
+              · {{ item.sent_count }} ok{% if item.failed_count %} / {{ item.failed_count }} échec{{ item.failed_count|pluralize }}{% endif %}
+              · {{ item.recipient_count }} destinataire{{ item.recipient_count|pluralize }}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="mail-empty">Aucun envoi pour l’instant.</p>
+    {% endif %}
+  </section>
+</div>
+{% if not confirm %}
+<script>
+(function () {
+  var list = document.getElementById("mail-musician-list");
+  if (!list) return;
+  var boxes = function () { return list.querySelectorAll('input[type="checkbox"]'); };
+  var all = document.getElementById("mail-select-all");
+  var none = document.getElementById("mail-select-none");
+  if (all) all.addEventListener("click", function () {
+    boxes().forEach(function (el) { el.checked = true; });
+  });
+  if (none) none.addEventListener("click", function () {
+    boxes().forEach(function (el) { el.checked = false; });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

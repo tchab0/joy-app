@@ -7,14 +7,23 @@ from collections import Counter
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 import json
+import logging
 import math
 from typing import Any
 
-from django.db.models import Case, Count, F, IntegerField, Q, Value, When
+from django.db import OperationalError, ProgrammingError
+from django.db.models import Case, Count, F, IntegerField, Max, Prefetch, Q, Value, When
 from django.urls import reverse
 from django.utils import timezone
 
-from feedback.models import PageFeedback, PageFeedbackRating, PageFeedbackVote
+from feedback.models import (
+    PageFeedback,
+    PageFeedbackMessage,
+    PageFeedbackRating,
+    PageFeedbackVote,
+)
+
+logger = logging.getLogger(__name__)
 
 CATEGORY_DISPLAY = {
     PageFeedback.CATEGORY_BUG: {
@@ -37,6 +46,8 @@ CATEGORY_DISPLAY = {
 DASHBOARD_FEEDBACK_LIMIT = 50
 PENDING_FEEDBACK_COLLAPSE_THRESHOLD = 5
 PAGE_CONTEXT_MAX_LENGTH = 2000
+AUTHOR_THREADS_LIMIT = 20
+THREAD_MESSAGE_MAX_LENGTH = 2000
 
 FEEDBACK_SORT_DATE_DESC = 'date_desc'
 FEEDBACK_SORT_DATE_ASC = 'date_asc'
@@ -395,7 +406,11 @@ def feedback_rows_for_admin_view(
     sort = parse_feedback_sort(sort)
     view = parse_feedback_view(view)
     now = timezone.now()
-    qs = PageFeedback.objects.select_related('author').annotate(supporter_count=Count('ratings', distinct=True))
+    qs = (
+        PageFeedback.objects.select_related('author')
+        .prefetch_related(_thread_messages_prefetch())
+        .annotate(supporter_count=Count('ratings', distinct=True))
+    )
     if view == FEEDBACK_VIEW_TREATED:
         qs = qs.filter(treated_at__isnull=False)
         feedback_rows = list(qs.order_by(*feedback_sort_ordering(sort))[:limit])
@@ -464,6 +479,19 @@ def dashboard_feedback_redirect_url(
     if params:
         return f'{base}?{"&".join(params)}#retours-utilisateurs'
     return f'{base}#retours-utilisateurs'
+
+
+def admin_feedback_focus_url(feedback: PageFeedback) -> str:
+    """Lien staff vers le retour, y compris s’il est traité / reporté / en cours."""
+    if feedback.treated_at is not None:
+        view = FEEDBACK_VIEW_TREATED
+    elif feedback_is_snoozed(feedback):
+        view = FEEDBACK_VIEW_SNOOZED
+    elif feedback.in_progress_at is not None:
+        view = FEEDBACK_VIEW_IN_PROGRESS
+    else:
+        view = FEEDBACK_VIEW_PENDING
+    return dashboard_feedback_redirect_url(None, view, focus_feedback_id=feedback.pk)
 
 
 def redirect_url_after_feedback_admin_action(
@@ -589,6 +617,58 @@ def _feedback_vote_counts(feedback: PageFeedback) -> tuple[int, int]:
     return for_count, against_count
 
 
+def _thread_messages_prefetch() -> Prefetch:
+    return Prefetch(
+        'thread_messages',
+        queryset=PageFeedbackMessage.objects.select_related('sender').order_by('created_at'),
+    )
+
+
+def _sender_display_name(user) -> str:
+    if user is None:
+        return 'Utilisateur'
+    name = f'{user.last_name} {user.first_name}'.strip()
+    return name or user.get_username()
+
+
+def _thread_message_rows(feedback: PageFeedback) -> list[dict[str, Any]]:
+    try:
+        messages = list(feedback.thread_messages.all())
+    except (ProgrammingError, OperationalError):
+        return []
+    rows = []
+    for msg in messages:
+        rows.append(
+            {
+                'id': msg.id,
+                'body': msg.body,
+                'sender_name': _sender_display_name(msg.sender),
+                'is_from_staff': bool(msg.is_from_staff),
+                'created_at': msg.created_at,
+            }
+        )
+    return rows
+
+
+def _thread_row_fields(feedback: PageFeedback) -> dict[str, Any]:
+    rows = _thread_message_rows(feedback)
+    last = rows[-1] if rows else None
+    return {
+        'thread_messages': rows,
+        'thread_count': len(rows),
+        'has_author_reply': bool(last and not last['is_from_staff']),
+        'has_staff_reply': bool(last and last['is_from_staff']),
+    }
+
+
+def user_can_post_feedback_message(user, feedback: PageFeedback) -> bool:
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if can_manage_page_feedback(user):
+        return True
+    return feedback.author_id == getattr(user, 'pk', None)
+
+
 def _feedback_row(feedback: PageFeedback) -> dict[str, Any]:
     category = CATEGORY_DISPLAY.get(feedback.category, {'label': feedback.category, 'css_class': ''})
     author = feedback.author
@@ -647,6 +727,7 @@ def _feedback_row(feedback: PageFeedback) -> dict[str, Any]:
         'vote_for_count': vote_for_count,
         'vote_against_count': vote_against_count,
         'vote_total_count': vote_for_count + vote_against_count,
+        **_thread_row_fields(feedback),
     }
 
 
@@ -736,6 +817,40 @@ def build_page_feedback_author_responses_context(user, *, limit: int = AUTHOR_RE
     return {
         'show_page_feedback_responses': bool(items),
         'page_feedback_responses': items,
+    }
+
+
+def build_page_feedback_threads_context(
+    user, *, limit: int = AUTHOR_THREADS_LIMIT
+) -> dict[str, Any]:
+    """Fils de discussion affichés sur la page Compte de l'émetteur."""
+    empty = {
+        'show_page_feedback_threads': False,
+        'page_feedback_threads': [],
+    }
+    if not user or not getattr(user, 'is_authenticated', False):
+        return empty
+    try:
+        qs = (
+            PageFeedback.objects.filter(author=user)
+            .prefetch_related(_thread_messages_prefetch())
+            .annotate(last_msg_at=Max('thread_messages__created_at'))
+            .order_by(F('last_msg_at').desc(nulls_last=True), '-created_at')[:limit]
+        )
+        feedbacks = list(qs)
+    except (ProgrammingError, OperationalError):
+        return empty
+
+    items = []
+    for feedback in feedbacks:
+        row = _author_response_row(feedback)
+        row.update(_thread_row_fields(feedback))
+        row['is_treated'] = feedback.treated_at is not None
+        row['created_at'] = feedback.created_at
+        items.append(row)
+    return {
+        'show_page_feedback_threads': bool(items),
+        'page_feedback_threads': items,
     }
 
 
@@ -834,7 +949,37 @@ def create_page_feedback(
             importance=importance,
         )
         recompute_feedback_importance(feedback)
+    _notify_new_page_feedback(feedback)
     return feedback
+
+
+def _notify_new_page_feedback(feedback: PageFeedback) -> None:
+    """Alerte le staff (ex. Thierry) dès qu'un nouveau retour est soumis."""
+    try:
+        from users.models import User
+        from users.notify import notify_users
+    except Exception:
+        return
+
+    category = CATEGORY_DISPLAY.get(feedback.category, {}).get('label') or feedback.category
+    author_name = _sender_display_name(feedback.author)
+    preview = (feedback.message or '')[:160]
+    body = f'{author_name} · {category} : {preview}'
+    recipients = User.objects.filter(is_active=True, is_staff=True)
+    if feedback.author_id:
+        recipients = recipients.exclude(pk=feedback.author_id)
+    try:
+        notify_users(
+            recipients,
+            title='JOY — Nouveau retour',
+            body=body,
+            url=dashboard_feedback_redirect_url(None, None, focus_feedback_id=feedback.pk),
+            related_type='feedback',
+            related_id=feedback.pk,
+            notify_type='feedback',
+        )
+    except Exception:
+        return
 
 
 def mark_page_feedback_read(feedback_id: int, reader) -> bool:
@@ -1149,3 +1294,71 @@ def submit_feedback_vote(
         choice=choice,
     )
     return feedback
+
+
+def post_page_feedback_message(*, feedback_id: int, sender, body: str) -> PageFeedbackMessage | None:
+    """Ajoute un message au fil staff ↔ émetteur. None si refusé."""
+    text = (body or '').strip()
+    if not text or len(text) > THREAD_MESSAGE_MAX_LENGTH:
+        return None
+    if not sender or not getattr(sender, 'is_authenticated', False):
+        return None
+
+    try:
+        feedback = PageFeedback.objects.select_related('author').filter(pk=feedback_id).first()
+    except (ProgrammingError, OperationalError):
+        return None
+    if feedback is None or not user_can_post_feedback_message(sender, feedback):
+        return None
+
+    is_staff_sender = can_manage_page_feedback(sender) and sender.pk != feedback.author_id
+    try:
+        message = PageFeedbackMessage.objects.create(
+            feedback=feedback,
+            sender=sender,
+            body=text,
+            is_from_staff=is_staff_sender,
+        )
+    except (ProgrammingError, OperationalError):
+        return None
+
+    _notify_feedback_thread(feedback, message)
+    return message
+
+
+def _notify_feedback_thread(feedback: PageFeedback, message: PageFeedbackMessage) -> None:
+    try:
+        from users.models import User
+        from users.notify import notify_users
+    except Exception:
+        logger.exception('Notification fil retour indisponible')
+        return
+
+    preview = (message.body or '')[:160]
+    try:
+        if message.is_from_staff:
+            notify_users(
+                [feedback.author],
+                title='JOY — Message sur votre retour',
+                body=preview,
+                url=f'{reverse("account_home")}#retour-{feedback.pk}',
+                related_type='feedback',
+                related_id=feedback.pk,
+                notify_type='feedback',
+                force_immediate=True,
+            )
+            return
+        staff = User.objects.filter(is_active=True, is_staff=True).exclude(pk=message.sender_id)
+        author_name = _sender_display_name(feedback.author)
+        notify_users(
+            staff,
+            title='JOY — Réponse sur un retour',
+            body=f'{author_name} : {preview}',
+            url=admin_feedback_focus_url(feedback),
+            related_type='feedback',
+            related_id=feedback.pk,
+            notify_type='feedback',
+            force_immediate=True,
+        )
+    except Exception:
+        logger.exception('Échec notification fil retour id=%s', feedback.pk)

@@ -15,7 +15,7 @@
       className: "event-map-pin",
       html:
         '<svg width="28" height="38" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
-        '<path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 24 14 24s14-14.25 14-24C28 6.27 21.73 0 14 0z" fill="#c94f3a"/>' +
+        '<path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 24 14 24s14-14.25 14-24C28 6.27 21.73 0 14 0z" fill="#c25a36"/>' +
         '<circle cx="14" cy="14" r="6" fill="white"/>' +
         "</svg>",
       iconSize: [28, 38],
@@ -41,6 +41,8 @@
         '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
       maxZoom: 19,
       minZoom: 3,
+      // OSM volunteer tiles require a Referer (policy: osm.wiki/Blocked).
+      referrerPolicy: "origin",
     }).addTo(map);
 
     L.marker([lat, lng], { icon: pinIcon(), keyboard: false }).addTo(map);

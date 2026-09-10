@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import PageFeedback, PageFeedbackRating, PageFeedbackVote
+from .models import PageFeedback, PageFeedbackMessage, PageFeedbackRating, PageFeedbackVote
+
+
+class PageFeedbackMessageInline(admin.TabularInline):
+    model = PageFeedbackMessage
+    extra = 0
+    readonly_fields = ("sender", "body", "is_from_staff", "created_at")
+    can_delete = False
 
 
 @admin.register(PageFeedback)
@@ -47,6 +54,7 @@ class PageFeedbackAdmin(admin.ModelAdmin):
         "vote_closed_by",
         "importance_score",
     )
+    inlines = (PageFeedbackMessageInline,)
 
     @admin.display(boolean=True, description="PJ")
     def has_attachment(self, obj):
@@ -63,3 +71,11 @@ class PageFeedbackRatingAdmin(admin.ModelAdmin):
 class PageFeedbackVoteAdmin(admin.ModelAdmin):
     list_display = ("created_at", "feedback", "user", "choice")
     list_filter = ("choice",)
+
+
+@admin.register(PageFeedbackMessage)
+class PageFeedbackMessageAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "feedback", "sender", "is_from_staff")
+    list_filter = ("is_from_staff",)
+    search_fields = ("body", "sender__username", "sender__email")
+    readonly_fields = ("created_at",)

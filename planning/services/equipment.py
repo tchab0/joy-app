@@ -111,3 +111,66 @@ def get_or_create_equipment_item(
     )
 
 
+def suggest_event_equipment(
+    event: Event,
+    user,
+    *,
+    item_id: str = "",
+    item_name: str = "",
+    note: str = "",
+) -> EventEquipmentAssignment:
+    """
+    Proposition musicien : ajoute (ou annote) un matériel sur la date.
+    Ne crée pas d’assignation « apporté par » — le staff décide ensuite.
+    """
+    from planning.models import EventEquipmentAssignment
+
+    item_id = (item_id or "").strip()
+    item_name = (item_name or "").strip()
+    note = (note or "").strip()
+
+    if item_id and item_id != "__new__":
+        item = get_object_or_404(EquipmentItem, pk=item_id, is_active=True)
+    elif item_name:
+        # Proposition libre : réutilise un item homonyme s’il existe, sinon Divers.
+        existing = (
+            EquipmentItem.objects.filter(name__iexact=item_name)
+            .order_by("pk")
+            .first()
+        )
+        if existing is not None:
+            if not existing.is_active:
+                existing.is_active = True
+                existing.save(update_fields=["is_active"])
+            item = existing
+        else:
+            item = get_or_create_equipment_item(item_name, category="Divers")
+    else:
+        raise ValueError("Choisissez un matériel ou indiquez une proposition.")
+
+    who = (user.get_full_name() or user.get_username() or "musicien").strip()
+    prefix = f"Proposé par {who}"
+    detail = f"{prefix} — {note}" if note else prefix
+    detail = detail[:255]
+
+    assignment, created = EventEquipmentAssignment.objects.get_or_create(
+        event=event,
+        item=item,
+        defaults={
+            "status": EventEquipmentAssignment.Status.NEEDED,
+            "notes": detail,
+        },
+    )
+    if not created:
+        # Déjà listé : conserver l’assignation, enrichir les notes.
+        existing_notes = (assignment.notes or "").strip()
+        if detail not in existing_notes:
+            assignment.notes = (
+                f"{existing_notes} · {detail}".strip(" ·")[:255]
+                if existing_notes
+                else detail
+            )
+            assignment.save(update_fields=["notes"])
+    return assignment
+
+

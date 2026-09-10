@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Prestations — Big Band jazz &amp; swing en Vendée | JOY{% endblock %}
+{% block og_title %}Prestations — Jazz Orchestra Yonnais{% endblock %}
+{% block twitter_title %}Prestations — Jazz Orchestra Yonnais{% endblock %}
+{% block meta_description %}Big band jazz &amp; swing à La Roche-sur-Yon pour mariages, galas et entreprises en Vendée. Formation 10–17 musiciens + chant — devis sans engagement.{% endblock %}
+{% block og_description %}Big band jazz &amp; swing à La Roche-sur-Yon pour mariages, galas et entreprises en Vendée. Formation 10–17 musiciens + chant — devis sans engagement.{% endblock %}
+{% block twitter_description %}Big band jazz &amp; swing à La Roche-sur-Yon pour mariages, galas et entreprises en Vendée. Formation 10–17 musiciens + chant — devis sans engagement.{% endblock %}
+{% block extra_css %}
+<style>
+  .prestations { max-width: 720px; color: var(--text); }
+  .prestations .section-title { margin-bottom: .75rem; }
+  .prestations-lead {
+    color: var(--muted);
+    font-size: .98rem;
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+    max-width: 540px;
+  }
+  .prestations h2 {
+    font-family: var(--font-d);
+    font-size: 1.35rem;
+    margin: 2rem 0 .75rem;
+    color: var(--text);
+  }
+  .prestations p, .prestations li {
+    color: var(--muted);
+    line-height: 1.65;
+    margin-bottom: .75rem;
+  }
+  .prestations ul {
+    padding-left: 1.15rem;
+    margin: 0 0 1rem;
+  }
+  .prestations strong { color: var(--text); font-weight: 600; }
+  .prestations-cta {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    margin: 1.75rem 0 0;
+  }
+  .prestations-cta .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .prestations-note {
+    font-size: .88rem;
+    color: var(--muted);
+    margin-top: 1rem;
+  }
+  @media (min-width: 560px) {
+    .prestations-cta {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+    .prestations-cta .btn { width: auto; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="container prestations">
+    <h1 class="section-title">Prestations</h1>
+    <p class="prestations-lead">
+      Le Jazz Orchestra Yonnais (JOY) est un big band associatif basé à
+      <strong>La Roche-sur-Yon</strong>. Nous jouons jazz et swing pour vos
+      événements privés et professionnels en <strong>Vendée</strong> et
+      Pays&nbsp;de&nbsp;la&nbsp;Loire.
+    </p>
+
+    <h2>Pour quels événements&nbsp;?</h2>
+    <ul>
+      <li>Mariages (vin d’honneur, cocktail, soirée)</li>
+      <li>Soirées de gala et anniversaires</li>
+      <li>Animations d’entreprise, séminaires, cocktails dinatoires</li>
+      <li>Festivals et concerts publics (sur invitation)</li>
+    </ul>
+
+    <h2>La formation</h2>
+    <p>
+      Une chanteuse et environ <strong>10 à 17 musiciens</strong>
+      (section rythmique, saxophones, trompettes, trombones…).
+      L’effectif s’adapte à votre lieu et à votre budget&nbsp;: nous élaborons
+      ensemble un devis personnalisé.
+    </p>
+
+    <h2>Zone géographique</h2>
+    <p>
+      Nous sommes basés à La Roche-sur-Yon (85) et nous déplaçons en Vendée
+      et dans les départements limitrophes. Indiquez le lieu dans votre
+      demande&nbsp;: nous confirmons rapidement la faisabilité.
+    </p>
+
+    <h2>Côté technique (à prévoir)</h2>
+    <ul>
+      <li>Espace scène conseillé d’environ <strong>7&nbsp;m × 4&nbsp;m</strong> pour la formation complète</li>
+      <li>Au moins <strong>1&nbsp;heure</strong> d’installation et de balances</li>
+      <li>Accès électrique et possibilité de stationnement à proximité</li>
+    </ul>
+    <p>
+      Pour un format réduit (moins de musiciens), l’emprise au sol diminue&nbsp;:
+      précisez les contraintes de votre salle dans le formulaire.
+    </p>
+
+    <h2>Médias &amp; concerts</h2>
+    <p>
+      Découvrez notre univers en images et en sons sur la page
+      <a href="{% url 'medias' %}">Médias</a>, et consultez l’agenda sur
+      <a href="{% url 'concerts' %}">Concerts</a>.
+    </p>
+
+    <div class="prestations-cta">
+      <a href="{% url 'contact' %}?mode=prestation" class="btn btn-primary">
+        Demande de devis
+      </a>
+      <a href="{% url 'medias' %}" class="btn btn-outline">Voir les médias</a>
+    </div>
+    <p class="prestations-note">
+      Demande sans engagement — nous vous répondons après étude de votre projet.
+    </p>
+  </div>
+</section>
+{% endblock %}

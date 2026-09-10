@@ -37,14 +37,30 @@ SESSION_CACHE_ALIAS = "default"
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = "DENY"
+# SAMEORIGIN : permet l’aperçu intégré (présentation staff) tout en bloquant les iframes externes.
+X_FRAME_OPTIONS = "SAMEORIGIN"
 
 CSRF_COOKIE_HTTPONLY = False
-SECURE_REFERRER_POLICY = "same-origin"
+# OSM exige un Referer (sinon tuiles 403 « Access blocked »).
+# strict-origin-when-cross-origin envoie l’origine en HTTPS→HTTPS,
+# sans divulguer le chemin de la page aux tiers.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 SECURE_HSTS_SECONDS = 3600
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = False
+
+# Pause SMTP (Hostinger 554) — inbox / push inchangés.
+# Réactiver : EMAIL_SENDING_ENABLED=true dans .env + restart gunicorn.
+_email_flag = os.environ.get("EMAIL_SENDING_ENABLED")
+if _email_flag is None:
+    EMAIL_SENDING_ENABLED = False
+else:
+    EMAIL_SENDING_ENABLED = _email_flag.lower() in ("1", "true", "yes", "on")
+if not EMAIL_SENDING_ENABLED:
+    EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 # Shared cache across gunicorn/daphne workers (Channels stays on REDIS_URL /0).
 _redis_cache_url = os.environ.get("REDIS_CACHE_URL") or os.environ.get(

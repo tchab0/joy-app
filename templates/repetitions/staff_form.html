@@ -41,7 +41,7 @@
   <header class="pl-head">
     <h1>{% if creating %}Nouvelle répétition{% else %}{{ event.titre }}{% endif %}</h1>
     {% page_lead "repetitions.staff_form" class="page-lead--in-head" %}
-      Date, lieu, feuille de route{% if not creating %} et présences{% endif %}. Glissez les morceaux ou touchez « + ».
+      Date, lieu, setlist{% if not creating %} et présences{% endif %}. Glissez les morceaux ou touchez « + ».
     {% endpage_lead %}
   </header>
 
@@ -63,6 +63,7 @@
       {% elif field.name == "notify_musicians" %}
       <div>
         <label class="rep-check">{{ field }} {{ field.label }}</label>
+        {% if field.help_text %}<p class="pl-row__meta">{{ field.help_text }}</p>{% endif %}
         {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
       </div>
       {% elif field.name == "time_end" %}
@@ -165,7 +166,7 @@
 
       <section class="rep-builder__pane rep-builder__pane--setlist" aria-labelledby="rep-set-title">
         <div class="rep-builder__pane-head">
-          <h2 id="rep-set-title">Feuille de route</h2>
+          <h2 id="rep-set-title">Setlist</h2>
           <span class="rep-muted" x-text="selected.length + ' morceau' + (selected.length !== 1 ? 'x' : '')"></span>
         </div>
         <p class="rep-builder__hint rep-muted">Déposez ici · glissez pour réordonner</p>

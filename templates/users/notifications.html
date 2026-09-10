@@ -20,6 +20,15 @@
   .notif-item.is-unanswered {
     border-color: color-mix(in srgb, var(--gold-text) 40%, var(--border));
   }
+  .notif-item--staff.is-unread {
+    border-color: color-mix(in srgb, var(--staff) 45%, var(--border));
+    background: rgba(var(--staff-rgb), .05);
+  }
+  .notif-item--staff .notif-item__tap:hover h2,
+  .notif-item--staff .notif-item__tap:focus-visible h2,
+  .notif-item--staff .notif-item__cta {
+    color: var(--staff);
+  }
   .notif-item__meta { color:var(--muted); font-size:.88rem; margin-bottom:.35rem; }
   .notif-item h2 {
     font-family:var(--font-d); font-size:1.1rem; margin:0 0 .35rem; color:var(--text);
@@ -76,7 +85,7 @@
     {% if notifications %}
       <div class="notif-list">
         {% for item in notifications %}
-          <article class="notif-item {% if item.is_unread %}is-unread{% elif item.is_unanswered %}is-unanswered{% endif %}">
+          <article class="notif-item {% if item.is_unread %}is-unread{% elif item.is_unanswered %}is-unanswered{% endif %}{% if item.is_staff_destined %} notif-item--staff{% endif %}">
             <p class="notif-item__meta">
               {{ item.created_at|date:"d/m/Y H:i" }}
               · {% if item.is_unread %}Non lue{% else %}Lue{% endif %}
