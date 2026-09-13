@@ -168,11 +168,17 @@ class PartDownloadView(MusicianRequiredMixin, View):
             user=request.user,
             path=request.path,
         )
+        # Ouvrir via le chemin disque (pas FieldFile) : flux fiable sous gunicorn.
+        # Téléchargement en octet-stream : Chrome crée parfois un PDF vide avec
+        # Content-Disposition: attachment + Content-Type: application/pdf.
+        path = Path(part.file.path)
+        if not path.is_file():
+            raise Http404
         response = FileResponse(
-            part.file.open("rb"),
+            path.open("rb"),
             as_attachment=not inline,
-            filename=Path(part.file.name).name,
-            content_type="application/pdf",
+            filename=path.name,
+            content_type="application/pdf" if inline else "application/octet-stream",
         )
         response["X-Content-Type-Options"] = "nosniff"
         if inline:

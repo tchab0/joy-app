@@ -316,10 +316,22 @@ class MusicianViewsTests(TestCase):
         dl = self.client.get(url)
         self.assertEqual(dl.status_code, 200)
         self.assertIn("attachment", dl.get("Content-Disposition", ""))
+        # octet-stream évite les téléchargements PDF vides sous Chrome.
+        self.assertEqual(dl.get("Content-Type"), "application/octet-stream")
+        dl_body = b"".join(dl.streaming_content) if dl.streaming else dl.content
+        self.assertTrue(dl_body.startswith(b"%PDF"))
+        self.assertGreater(len(dl_body), 0)
         preview = self.client.get(url, {"inline": "1"})
         self.assertEqual(preview.status_code, 200)
         self.assertIn("inline", preview.get("Content-Disposition", ""))
+        self.assertEqual(preview.get("Content-Type"), "application/pdf")
         self.assertEqual(preview.get("X-Frame-Options"), "SAMEORIGIN")
+        prev_body = (
+            b"".join(preview.streaming_content)
+            if preview.streaming
+            else preview.content
+        )
+        self.assertTrue(prev_body.startswith(b"%PDF"))
 
 class ChorusOrderHelpersTests(TestCase):
     def test_parse_multiline_and_inline(self):
