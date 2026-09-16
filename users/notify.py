@@ -214,11 +214,12 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
     """
     Compacte l’inbox pour la bannière Coulisses.
 
-    Chat → groupes par URL (lien vers chaque salon) + total + extrait du plus récent.
-    Autres → liste courte (invitations, sondages…).
+    Actions (sondage / invitation / événement confirmé à répondre) d’abord,
+    puis chat groupé, puis le reste.
     """
     chat_by_url: dict[str, dict] = {}
     chat_order: list[str] = []
+    action: list = []
     other: list = []
     chat_total = 0
 
@@ -242,10 +243,13 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                 chat_by_url[url] = group
                 chat_order.append(url)
             group["count"] += 1
+        elif getattr(item, "is_unanswered", False):
+            action.append(item)
         else:
             other.append(item)
 
     return {
+        "action": action,
         "chat_groups": [chat_by_url[u] for u in chat_order],
         "chat_total": chat_total,
         "other": other,

@@ -18,7 +18,22 @@
     border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   }
   .notif-item.is-unanswered {
-    border-color: color-mix(in srgb, var(--gold-text) 40%, var(--border));
+    border-width: 2px;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+  .notif-item__action-label {
+    display: inline-block;
+    margin: 0 0 .35rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .notif-item.is-unanswered h2 {
+    font-size: 1.2rem;
+    color: var(--accent);
   }
   .notif-item--staff.is-unread {
     border-color: color-mix(in srgb, var(--staff) 45%, var(--border));
@@ -93,11 +108,14 @@
                 · {% if item.is_unanswered %}Non répondue{% else %}Répondue{% endif %}
               {% endif %}
             </p>
+            {% if item.is_unanswered %}
+              <span class="notif-item__action-label">À répondre</span>
+            {% endif %}
             {% if item.url %}
               <a class="notif-item__tap" href="{% url 'account_notification_open' item.pk %}">
                 <h2>{{ item.title }}</h2>
                 <p class="notif-item__body">{{ item.body }}</p>
-                <span class="notif-item__cta">Voir le contenu →</span>
+                <span class="notif-item__cta">{% if item.is_unanswered %}Répondre maintenant →{% else %}Voir le contenu →{% endif %}</span>
               </a>
             {% else %}
               <h2>{{ item.title }}</h2>

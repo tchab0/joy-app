@@ -2623,6 +2623,70 @@ class MaybeRemindTests(PlanningBaseTestCase):
             self.assertContains(r2, reverse("repertoire:part_pdf", args=[part_tit.pk]))
 
 
+class ActionNotifyVisibilityTests(PlanningBaseTestCase):
+    """Titres / corps des notifs sondage et événement confirmé."""
+
+    @patch("planning.services.polls.notify_users", return_value=1)
+    def test_availability_poll_notify_is_action_labelled(self, mock_notify):
+        from planning.models import DateOption
+        from planning.services.polls import notify_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="Dispo bal",
+            status=DateProposal.Status.OPEN,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=10),
+        )
+        notify_availability_poll(proposal)
+        self.assertTrue(mock_notify.called)
+        kwargs = mock_notify.call_args.kwargs
+        self.assertIn("À répondre", kwargs["title"])
+        self.assertIn("Sondage", kwargs["title"])
+        self.assertIn("Dispo bal", kwargs["body"])
+        self.assertTrue(kwargs["requires_response"])
+
+    @patch("planning.services.invites.notify_users", return_value=1)
+    def test_confirmed_event_invite_is_action_labelled(self, mock_notify):
+        from planning.services.invites import notify_event_invite
+
+        concert_type = EventType.objects.create(nom="Concert")
+        event = Event.objects.create(
+            titre="Bal d’automne",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=14),
+            statut=Event.Statut.CONFIRME,
+        )
+        notify_event_invite(event, [self.musician])
+        kwargs = mock_notify.call_args.kwargs
+        self.assertIn("À répondre", kwargs["title"])
+        self.assertIn("Événement confirmé", kwargs["title"])
+        self.assertIn("Bal d’automne", kwargs["body"])
+        self.assertIn("confirmé", kwargs["body"].lower())
+        self.assertTrue(kwargs["requires_response"])
+
+    @patch("planning.services.invites.notify_users", return_value=1)
+    def test_tentative_event_invite_mentions_unconfirmed(self, mock_notify):
+        from planning.services.invites import notify_event_invite
+
+        concert_type = EventType.objects.create(nom="Concert 2")
+        event = Event.objects.create(
+            titre="Date flottante",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=21),
+            statut=Event.Statut.TENTATIVE,
+        )
+        notify_event_invite(event, [self.musician])
+        kwargs = mock_notify.call_args.kwargs
+        self.assertIn("Invitation", kwargs["title"])
+        self.assertIn("à confirmer", kwargs["body"])
+
+
 class PollDeadlineRemindTests(PlanningBaseTestCase):
     def _open_poll(self, *, deadline, title="Sondage J-7"):
         from planning.models import DateOption

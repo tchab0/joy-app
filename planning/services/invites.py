@@ -241,20 +241,39 @@ def invite_titulaires_to_event(event, *, send_notification: bool = False) -> int
 def notify_event_invite(event, users) -> int:
     """Notification d’invitation au salon / événement."""
     from chat.services import chat_room_url, ensure_event_room
+    from events.models import Event
 
     users = list(users)
     if not users:
         return 0
     local = timezone.localtime(event.date_debut)
     date_label = local.strftime("%d/%m/%Y %H:%M")
-    body = (
-        f"Invitation : « {event.titre} » ({date_label}). "
-        f"Ouvrez le salon de discussion pour répondre."
-    )
+    is_rehearsal = bool(getattr(event, "is_rehearsal", False))
+    is_confirmed = getattr(event, "statut", None) == Event.Statut.CONFIRME
+
+    if is_rehearsal:
+        title = "JOY — À répondre · Répétition"
+        body = (
+            f"Répétition « {event.titre} » ({date_label}). "
+            f"Confirmez votre présence (Oui / Non)."
+        )
+    elif is_confirmed:
+        title = "JOY — À répondre · Événement confirmé"
+        body = (
+            f"Événement confirmé : « {event.titre} » ({date_label}). "
+            f"Indiquez si vous êtes disponible (Oui / Peut-être / Non)."
+        )
+    else:
+        title = "JOY — À répondre · Invitation"
+        body = (
+            f"Invitation (date à confirmer) : « {event.titre} » ({date_label}). "
+            f"Indiquez votre disponibilité — la date n’est pas encore figée."
+        )
+
     room = ensure_event_room(event)
     return notify_users(
         users,
-        title="JOY — Invitation",
+        title=title,
         body=body,
         url=chat_room_url(room.pk),
         requires_response=True,

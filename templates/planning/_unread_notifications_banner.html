@@ -1,4 +1,4 @@
-{# Bannière Coulisses : résumé compact des non lus (chat groupé + autres). #}
+{# Bannière Coulisses : actions (sondage / événement) d’abord, puis chat, puis le reste. #}
 {% if show_coulisses_unread_banner and unread_inbox %}
 <style>
   .pl-notif-banner {
@@ -54,6 +54,49 @@
     color: var(--muted);
     font-weight: 400;
   }
+  .pl-notif-banner__action {
+    margin: .65rem 0 0;
+    padding: .7rem .85rem;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    border: 2px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+    border-radius: var(--r);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+  .pl-notif-banner__action li {
+    font-size: .95rem;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .pl-notif-banner__action-label {
+    display: inline-block;
+    margin: 0 0 .2rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .pl-notif-banner__action a {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.02rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-notif-banner__action a:hover,
+  .pl-notif-banner__action a:focus-visible {
+    color: var(--accent-h);
+  }
+  .pl-notif-banner__action a.is-staff {
+    color: var(--staff);
+  }
+  .pl-notif-banner__action a.is-staff:hover,
+  .pl-notif-banner__action a.is-staff:focus-visible {
+    color: var(--staff-h);
+  }
   .pl-notif-banner__chat {
     margin: .55rem 0 0;
     padding: 0;
@@ -93,6 +136,11 @@
     color: var(--muted);
     font-size: .85rem;
     font-weight: 400;
+  }
+  .pl-notif-banner__action .pl-notif-banner__preview {
+    color: var(--text);
+    opacity: .85;
+    font-size: .9rem;
   }
   .pl-notif-banner__other {
     margin: .55rem 0 0;
@@ -139,13 +187,25 @@
     </div>
   </div>
 
+  {% if unread_inbox_banner.action %}
+  <ul class="pl-notif-banner__action">
+    {% for item in unread_inbox_banner.action %}
+    <li>
+      <span class="pl-notif-banner__action-label">À répondre</span>
+      {% if item.url %}
+        <a href="{% url 'account_notification_open' item.pk %}"{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} class="is-staff"{% endif %}>{{ item.title }}</a>
+      {% else %}
+        {{ item.title }}
+      {% endif %}
+      {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:160 }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
   {% if unread_inbox_banner.chat_total %}
   <p class="pl-notif-banner__body">
-    {% if unread_inbox_banner.chat_total == 1 %}
-      1 message non lu
-    {% else %}
-      {{ unread_inbox_banner.chat_total }} messages non lus
-    {% endif %}
+    {% if unread_inbox_banner.chat_total == 1 %}1 message non lu{% else %}{{ unread_inbox_banner.chat_total }} messages non lus{% endif %}{% if unread_inbox_banner.chat_groups %} · {% for g in unread_inbox_banner.chat_groups %}{{ g.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
   </p>
   <ul class="pl-notif-banner__chat">
     {% for g in unread_inbox_banner.chat_groups %}
@@ -166,9 +226,7 @@
       {% else %}
         {{ item.title }}
       {% endif %}
-      {% if item.requires_response and item.is_unanswered %}
-        <span class="pl-notif-banner__other-meta"> · À répondre</span>
-      {% endif %}
+      {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:140 }}</span>{% endif %}
     </li>
     {% endfor %}
   </ul>

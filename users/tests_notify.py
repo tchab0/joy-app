@@ -287,6 +287,39 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertContains(r, "Bob vous a cité dans Salon orchestre")
         self.assertNotContains(r, "Alice vous a cité dans Salon orchestre : hello")
 
+    def test_coulisses_action_notifications_shown_before_chat(self):
+        """Sondage / événement à répondre : bloc action bien visible, avant le chat."""
+        notify_users(
+            [self.musician],
+            title="JOY — À répondre · Événement confirmé",
+            body="Événement confirmé : « Concert » (01/10/2026 20:00).",
+            url="/planning/1/",
+            requires_response=True,
+            related_type="event",
+            related_id=1,
+        )
+        notify_users(
+            [self.musician],
+            title="JOY — Salon orchestre",
+            body="Alice dans Orchestre : hello",
+            url="/chat/1/",
+            related_type="chat_msg",
+            related_id=20,
+        )
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("planning:dashboard"))
+        self.assertEqual(r.status_code, 200)
+        banner = r.context["unread_inbox_banner"]
+        self.assertEqual(len(banner["action"]), 1)
+        self.assertEqual(banner["chat_total"], 1)
+        self.assertContains(r, "À répondre")
+        self.assertContains(r, "Événement confirmé")
+        body = r.content.decode()
+        self.assertLess(
+            body.find("Événement confirmé"),
+            body.find("Salon orchestre"),
+        )
+
     def test_home_hides_coulisses_unread_banner(self):
         notify_users(
             [self.musician],

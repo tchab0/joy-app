@@ -64,6 +64,7 @@ def nav_access(request):
             "unread_inbox": [],
             "unread_inbox_count": 0,
             "unread_inbox_banner": {
+                "action": [],
                 "chat_groups": [],
                 "chat_total": 0,
                 "other": [],
@@ -78,6 +79,7 @@ def nav_access(request):
     unread_inbox: list = []
     unread_inbox_count = 0
     unread_inbox_banner = {
+        "action": [],
         "chat_groups": [],
         "chat_total": 0,
         "other": [],

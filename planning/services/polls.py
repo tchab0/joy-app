@@ -78,10 +78,10 @@ def notify_availability_poll(proposal: DateProposal) -> int:
         deadline_bit = f" Répondez avant le {proposal.deadline.strftime('%d/%m/%Y')}."
     return notify_users(
         users,
-        title="JOY — Sondage disponibilité",
+        title="JOY — À répondre · Sondage",
         body=(
-            f"Sondage dispo : « {proposal.title} ».{deadline_bit} "
-            f"Répondez dans le planning / salon."
+            f"Sondage de disponibilité « {proposal.title} ».{deadline_bit} "
+            f"Indiquez Oui / Peut-être / Non pour chaque date proposée."
         ),
         url=poll_path,
         requires_response=True,
@@ -106,11 +106,11 @@ def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
     try:
         return notify_users(
             users,
-            title="JOY — Rappel sondage",
+            title="JOY — À répondre · Rappel sondage",
             body=(
-                f"Rappel : sondage « {proposal.title} » — "
-                f"répondez{deadline_bit}. "
-                f"Répondez dans le planning / salon."
+                f"Rappel — sondage de disponibilité « {proposal.title} » "
+                f"en attente de votre réponse{deadline_bit}. "
+                f"Indiquez Oui / Peut-être / Non pour chaque date."
             ),
             url=poll_path,
             requires_response=True,
