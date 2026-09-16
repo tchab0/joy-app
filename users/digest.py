@@ -26,8 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class _ChatRoomDigest:
+    """Résumé d’un salon pour le corps de notif (auteurs + aperçu)."""
+
+    title: str
+    count: int
+    room_id: int
+    authors: list[str] = field(default_factory=list)
+    preview: str = ""
+
+
+@dataclass
 class _UserDigestDraft:
-    chat_rooms: list[tuple[str, int, int]] = field(default_factory=list)
+    chat_rooms: list[_ChatRoomDigest] = field(default_factory=list)
     chat_updates: list = field(default_factory=list)  # (membership, max_id)
     inbox_items: list = field(default_factory=list)
     # (policy, membership|None, type_pref|None, notify_type)
@@ -135,7 +146,7 @@ def _collect_chat(drafts, users_by_id, *, now) -> None:
                 pk__gt=m.last_digested_message_id,
             )
             .exclude(author_id=user.pk)
-            .select_related("reply_to")
+            .select_related("reply_to", "author", "room")
         )
         msgs = list(qs.order_by("pk"))
         draft = drafts[user.pk]
@@ -152,7 +163,7 @@ def _collect_chat(drafts, users_by_id, *, now) -> None:
         ]
         draft.chat_updates.append((m, max_id))
         if digest_msgs:
-            draft.chat_rooms.append((m.room.title, len(digest_msgs), m.room_id))
+            draft.chat_rooms.append(_room_digest_from_messages(m.room, digest_msgs))
 
 
 def _collect_inbox(drafts, users_by_id, *, now) -> None:
@@ -269,24 +280,103 @@ def _touch_due_buckets(user, draft: _UserDigestDraft, *, now) -> None:
         )
 
 
+def _room_digest_from_messages(room, messages) -> _ChatRoomDigest:
+    from chat.services import _author_display_name, _chat_notify_preview
+
+    authors: list[str] = []
+    seen: set[str] = set()
+    for msg in messages:
+        name = (_author_display_name(msg) or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        authors.append(name)
+    preview = _chat_notify_preview(messages[-1]) if messages else ""
+    return _ChatRoomDigest(
+        title=room.title,
+        count=len(messages),
+        room_id=room.pk,
+        authors=authors,
+        preview=preview,
+    )
+
+
+def _format_authors(authors: list[str], *, limit: int = 3) -> str:
+    shown = [a for a in authors if (a or "").strip()][:limit]
+    if not shown:
+        return ""
+    label = ", ".join(shown)
+    extra = len(authors) - len(shown)
+    if extra > 0:
+        label += f" +{extra}"
+    return label
+
+
+def _format_room_digest_line(entry: _ChatRoomDigest) -> str:
+    """Une ligne lisible : qui a écrit, dans quel salon, avec aperçu."""
+    room = (entry.title or "Salon").strip() or "Salon"
+    authors_txt = _format_authors(entry.authors)
+    preview = (entry.preview or "").strip()
+    if entry.count == 1 and authors_txt:
+        if preview:
+            return f"{authors_txt} dans {room} : {preview}"
+        return f"{authors_txt} dans {room}"
+    who = f" — {authors_txt}" if authors_txt else ""
+    if preview:
+        return f"{entry.count} messages dans {room}{who} : {preview}"
+    return f"{entry.count} messages dans {room}{who}"
+
+
+def _format_room_digest_summary(entry: _ChatRoomDigest) -> str:
+    """Résumé compact multi-salons (push)."""
+    room = (entry.title or "Salon").strip() or "Salon"
+    authors_txt = _format_authors(entry.authors, limit=2)
+    if entry.count == 1 and authors_txt and "," not in authors_txt:
+        return f"{authors_txt} dans {room}"
+    if authors_txt:
+        return f"{authors_txt} dans {room} ({entry.count})"
+    return f"{room} ({entry.count})"
+
+
+def _chat_digest_title(chat_rooms: list[_ChatRoomDigest]) -> str:
+    """Titre inbox/push : nom(s) de salon, pas le générique « Chat »."""
+    names = [r.title for r in chat_rooms if (r.title or "").strip()]
+    if not names:
+        return "JOY — Chat"
+    if len(names) == 1:
+        return f"JOY — {names[0]}"
+    shown = names[:3]
+    label = ", ".join(shown)
+    extra = len(names) - len(shown)
+    if extra > 0:
+        label += f" +{extra}"
+    return f"JOY — {label}"
+
+
 def _compose_payload(draft: _UserDigestDraft) -> tuple[str, str, str]:
     from chat.services import chat_room_url
 
     parts: list[str] = []
     chat_url = ""
     if draft.chat_rooms:
-        total = sum(c for _, c, _ in draft.chat_rooms)
-        labels = [f"{title} ({n})" for title, n, _ in draft.chat_rooms[:3]]
-        extra = len(draft.chat_rooms) - 3
-        rooms_txt = ", ".join(labels)
-        if extra > 0:
-            rooms_txt += f" +{extra}"
-        parts.append(f"{total} nouveau(x) message(s) : {rooms_txt}.")
         if len(draft.chat_rooms) == 1:
-            chat_url = chat_room_url(draft.chat_rooms[0][2])
+            parts.append(_format_room_digest_line(draft.chat_rooms[0]))
+            chat_url = chat_room_url(draft.chat_rooms[0].room_id)
         else:
-            _, _, busiest = max(draft.chat_rooms, key=lambda item: item[1])
-            chat_url = chat_room_url(busiest)
+            labels = [
+                _format_room_digest_summary(entry) for entry in draft.chat_rooms[:3]
+            ]
+            extra = len(draft.chat_rooms) - 3
+            rooms_txt = ", ".join(labels)
+            if extra > 0:
+                rooms_txt += f" +{extra}"
+            total = sum(entry.count for entry in draft.chat_rooms)
+            parts.append(f"{total} nouveau(x) message(s) : {rooms_txt}.")
+            busiest = max(draft.chat_rooms, key=lambda item: item.count)
+            chat_url = chat_room_url(busiest.room_id)
 
     for item in draft.inbox_items[:8]:
         preview = (item.body or "").strip()
@@ -299,11 +389,15 @@ def _compose_payload(draft: _UserDigestDraft) -> tuple[str, str, str]:
 
     body = "\n".join(parts) if parts else "Nouvelles notifications."
     if draft.chat_rooms and not draft.inbox_items:
-        title = "JOY — Chat"
+        title = _chat_digest_title(draft.chat_rooms)
         url = chat_url or reverse("account_notifications")
     elif draft.inbox_items and not draft.chat_rooms and len(draft.inbox_items) == 1:
         title = draft.inbox_items[0].title or "JOY — Notification"
         url = draft.inbox_items[0].url or reverse("account_notifications")
+    elif draft.chat_rooms:
+        # Récap mixte : garder les salons visibles dans le titre.
+        title = _chat_digest_title(draft.chat_rooms)
+        url = reverse("account_notifications")
     else:
         title = "JOY — Récap notifications"
         url = reverse("account_notifications")

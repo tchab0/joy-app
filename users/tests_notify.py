@@ -254,7 +254,7 @@ class StaffUnreadNotificationsTests(TestCase):
         notify_users(
             [self.musician],
             title="JOY — Salon orchestre",
-            body="Alice vous a cité : hello",
+            body="Alice vous a cité dans Salon orchestre : hello",
             url="/chat/1/",
             related_type="chat_msg",
             related_id=10,
@@ -262,7 +262,7 @@ class StaffUnreadNotificationsTests(TestCase):
         notify_users(
             [self.musician],
             title="JOY — Salon orchestre",
-            body="Bob vous a cité : world",
+            body="Bob vous a cité dans Salon orchestre : world",
             url="/chat/1/",
             related_type="chat_msg",
             related_id=11,
@@ -270,7 +270,7 @@ class StaffUnreadNotificationsTests(TestCase):
         notify_users(
             [self.musician],
             title="JOY — Répétition",
-            body="Alice vous a cité : ping",
+            body="Alice vous a cité dans Répétition : ping",
             url="/chat/2/",
             related_type="chat_msg",
             related_id=12,
@@ -284,8 +284,8 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertContains(r, "messages non lus")
         self.assertContains(r, "Salon orchestre")
         self.assertContains(r, "Répétition")
-        self.assertContains(r, "Bob vous a cité")
-        self.assertNotContains(r, "Alice vous a cité : hello")
+        self.assertContains(r, "Bob vous a cité dans Salon orchestre")
+        self.assertNotContains(r, "Alice vous a cité dans Salon orchestre : hello")
 
     def test_home_hides_coulisses_unread_banner(self):
         notify_users(

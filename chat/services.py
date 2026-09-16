@@ -989,7 +989,7 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
             sent += notify_users(
                 mention_recipients.values(),
                 title=title,
-                body=f"{author_name} vous a cité : {preview}",
+                body=f"{author_name} vous a cité dans {room_title} : {preview}",
                 url=url,
                 related_type="chat_msg",
                 related_id=message.pk,
@@ -1001,7 +1001,10 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
             sent += notify_users(
                 reply_recipients.values(),
                 title=title,
-                body=f"{author_name} a répondu à votre message : {preview}",
+                body=(
+                    f"{author_name} a répondu à votre message "
+                    f"dans {room_title} : {preview}"
+                ),
                 url=url,
                 related_type="chat_reply",
                 related_id=message.pk,

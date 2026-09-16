@@ -666,6 +666,8 @@ class ChatCoreTests(TestCase):
             self.assertEqual([u.pk for u in users], [self.other.pk])
             self.assertNotIn(self.musician.pk, [u.pk for u in users])
             self.assertIn("cité", kwargs["body"])
+            self.assertIn("dans", kwargs["body"])
+            self.assertIn(room.title, kwargs["body"])
 
         with patch("users.notify.notify_users", return_value=1) as notify:
             parent = post_message(room=room, author=self.other, body="Ping")
@@ -684,6 +686,8 @@ class ChatCoreTests(TestCase):
             self.assertEqual(kwargs.get("notify_type"), "chat_reply")
             self.assertFalse(kwargs.get("force_immediate"))
             self.assertIn("répondu", kwargs["body"])
+            self.assertIn("dans", kwargs["body"])
+            self.assertIn(room.title, kwargs["body"])
 
         # L’auteur ne reçoit aucune notif pour son propre message
         # (ni message simple, ni auto-@mention, ni auto-réponse)
@@ -959,6 +963,9 @@ class ChatNotificationDeepLinkTests(TestCase):
         ).get()
         self.assertIn(f"?msg={msg.pk}", notif.url)
         self.assertTrue(notif.url.startswith(reverse("chat:room", args=[room.pk])))
+        self.assertIn("cité", notif.body)
+        self.assertIn("dans", notif.body)
+        self.assertIn(room.title, notif.body)
 
     def test_event_invite_links_to_event_room(self):
         from planning.services import notify_event_invite

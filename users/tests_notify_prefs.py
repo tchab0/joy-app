@@ -227,6 +227,27 @@ class DigestCommandFrequencyTests(TestCase):
         m.refresh_from_db()
         self.assertGreater(m.last_digested_message_id, 0)
 
+    def test_chat_digest_body_includes_author_and_room(self):
+        """Push/inbox digests doivent nommer l’auteur et le salon."""
+        self.other.first_name = "Camille"
+        self.other.last_name = "Martin"
+        self.other.save(update_fields=["first_name", "last_name"])
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        other_m = sync_musician_to_orchestra(self.other)
+        other_m.subscribed = False
+        other_m.save(update_fields=["subscribed"])
+        post_message(room=room, author=self.other, body="Hello digest clair")
+
+        evening = datetime(2026, 9, 8, 18, 15, tzinfo=PARIS)
+        sent = send_due_notification_digests(now=evening, dry_run=False)
+        self.assertEqual(sent, 1)
+        notif = UserNotification.objects.get(user=self.musician, title="JOY — Orchestre")
+        self.assertIn("Camille Martin", notif.body)
+        self.assertIn("Orchestre", notif.body)
+        self.assertIn("Hello digest clair", notif.body)
+        self.assertIn("dans", notif.body)
+
     def test_inbox_digest_for_daily_user(self):
         notify_users(
             [self.musician],
@@ -270,7 +291,7 @@ class DigestCommandFrequencyTests(TestCase):
         other_m.refresh_from_db()
         self.assertGreater(other_m.last_digested_message_id, 0)
         inbox_count = UserNotification.objects.filter(
-            user=self.other, title="JOY — Chat"
+            user=self.other, title="JOY — Orchestre"
         ).count()
         self.assertEqual(inbox_count, 1)
 
@@ -280,7 +301,7 @@ class DigestCommandFrequencyTests(TestCase):
             send_due_notification_digests(now=timezone.now(), dry_run=False)
         self.assertEqual(
             UserNotification.objects.filter(
-                user=self.other, title="JOY — Chat"
+                user=self.other, title="JOY — Orchestre"
             ).count(),
             1,
         )
