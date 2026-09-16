@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from io import StringIO
 
 from django.contrib.auth import get_user_model
@@ -17,11 +18,17 @@ from chat.services import (
     ensure_event_room,
     ensure_orchestra_room,
     ensure_rehearsal_setlist_tip,
+    ensure_rehearsal_thread_opener,
+    ensure_rehearsals_room,
     ensure_section_rooms,
     ensure_staff_room,
     edit_message,
     extract_mention_tokens,
+    list_orchestra_archive,
+    list_rehearsal_threads,
     musician_section_keys,
+    orchestra_archived_q,
+    partition_rehearsal_threads,
     post_message,
     replies_prefetch,
     resolve_mentioned_users,
@@ -34,6 +41,7 @@ from chat.services import (
     unread_count,
     user_can_access_room,
     REHEARSAL_SETLIST_TIP_PREFIX,
+    REHEARSAL_THREAD_OPENER_PREFIX,
 )
 from events.models import Event, EventType, Venue
 from planning.models import EventParticipation, MusicianProfile
@@ -52,7 +60,8 @@ class ChatCoreTests(TestCase):
     def setUpTestData(cls):
         ensure_participation_statuses()
         cls.venue = Venue.objects.create(nom="Salle Test", ville="La Roche-sur-Yon")
-        cls.etype = EventType.objects.create(nom="Répétition")
+        cls.etype = EventType.objects.create(nom="Répétition", is_rehearsal=True)
+        cls.concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
         cls.musician = User.objects.create_user(
             username="chat_musi",
             password="pass",
@@ -210,6 +219,32 @@ class ChatCoreTests(TestCase):
             ).exists()
         )
 
+    def test_remplacant_only_gets_section_room(self):
+        rooms = {r.section_key: r for r in ensure_section_rooms()}
+        remp = User.objects.create_user(
+            username="chat_remp_only",
+            password="pass",
+            is_musician=True,
+            chat_auto_subscribe=True,
+        )
+        profile = remp.musician_profile
+        profile.poste_titulaire = ""
+        profile.set_postes_remplacant([MusicianProfile.Poste.BARYTON])
+        profile.save()
+        sync_musician_to_section_rooms(remp)
+        self.assertEqual(musician_section_keys(remp), {"sax"})
+        self.assertEqual(profile.section.code, "sax")
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=rooms["sax"], user=remp, left_at__isnull=True
+            ).exists()
+        )
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=rooms["trompettes"], user=remp, left_at__isnull=True
+            ).exists()
+        )
+
     def test_event_creates_staff_only_room(self):
         staff = User.objects.create_user(
             username="chat_staff",
@@ -219,9 +254,9 @@ class ChatCoreTests(TestCase):
         )
         event = Event.objects.create(
             titre="Concert chat",
-            type=self.etype,
+            type=self.concert_type,
             venue=self.venue,
-            date_debut="2030-06-01T20:00:00+02:00",
+            date_debut=timezone.make_aware(timezone.datetime(2030, 6, 1, 20, 0)),
             statut="confirme",
         )
         room = ChatRoom.objects.get(event=event)
@@ -238,6 +273,20 @@ class ChatCoreTests(TestCase):
         )
         self.assertTrue(staff_m.subscribed)
 
+    def test_rehearsal_uses_shared_room_not_event_room(self):
+        event = Event.objects.create(
+            titre="Répé lundi",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 6, 2, 20, 15)),
+            statut="confirme",
+        )
+        self.assertTrue(event.is_rehearsal)
+        self.assertFalse(ChatRoom.objects.filter(event=event).exists())
+        shared = ensure_rehearsals_room()
+        self.assertEqual(shared.kind, ChatRoom.Kind.REHEARSALS)
+        self.assertEqual(ensure_event_room(event).pk, shared.pk)
+
     def test_auto_subscribe_respects_pref(self):
         from planning.services import invite_musician_to_event
 
@@ -245,9 +294,9 @@ class ChatCoreTests(TestCase):
         self.musician.save(update_fields=["chat_auto_subscribe"])
         event = Event.objects.create(
             titre="Sans notification",
-            type=self.etype,
+            type=self.concert_type,
             venue=self.venue,
-            date_debut="2030-07-01T20:00:00+02:00",
+            date_debut=timezone.make_aware(timezone.datetime(2030, 7, 1, 20, 0)),
             statut="confirme",
         )
         invite_musician_to_event(event, self.musician, send_notification=False)
@@ -269,9 +318,9 @@ class ChatCoreTests(TestCase):
 
         event = Event.objects.create(
             titre="Quitter",
-            type=self.etype,
+            type=self.concert_type,
             venue=self.venue,
-            date_debut="2030-08-01T20:00:00+02:00",
+            date_debut=timezone.make_aware(timezone.datetime(2030, 8, 1, 20, 0)),
             statut="confirme",
         )
         part, _ = invite_musician_to_event(event, self.musician, send_notification=False)
@@ -320,9 +369,9 @@ class ChatCoreTests(TestCase):
 
         event = Event.objects.create(
             titre="Concert intro",
-            type=self.etype,
+            type=self.concert_type,
             venue=self.venue,
-            date_debut="2030-09-15T20:00:00+02:00",
+            date_debut=timezone.make_aware(timezone.datetime(2030, 9, 15, 20, 0)),
             statut="confirme",
             organisme="Festival Test",
         )
@@ -357,6 +406,125 @@ class ChatCoreTests(TestCase):
         self.assertIsInstance(r.context["messages"], FallbackStorage)
         self.assertIn("messages_data", r.context)
         self.assertEqual(len(r.context["messages_data"]), 1)
+
+    def _post_aged_message(self, room, author, body, *, days=40):
+        msg = post_message(room=room, author=author, body=body)
+        ChatMessage.objects.filter(pk=msg.pk).update(
+            created_at=timezone.now() - timedelta(days=days)
+        )
+        msg.refresh_from_db()
+        return msg
+
+    def test_orchestra_archives_old_read_messages_per_user(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        old_read = self._post_aged_message(room, self.other, "vieux lu", days=40)
+        old_unread = self._post_aged_message(room, self.other, "vieux non lu", days=40)
+        recent = post_message(room=room, author=self.other, body="récent")
+        last_read = timezone.now() - timedelta(days=35)
+        ChatMessage.objects.filter(pk=old_unread.pk).update(
+            created_at=timezone.now() - timedelta(days=32)
+        )
+        old_unread.refresh_from_db()
+        ChatMembership.objects.filter(room=room, user=self.musician).update(
+            last_read_at=last_read
+        )
+
+        archived_ids = set(
+            ChatMessage.objects.filter(room=room)
+            .filter(orchestra_archived_q(self.musician.pk, last_read))
+            .values_list("pk", flat=True)
+        )
+        self.assertIn(old_read.pk, archived_ids)
+        self.assertNotIn(old_unread.pk, archived_ids)
+        self.assertNotIn(recent.pk, archived_ids)
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.context["archive_enabled"])
+        live_ids = {m["id"] for m in r.context["messages_data"]}
+        self.assertNotIn(old_read.pk, live_ids)
+        self.assertIn(old_unread.pk, live_ids)
+        self.assertIn(recent.pk, live_ids)
+        self.assertContains(r, 'aria-label="Messages archivés"')
+        self.assertGreaterEqual(r.context["archive_count"], 1)
+
+        api = client.get(
+            reverse("chat:api_archive", args=[room.pk]),
+            {"as_of": last_read.isoformat()},
+        )
+        self.assertEqual(api.status_code, 200)
+        data = api.json()
+        self.assertTrue(data["ok"])
+        archive_ids = {m["id"] for m in data["messages"]}
+        self.assertIn(old_read.pk, archive_ids)
+        self.assertNotIn(old_unread.pk, archive_ids)
+        self.assertNotIn(recent.pk, archive_ids)
+
+    def test_orchestra_archive_skips_other_rooms(self):
+        staff = User.objects.create_user(
+            username="chat_arch_staff",
+            password="pass",
+            is_staff=True,
+            is_musician=True,
+        )
+        room = ensure_staff_room()
+        sync_user_to_staff_room(staff)
+        old = self._post_aged_message(room, staff, "vieux staff", days=40)
+        ChatMembership.objects.filter(room=room, user=staff).update(
+            last_read_at=timezone.now()
+        )
+        client = Client()
+        client.login(username="chat_arch_staff", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.context["archive_enabled"])
+        self.assertIn(old.pk, {m["id"] for m in r.context["messages_data"]})
+        self.assertNotContains(r, 'aria-label="Messages archivés"')
+        api = client.get(reverse("chat:api_archive", args=[room.pk]))
+        self.assertEqual(api.status_code, 400)
+
+    def test_orchestra_edited_old_message_stays_live(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        msg = self._post_aged_message(room, self.other, "ancien", days=40)
+        ChatMessage.objects.filter(pk=msg.pk).update(
+            edited_at=timezone.now() - timedelta(days=1)
+        )
+        last_read = timezone.now()
+        self.assertFalse(
+            ChatMessage.objects.filter(pk=msg.pk)
+            .filter(orchestra_archived_q(self.musician.pk, last_read))
+            .exists()
+        )
+        payload = list_orchestra_archive(
+            room, self.musician, last_read_at=last_read
+        )
+        self.assertNotIn(msg.pk, {m["id"] for m in payload["messages"]})
+
+    def test_orchestra_archive_as_of_empty_ignores_this_visit_watermark(self):
+        """Premier passage : as_of vide = pas encore lu, les vieux restent hors archive."""
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        old = self._post_aged_message(room, self.other, "jamais lu", days=40)
+        ChatMembership.objects.filter(room=room, user=self.musician).update(
+            last_read_at=None
+        )
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        live_ids = {m["id"] for m in r.context["messages_data"]}
+        self.assertIn(old.pk, live_ids)
+        api = client.get(reverse("chat:api_archive", args=[room.pk]), {"as_of": ""})
+        self.assertEqual(api.status_code, 200)
+        archive_ids = {m["id"] for m in api.json()["messages"]}
+        self.assertNotIn(old.pk, archive_ids)
 
     def test_post_message_and_attachment(self):
         room = ensure_orchestra_room()
@@ -665,7 +833,7 @@ class ChatCoreTests(TestCase):
             users = list(args[0])
             self.assertEqual([u.pk for u in users], [self.other.pk])
             self.assertNotIn(self.musician.pk, [u.pk for u in users])
-            self.assertIn("cité", kwargs["body"])
+            self.assertIn("interpelle", kwargs["body"])
             self.assertIn("dans", kwargs["body"])
             self.assertIn(room.title, kwargs["body"])
 
@@ -874,15 +1042,7 @@ class ChatCoreTests(TestCase):
         )
 
     def test_rehearsal_room_gets_setlist_tip_once(self):
-        event = Event.objects.create(
-            titre="Répé tip",
-            type=self.etype,
-            venue=self.venue,
-            date_debut=timezone.make_aware(timezone.datetime(2030, 7, 1, 20, 15)),
-            statut="confirme",
-        )
-        self.assertTrue(event.is_rehearsal)
-        room = ChatRoom.objects.get(event=event)
+        room = ensure_rehearsals_room()
         tips = ChatMessage.objects.filter(
             room=room,
             kind=ChatMessage.Kind.SYSTEM,
@@ -895,14 +1055,13 @@ class ChatCoreTests(TestCase):
             self.assertGreaterEqual(m.last_digested_message_id, tip.pk)
         self.assertIsNone(ensure_rehearsal_setlist_tip(room))
         self.assertEqual(tips.count(), 1)
-        ensure_event_room(event)
+        ensure_rehearsals_room()
         self.assertEqual(tips.count(), 1)
 
     def test_concert_room_has_no_setlist_tip(self):
-        concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
         event = Event.objects.create(
             titre="Concert sans tip",
-            type=concert_type,
+            type=self.concert_type,
             venue=self.venue,
             date_debut=timezone.make_aware(timezone.datetime(2030, 8, 1, 20, 0)),
             statut="confirme",
@@ -918,6 +1077,146 @@ class ChatCoreTests(TestCase):
         )
         self.assertIsNone(ensure_rehearsal_setlist_tip(room))
 
+    def test_rehearsal_threads_list_and_post(self):
+        room = ensure_rehearsals_room()
+        event = Event.objects.create(
+            titre="Répé fil A",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=10),
+            statut="confirme",
+        )
+        other = Event.objects.create(
+            titre="Répé fil B",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=20),
+            statut="confirme",
+        )
+        opener = ensure_rehearsal_thread_opener(event)
+        # Signal post_save peut déjà avoir créé l’opener à la création de l’Event.
+        if opener is None:
+            opener = ChatMessage.objects.filter(
+                room=room,
+                thread_event_id=event.pk,
+                kind=ChatMessage.Kind.SYSTEM,
+                body__startswith=REHEARSAL_THREAD_OPENER_PREFIX,
+            ).get()
+        self.assertEqual(opener.thread_event_id, event.pk)
+        self.assertTrue(opener.body.startswith(REHEARSAL_THREAD_OPENER_PREFIX))
+        self.assertIsNone(ensure_rehearsal_thread_opener(event))
+
+        with self.assertRaises(ValueError):
+            post_message(room=room, author=self.musician, body="Sans fil")
+
+        msg = post_message(
+            room=room,
+            author=self.musician,
+            body="Blue Bossa ?",
+            thread_event=event,
+        )
+        self.assertEqual(msg.thread_event_id, event.pk)
+        payload = serialize_message(msg)
+        self.assertEqual(payload["thread_event_id"], event.pk)
+
+        threads = list_rehearsal_threads(room, self.musician)
+        ids = [t["event_id"] for t in threads]
+        self.assertIn(event.pk, ids)
+        self.assertIn(other.pk, ids)
+        mine = next(t for t in threads if t["event_id"] == event.pk)
+        self.assertEqual(mine["n_messages"], 1)
+        self.assertIn("Blue Bossa", mine["last_preview"])
+        self.assertIn(f"thread={event.pk}", mine["url"])
+
+    def test_past_rehearsal_threads_are_archived(self):
+        room = ensure_rehearsals_room()
+        upcoming = Event.objects.create(
+            titre="Répé bientôt",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=7),
+            statut="confirme",
+        )
+        past = Event.objects.create(
+            titre="Répé hier",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=2),
+            statut="confirme",
+        )
+        post_message(
+            room=room,
+            author=self.musician,
+            body="Après la répé",
+            thread_event=past,
+        )
+
+        active, archived = partition_rehearsal_threads(room, self.musician)
+        active_ids = [t["event_id"] for t in active]
+        archived_ids = [t["event_id"] for t in archived]
+        self.assertIn(upcoming.pk, active_ids)
+        self.assertNotIn(past.pk, active_ids)
+        self.assertIn(past.pk, archived_ids)
+        self.assertNotIn(upcoming.pk, archived_ids)
+        self.assertTrue(all(t["is_past"] for t in archived))
+        self.assertFalse(any(t["is_past"] for t in active))
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Répé bientôt")
+        self.assertContains(r, "Archives")
+        self.assertContains(r, "Répé hier")
+        self.assertEqual(
+            [t["event_id"] for t in r.context["rehearsal_threads"]],
+            [upcoming.pk],
+        )
+        self.assertEqual(
+            [t["event_id"] for t in r.context["rehearsal_threads_archived"]],
+            [past.pk],
+        )
+
+    def test_rehearsal_room_view_threads_mode_and_thread(self):
+        room = ensure_rehearsals_room()
+        event = Event.objects.create(
+            titre="Répé vue fil",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.now() + timezone.timedelta(days=5),
+            statut="confirme",
+        )
+        post_message(
+            room=room,
+            author=self.musician,
+            body="All of Me",
+            thread_event=event,
+        )
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.context["threads_mode"])
+        self.assertContains(r, "Choisissez une date")
+        self.assertContains(r, "Répé vue fil")
+        self.assertContains(r, f"thread={event.pk}")
+
+        r2 = client.get(reverse("chat:room", args=[room.pk]), {"thread": event.pk})
+        self.assertEqual(r2.status_code, 200)
+        self.assertFalse(r2.context["threads_mode"])
+        self.assertEqual(r2.context["active_thread_event_id"], event.pk)
+        self.assertContains(r2, "All of Me")
+        self.assertContains(r2, "Voir la fiche")
+
+        r3 = client.post(
+            reverse("chat:api_send", args=[room.pk]),
+            {"body": "Satin Doll", "thread_event_id": event.pk},
+        )
+        self.assertEqual(r3.status_code, 200)
+        data = r3.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["message"]["thread_event_id"], event.pk)
+
 
 class ChatNotificationDeepLinkTests(TestCase):
     def test_chat_room_url_with_message(self):
@@ -925,6 +1224,14 @@ class ChatNotificationDeepLinkTests(TestCase):
         self.assertEqual(
             chat_room_url(7, message_id=123),
             reverse("chat:room", args=[7]) + "?msg=123",
+        )
+        self.assertEqual(
+            chat_room_url(7, thread_event_id=42),
+            reverse("chat:room", args=[7]) + "?thread=42",
+        )
+        self.assertEqual(
+            chat_room_url(7, message_id=9, thread_event_id=42),
+            reverse("chat:room", args=[7]) + "?thread=42&msg=9",
         )
 
     @classmethod
@@ -958,14 +1265,76 @@ class ChatNotificationDeepLinkTests(TestCase):
         )
         notif = UserNotification.objects.filter(
             user=self.musician,
-            related_type="chat_msg",
+            related_type="chat_mention",
             related_id=msg.pk,
         ).get()
         self.assertIn(f"?msg={msg.pk}", notif.url)
         self.assertTrue(notif.url.startswith(reverse("chat:room", args=[room.pk])))
-        self.assertIn("cité", notif.body)
+        self.assertIn("interpelle", notif.body)
         self.assertIn("dans", notif.body)
         self.assertIn(room.title, notif.body)
+
+    def test_mention_not_re_notified_on_edit_or_digest(self):
+        from unittest.mock import patch
+
+        from users.digest import send_due_notification_digests
+        from users.models import UserNotification
+
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        msg = post_message(
+            room=room,
+            author=self.other,
+            body=f"Salut @{self.musician.username}",
+        )
+        self.assertEqual(
+            UserNotification.objects.filter(
+                user=self.musician, related_type="chat_mention", related_id=msg.pk
+            ).count(),
+            1,
+        )
+
+        with patch("users.notify.notify_users", return_value=1) as notify:
+            edit_message(
+                message=msg,
+                editor=self.other,
+                body=f"Salut @{self.musician.username} (édité)",
+            )
+            self.assertFalse(notify.called)
+
+        # Le message @mentionné n’entre pas dans le digest salon du destinataire.
+        from chat.models import ChatMembership
+        from users.notify_prefs import FREQ_DAILY
+
+        self.musician.notify_frequency = FREQ_DAILY
+        self.musician.notify_digest_hour = 18
+        self.musician.save(update_fields=["notify_frequency", "notify_digest_hour"])
+        m = ChatMembership.objects.get(room=room, user=self.musician)
+        m.subscribed = True
+        m.last_digested_message_id = 0
+        m.save(update_fields=["subscribed", "last_digested_message_id"])
+
+        with patch("users.notify._try_push", return_value=False), patch(
+            "users.notify._try_email", return_value=True
+        ):
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            evening = datetime(2026, 9, 8, 18, 30, tzinfo=ZoneInfo("Europe/Paris"))
+            send_due_notification_digests(now=evening, dry_run=False)
+
+        digest_notifs = UserNotification.objects.filter(
+            user=self.musician, related_type="chat"
+        )
+        self.assertEqual(digest_notifs.count(), 0)
+        # Toujours une seule notif d’interpellation, pas de doublon digest.
+        self.assertEqual(
+            UserNotification.objects.filter(
+                user=self.musician, related_id=msg.pk
+            ).count(),
+            1,
+        )
 
     def test_event_invite_links_to_event_room(self):
         from planning.services import notify_event_invite

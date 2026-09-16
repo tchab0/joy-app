@@ -1,0 +1,30 @@
+{# Liste des fils par date — salon Répétitions (threads_mode). #}
+<nav class="chat-threads" aria-label="Répétitions">
+  <p class="chat-threads__intro">
+    Choisissez une date pour proposer des morceaux et discuter de la setlist.
+  </p>
+  {% if rehearsal_threads %}
+  <ul class="chat-threads__list">
+    {% for t in rehearsal_threads %}
+    {% include "chat/_rehearsal_thread_item.html" with t=t %}
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="chat-threads__empty">Aucune répétition à venir pour l’instant.</p>
+  {% endif %}
+
+  {% if rehearsal_threads_archived %}
+  <details class="chat-threads-archive"{% if not rehearsal_threads %} open{% endif %}>
+    <summary class="chat-threads-archive__summary">
+      <span class="chat-threads-archive__label">Archives</span>
+      <span class="chat-threads-archive__count">{{ rehearsal_threads_archived|length }}</span>
+    </summary>
+    <p class="chat-threads-archive__sub">Répétitions passées — toujours consultables.</p>
+    <ul class="chat-threads__list">
+      {% for t in rehearsal_threads_archived %}
+      {% include "chat/_rehearsal_thread_item.html" with t=t %}
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</nav>

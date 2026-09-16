@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import re
+from datetime import timedelta
 from pathlib import Path
 
 from asgiref.sync import async_to_sync
@@ -10,7 +11,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import F, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
@@ -26,10 +27,16 @@ from chat.models import (
 logger = logging.getLogger(__name__)
 
 ORCHESTRA_ROOM_TITLE = "Orchestre"
+REHEARSALS_ROOM_TITLE = "Répétitions"
 STAFF_ROOM_TITLE = "Staff"
 CHAT_HISTORY_LIMIT = 100
+# Salon Orchestre : messages déjà lus (par personne) et plus vieux qu’un mois.
+ORCHESTRA_ARCHIVE_AFTER = timedelta(days=30)
+CHAT_ARCHIVE_PAGE = 50
+CHAT_ARCHIVE_AROUND = 25
 
-# Salons pupitre : groupes instrumentaux (chant associée à tous).
+# Salons pupitre : familles d’instruments (chant associée à tous).
+# Clés = codes OrchestraSection (sauf chant, présente dans tous les salons).
 # Clés stables → section_key sur ChatRoom.
 SECTION_ROOM_DEFS: tuple[tuple[str, str, frozenset[str]], ...] = (
     (
@@ -144,6 +151,46 @@ def ensure_orchestra_room() -> ChatRoom:
     return room
 
 
+def seed_musician_members(room: ChatRoom) -> int:
+    """Ajoute tous les musiciens actifs au salon."""
+    musicians = User.objects.filter(is_musician=True, is_active=True)
+    n = 0
+    for user in musicians:
+        add_member(room, user)
+        n += 1
+    return n
+
+
+def ensure_rehearsals_room() -> ChatRoom:
+    """Salon unique pour toutes les répétitions (propositions setlist, discussion)."""
+    room, created = ChatRoom.objects.get_or_create(
+        kind=ChatRoom.Kind.REHEARSALS,
+        defaults={"title": REHEARSALS_ROOM_TITLE},
+    )
+    updates: list[str] = []
+    if room.title != REHEARSALS_ROOM_TITLE:
+        room.title = REHEARSALS_ROOM_TITLE
+        updates.append("title")
+    if not room.is_active:
+        room.is_active = True
+        updates.append("is_active")
+    if updates:
+        room.save(update_fields=updates)
+    if created:
+        seed_staff_members(room)
+        seed_musician_members(room)
+    ensure_rehearsal_setlist_tip(room)
+    return room
+
+
+def sync_musician_to_rehearsals_room(user) -> ChatMembership | None:
+    """Ajoute un musicien actif au salon Répétitions."""
+    if not getattr(user, "is_musician", False) or not user.is_active:
+        return None
+    room = ensure_rehearsals_room()
+    return add_member(room, user)
+
+
 def ensure_staff_room() -> ChatRoom:
     """Salon privé staff — un seul par instance, sans musiciens."""
     room, created = ChatRoom.objects.get_or_create(
@@ -220,15 +267,12 @@ def _rehearsal_setlist_tip_id(room: ChatRoom) -> int | None:
 def ensure_rehearsal_setlist_tip(room: ChatRoom) -> ChatMessage | None:
     """
     Message système (idempotent) pour rappeler aux musiciens de proposer
-    des morceaux et de voter avec 👍 dans le salon d’une répé.
+    des morceaux et de voter avec 👍 dans le salon Répétitions.
 
     Ne déclenche pas de digest « nouveau message » : le tip reste visible
     dans le salon, mais n’envoie pas d’alerte push/e-mail à lui seul.
     """
-    event = getattr(room, "event", None)
-    if event is None or room.kind != ChatRoom.Kind.EVENT:
-        return None
-    if not getattr(event, "is_rehearsal", False):
+    if room.kind != ChatRoom.Kind.REHEARSALS:
         return None
     existing_id = _rehearsal_setlist_tip_id(room)
     if existing_id:
@@ -239,13 +283,278 @@ def ensure_rehearsal_setlist_tip(room: ChatRoom) -> ChatMessage | None:
         author=None,
         body=_rehearsal_setlist_tip_body(),
         kind=ChatMessage.Kind.SYSTEM,
+        require_thread=False,
     )
     if msg is not None:
         _mark_digested_through(room, msg.pk)
     return msg
 
 
+def _rehearsal_thread_opener_body(event) -> str:
+    from django.utils.formats import date_format
+
+    local_dt = timezone.localtime(event.date_debut)
+    when = f"{date_format(local_dt, 'l j F Y')} · {date_format(local_dt, 'G:i')}"
+    return (
+        f"{REHEARSAL_THREAD_OPENER_PREFIX} du {when}. "
+        "Proposez des morceaux ici — les autres votent avec 👍. "
+        "Le staff compose ensuite la setlist."
+    )
+
+
+def ensure_rehearsal_thread_opener(event) -> ChatMessage | None:
+    """Message système d’ouverture du fil pour une date de répétition."""
+    if not getattr(event, "is_rehearsal", False):
+        return None
+    room = ensure_rehearsals_room()
+    existing = (
+        ChatMessage.objects.filter(
+            room=room,
+            thread_event_id=event.pk,
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_THREAD_OPENER_PREFIX,
+            deleted_at__isnull=True,
+        )
+        .order_by("pk")
+        .first()
+    )
+    if existing:
+        return None
+    msg = post_message(
+        room=room,
+        author=None,
+        body=_rehearsal_thread_opener_body(event),
+        kind=ChatMessage.Kind.SYSTEM,
+        thread_event=event,
+        require_thread=False,
+        broadcast=True,
+    )
+    if msg is not None:
+        _mark_digested_through(room, msg.pk)
+    return msg
+
+
+def resolve_rehearsal_thread_event(room: ChatRoom, thread_event_id) -> object | None:
+    """Valide un Event répétition pour le salon Répétitions."""
+    if room.kind != ChatRoom.Kind.REHEARSALS or not thread_event_id:
+        return None
+    try:
+        event_id = int(thread_event_id)
+    except (TypeError, ValueError):
+        return None
+    from events.models import Event
+
+    event = (
+        Event.objects.select_related("venue", "type", "rehearsal_plan")
+        .filter(pk=event_id)
+        .first()
+    )
+    if event is None or not getattr(event, "is_rehearsal", False):
+        return None
+    return event
+
+
+def thread_unread_count(
+    room_id: int,
+    user_id: int,
+    thread_event_id: int | None,
+    last_read_at,
+) -> int:
+    qs = ChatMessage.objects.filter(
+        room_id=room_id,
+        deleted_at__isnull=True,
+        thread_event_id=thread_event_id,
+    ).exclude(author_id=user_id)
+    if last_read_at:
+        qs = qs.filter(
+            Q(edited_at__gt=last_read_at)
+            | (Q(edited_at__isnull=True) & Q(created_at__gt=last_read_at))
+        )
+    return qs.count()
+
+
+def serialize_rehearsal_thread(
+    event,
+    *,
+    room: ChatRoom,
+    user,
+    last_read_at=None,
+    n_setlist: int | None = None,
+) -> dict:
+    """Carte d’un fil répétition pour la liste du salon."""
+    from django.db.models import Count
+
+    msg_stats = (
+        ChatMessage.objects.filter(
+            room=room,
+            thread_event_id=event.pk,
+            deleted_at__isnull=True,
+        )
+        .exclude(
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_THREAD_OPENER_PREFIX,
+        )
+        .aggregate(
+            n=Count("id"),
+        )
+    )
+    last = (
+        ChatMessage.objects.filter(
+            room=room,
+            thread_event_id=event.pk,
+            deleted_at__isnull=True,
+        )
+        .exclude(
+            kind=ChatMessage.Kind.SYSTEM,
+            body__startswith=REHEARSAL_THREAD_OPENER_PREFIX,
+        )
+        .select_related("author")
+        .order_by("-created_at")
+        .first()
+    )
+    if n_setlist is None:
+        n_setlist = 0
+        plan = getattr(event, "rehearsal_plan", None)
+        if plan is not None and hasattr(plan, "items"):
+            try:
+                n_setlist = plan.items.count()
+            except Exception:
+                n_setlist = 0
+
+    preview = ""
+    if last and last.body:
+        preview = last.body.strip()
+        if len(preview) > 100:
+            preview = preview[:97].rstrip() + "…"
+    elif last and last.attachments.exists():
+        preview = "Pièce jointe"
+
+    local_dt = timezone.localtime(event.date_debut)
+    unread = 0
+    if user is not None and getattr(user, "is_authenticated", False):
+        unread = thread_unread_count(room.pk, user.pk, event.pk, last_read_at)
+
+    from django.utils.formats import date_format
+
+    when_label = (
+        f"{date_format(local_dt, 'D j b')} · {date_format(local_dt, 'G:i')}"
+    )
+
+    return {
+        "event_id": event.pk,
+        "title": event.titre,
+        "when_label": when_label,
+        "date_iso": local_dt.date().isoformat(),
+        "is_past": event.date_debut < timezone.now(),
+        "venue": event.lieu_affiche if getattr(event, "venue_id", None) else "",
+        "n_messages": int(msg_stats["n"] or 0),
+        "n_setlist": int(n_setlist or 0),
+        "last_preview": preview,
+        "last_at": last.created_at.isoformat() if last else None,
+        "unread": unread,
+        "url": chat_room_url(room.pk, thread_event_id=event.pk),
+        "detail_url": reverse("repetitions:detail", kwargs={"pk": event.pk}),
+        "setlist_url": reverse("repetitions:detail", kwargs={"pk": event.pk}),
+    }
+
+
+def _rehearsal_thread_events(room: ChatRoom):
+    """
+    Événements répétition affichés dans le salon :
+    à venir + passé récent (45 j), et dates plus anciennes déjà discutées.
+    """
+    from datetime import timedelta
+
+    from events.models import Event
+
+    now = timezone.now()
+    cutoff = now - timedelta(days=45)
+
+    events = list(
+        Event.objects.filter(type__is_rehearsal=True, date_debut__gte=cutoff)
+        .select_related("venue", "type", "rehearsal_plan")
+        .order_by("date_debut")
+    )
+    event_ids = {e.pk for e in events}
+
+    older_with_msgs = (
+        Event.objects.filter(
+            type__is_rehearsal=True,
+            date_debut__lt=cutoff,
+            chat_thread_messages__room=room,
+            chat_thread_messages__deleted_at__isnull=True,
+        )
+        .select_related("venue", "type", "rehearsal_plan")
+        .distinct()
+        .order_by("date_debut")
+    )
+    for e in older_with_msgs:
+        if e.pk not in event_ids:
+            events.append(e)
+            event_ids.add(e.pk)
+
+    events.sort(key=lambda e: e.date_debut)
+    return events
+
+
+def partition_rehearsal_threads(
+    room: ChatRoom, user
+) -> tuple[list[dict], list[dict]]:
+    """
+    Fils du salon Répétitions : (actifs à venir, archivés passés).
+    Les passés restent consultables dans Archives (plus récents en premier).
+    """
+    if room.kind != ChatRoom.Kind.REHEARSALS:
+        return [], []
+
+    from django.db.models import Count
+    from repetitions.models import RehearsalPlan
+
+    membership = active_membership(room, user) if user else None
+    last_read_at = membership.last_read_at if membership else None
+    events = _rehearsal_thread_events(room)
+    event_ids = {e.pk for e in events}
+
+    plan_counts = {
+        row["event_id"]: row["n"]
+        for row in RehearsalPlan.objects.filter(event_id__in=event_ids)
+        .annotate(n=Count("items"))
+        .values("event_id", "n")
+    }
+
+    active: list[dict] = []
+    archived: list[dict] = []
+    for e in events:
+        card = serialize_rehearsal_thread(
+            e,
+            room=room,
+            user=user,
+            last_read_at=last_read_at,
+            n_setlist=plan_counts.get(e.pk, 0),
+        )
+        if card["is_past"]:
+            archived.append(card)
+        else:
+            active.append(card)
+
+    archived.reverse()  # plus récent passé en premier
+    return active, archived
+
+
+def list_rehearsal_threads(room: ChatRoom, user) -> list[dict]:
+    """Fils actifs (répétitions à venir) du salon Répétitions."""
+    active, _archived = partition_rehearsal_threads(room, user)
+    return active
+
+
 def ensure_event_room(event) -> ChatRoom:
+    """
+    Salon lié à un événement (concerts, etc.).
+    Les répétitions utilisent le salon unique « Répétitions ».
+    """
+    if getattr(event, "is_rehearsal", False):
+        return ensure_rehearsals_room()
+
     title = event.titre
     room, created = ChatRoom.objects.get_or_create(
         event=event,
@@ -265,19 +574,44 @@ def ensure_event_room(event) -> ChatRoom:
         room.save(update_fields=updates)
     if created:
         seed_staff_members(room)
-    # Tip setlist : aussi pour les salons répé déjà créés (idempotent).
     if not hasattr(room, "event") or room.event_id != event.pk:
         room.event = event
-    ensure_rehearsal_setlist_tip(room)
     return room
 
 
-def chat_room_url(room_id: int, *, message_id: int | None = None) -> str:
-    """Chemin relatif vers un salon, optionnellement centré sur un message."""
+def deactivate_rehearsal_event_rooms() -> int:
+    """Désactive les anciens salons EVENT liés à une répétition."""
+    qs = ChatRoom.objects.filter(kind=ChatRoom.Kind.EVENT, event__isnull=False)
+    to_deactivate = []
+    for room in qs.select_related("event", "event__type"):
+        if getattr(room.event, "is_rehearsal", False) and room.is_active:
+            to_deactivate.append(room.pk)
+    if not to_deactivate:
+        return 0
+    return ChatRoom.objects.filter(pk__in=to_deactivate).update(is_active=False)
+
+
+def chat_room_url(
+    room_id: int,
+    *,
+    message_id: int | None = None,
+    thread_event_id: int | None = None,
+) -> str:
+    """Chemin relatif vers un salon, optionnellement un fil répé / un message."""
+    from urllib.parse import urlencode
+
     path = reverse("chat:room", kwargs={"room_id": room_id})
-    if message_id:
-        return f"{path}?msg={int(message_id)}"
+    params: dict[str, int] = {}
+    if thread_event_id is not None:
+        params["thread"] = int(thread_event_id)
+    if message_id is not None:
+        params["msg"] = int(message_id)
+    if params:
+        return f"{path}?{urlencode(params)}"
     return path
+
+
+REHEARSAL_THREAD_OPENER_PREFIX = "Discussion de la répétition"
 
 
 def _chorus_system_body(piece) -> str:
@@ -497,16 +831,18 @@ def sync_all_musicians_to_section_rooms() -> tuple[int, int]:
 
 
 def sync_participation_to_chat(participation) -> ChatMembership:
-    room = ensure_event_room(participation.event)
-    membership = add_member(room, participation.user)
-    # Tip setlist auto : ne pas déclencher de digest « nouveau chat » à l’ajout.
     event = participation.event
     if getattr(event, "is_rehearsal", False):
+        room = ensure_rehearsals_room()
+        membership = add_member(room, participation.user)
         tip_id = _rehearsal_setlist_tip_id(room)
         if tip_id and membership.last_digested_message_id < tip_id:
             membership.last_digested_message_id = tip_id
             membership.save(update_fields=["last_digested_message_id"])
-    return membership
+        return membership
+
+    room = ensure_event_room(event)
+    return add_member(room, participation.user)
 
 
 def active_membership(room: ChatRoom, user) -> ChatMembership | None:
@@ -605,6 +941,138 @@ def replies_prefetch() -> Prefetch:
     )
 
 
+def chat_messages_related(qs):
+    """select_related / prefetch partagés pour sérialiser un fil."""
+    return qs.select_related(
+        "author",
+        "related_proposal",
+        "reply_to",
+        "reply_to__author",
+        "thread_event",
+    ).prefetch_related(
+        "attachments",
+        "reactions",
+        "reply_to__attachments",
+        replies_prefetch(),
+    )
+
+
+def orchestra_archived_q(user_id: int, last_read_at, *, now=None) -> Q:
+    """
+    Messages du salon Orchestre à archiver *pour cet utilisateur*.
+
+    Un message est archivé s’il a plus d’un mois (activité : édition ou envoi)
+    **et** que la personne l’a déjà lu (watermark ``last_read_at``, ou auteur).
+    Les non-lus restent dans le fil courant, même s’ils sont vieux.
+    """
+    now = now or timezone.now()
+    cutoff = now - ORCHESTRA_ARCHIVE_AFTER
+    old = Q(edited_at__lt=cutoff) | (
+        Q(edited_at__isnull=True) & Q(created_at__lt=cutoff)
+    )
+    if last_read_at is None:
+        return old & Q(author_id=user_id)
+    read = Q(author_id=user_id) | (
+        Q(edited_at__isnull=False, edited_at__lte=last_read_at)
+        | Q(edited_at__isnull=True, created_at__lte=last_read_at)
+    )
+    return old & read
+
+
+def list_orchestra_archive(
+    room: ChatRoom,
+    user,
+    *,
+    last_read_at=None,
+    before_id=None,
+    include_id=None,
+    limit: int = CHAT_ARCHIVE_PAGE,
+    viewer=None,
+) -> dict:
+    """
+    Page de messages archivés (salon Orchestre), ordre chronologique.
+
+    ``before_id`` : charger plus ancien que ce message.
+    ``include_id`` : fenêtre autour d’un message (lien ?msg=).
+    """
+    empty = {
+        "messages": [],
+        "has_more": False,
+        "next_before": None,
+        "found": False,
+    }
+    if room.kind != ChatRoom.Kind.ORCHESTRA:
+        return empty
+    viewer = viewer or user
+    try:
+        limit = int(limit or CHAT_ARCHIVE_PAGE)
+    except (TypeError, ValueError):
+        limit = CHAT_ARCHIVE_PAGE
+    limit = max(1, min(limit, 100))
+
+    qs = ChatMessage.objects.filter(room=room, deleted_at__isnull=True).filter(
+        orchestra_archived_q(user.pk, last_read_at)
+    )
+
+    try:
+        include_id = int(include_id) if include_id else None
+    except (TypeError, ValueError):
+        include_id = None
+    try:
+        before_id = int(before_id) if before_id else None
+    except (TypeError, ValueError):
+        before_id = None
+
+    if include_id and not before_id:
+        target = qs.filter(pk=include_id).first()
+        if target is None:
+            return {**empty, "has_more": qs.exists()}
+        older = list(
+            reversed(
+                list(
+                    chat_messages_related(
+                        qs.filter(created_at__lt=target.created_at)
+                    ).order_by("-created_at")[:CHAT_ARCHIVE_AROUND]
+                )
+            )
+        )
+        newer = list(
+            chat_messages_related(
+                qs.filter(created_at__gt=target.created_at)
+            ).order_by("created_at")[:CHAT_ARCHIVE_AROUND]
+        )
+        target = chat_messages_related(qs.filter(pk=target.pk)).get()
+        history = older + [target] + newer
+        oldest = history[0]
+        has_more = qs.filter(created_at__lt=oldest.created_at).exists()
+        return {
+            "messages": [serialize_message(m, viewer=viewer) for m in history],
+            "has_more": has_more,
+            "next_before": oldest.pk,
+            "found": True,
+        }
+
+    page_qs = qs.order_by("-created_at")
+    if before_id:
+        before_created = (
+            ChatMessage.objects.filter(pk=before_id, room=room)
+            .values_list("created_at", flat=True)
+            .first()
+        )
+        if before_created is not None:
+            page_qs = page_qs.filter(created_at__lt=before_created)
+    rows = list(chat_messages_related(page_qs)[: limit + 1])
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    history = list(reversed(rows))
+    return {
+        "messages": [serialize_message(m, viewer=viewer) for m in history],
+        "has_more": has_more,
+        "next_before": history[0].pk if history else None,
+        "found": True,
+    }
+
+
 def _replies_meta(message: ChatMessage) -> dict:
     """
     Métadonnées pour sauter du parent vers ses réponses.
@@ -644,6 +1112,7 @@ def serialize_message(message: ChatMessage, viewer=None) -> dict:
         "author_name": _author_display_name(message),
         "author_username": author.username if author else "",
         "reply_to": _reply_preview(message),
+        "thread_event_id": message.thread_event_id,
         "attachments": (
             []
             if message.is_deleted
@@ -677,7 +1146,6 @@ def unread_counts_for_memberships(memberships) -> dict[int, int]:
     membership_ids = [m.pk for m in memberships if getattr(m, "pk", None)]
     if not membership_ids:
         return {}
-    from django.db.models import Count
 
     return dict(
         ChatMembership.objects.filter(pk__in=membership_ids)
@@ -690,6 +1158,70 @@ def unread_counts_for_memberships(memberships) -> dict[int, int]:
         )
         .values_list("pk", "unread")
     )
+
+
+def piece_chat_stats_for_user(piece_ids: list[int], user) -> dict[int, dict]:
+    """
+    Compteurs salon par morceau : ``room_id``, ``unread``, ``total``.
+    Les morceaux sans salon sont omis. Tolère l’absence des tables chat.
+    """
+    if not piece_ids or user is None or not getattr(user, "is_authenticated", False):
+        return {}
+    from django.db import OperationalError, ProgrammingError
+
+    try:
+        rooms = list(
+            ChatRoom.objects.filter(
+                piece_id__in=piece_ids,
+                kind=ChatRoom.Kind.PIECE,
+                is_active=True,
+            ).annotate(
+                msg_total=Count(
+                    "messages",
+                    filter=Q(messages__deleted_at__isnull=True),
+                )
+            )
+        )
+    except (ProgrammingError, OperationalError):
+        logger.warning("piece_chat_stats_for_user indisponible (migration ?)")
+        return {}
+
+    if not rooms:
+        return {}
+
+    unread_by_room: dict[int, int] = {}
+    try:
+        memberships = list(
+            ChatMembership.objects.filter(
+                user=user,
+                left_at__isnull=True,
+                room_id__in=[r.pk for r in rooms],
+            )
+        )
+        unread_by_mid = unread_counts_for_memberships(memberships)
+        unread_by_room = {m.room_id: unread_by_mid.get(m.pk, 0) for m in memberships}
+    except (ProgrammingError, OperationalError):
+        logger.warning("piece_chat_stats_for_user unread indisponible (migration ?)")
+
+    return {
+        room.piece_id: {
+            "room_id": room.pk,
+            "unread": unread_by_room.get(room.pk, 0),
+            "total": int(room.msg_total or 0),
+        }
+        for room in rooms
+        if room.piece_id is not None
+    }
+
+
+def attach_piece_chat_stats(pieces, user) -> None:
+    """Pose ``piece.chat_stats`` (room_id / unread / total) sur chaque morceau."""
+    ids = [p.pk for p in pieces]
+    stats = piece_chat_stats_for_user(ids, user)
+    for piece in pieces:
+        piece.chat_stats = stats.get(
+            piece.pk, {"room_id": None, "unread": 0, "total": 0}
+        )
 
 
 def _last_name_letters(last_name: str) -> str:
@@ -934,11 +1466,22 @@ def _chat_notify_preview(message: ChatMessage) -> str:
     return preview
 
 
-def notify_chat_message_targets(message: ChatMessage) -> int:
+def notify_chat_message_targets(
+    message: ChatMessage,
+    *,
+    previous_body: str | None = None,
+    notify_reply: bool = True,
+) -> int:
     """
     Notifie les @mentions (toujours immédiat) et l’auteur du message cité
     (selon la préf. « réponses à mes messages »).
-    L’auteur du message n’est jamais notifié. Ne lève jamais.
+
+    Une @mention produit une alerte dédiée (« vous interpelle ») et retire
+    ce message du digest salon pour le destinataire — pas de 2ᵉ notif
+    « nouveau message » pour le même contenu. Mention + réponse → une seule
+    notif (la mention). L’auteur du message n’est jamais notifié. Ne lève jamais.
+
+    ``previous_body`` : lors d’une édition, seuls les *nouveaux* @ sont notifiés.
     """
     if message.kind == ChatMessage.Kind.SYSTEM:
         return 0
@@ -953,10 +1496,44 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
     ):
         mention_recipients[u.pk] = u
 
+    if previous_body is not None:
+        already_mentioned = {
+            u.pk
+            for u in resolve_mentioned_users(
+                message.room,
+                previous_body or "",
+                exclude_user=message.author,
+            )
+        }
+        for uid in list(mention_recipients):
+            if uid in already_mentioned:
+                mention_recipients.pop(uid, None)
+
+    # Déjà notifié pour ce message (édition / retry) → pas de doublon inbox.
+    if mention_recipients:
+        try:
+            from users.models import UserNotification
+
+            already_notified = set(
+                UserNotification.objects.filter(
+                    user_id__in=list(mention_recipients.keys()),
+                    related_id=message.pk,
+                    related_type__in=("chat_mention", "chat_msg"),
+                ).values_list("user_id", flat=True)
+            )
+            for uid in already_notified:
+                mention_recipients.pop(uid, None)
+        except Exception:
+            logger.exception(
+                "Filtre anti-doublon mention indisponible message_id=%s",
+                message.pk,
+            )
+
     reply_recipients: dict[int, object] = {}
     parent = message.reply_to
     if (
-        parent
+        notify_reply
+        and parent
         and parent.author_id
         and parent.author_id != message.author_id
         and parent.author is not None
@@ -977,7 +1554,11 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
     author_name = _author_display_name(message)
     room_title = message.room.title
     preview = _chat_notify_preview(message)
-    url = chat_room_url(message.room_id, message_id=message.pk)
+    url = chat_room_url(
+        message.room_id,
+        message_id=message.pk,
+        thread_event_id=message.thread_event_id,
+    )
     title = f"JOY — {room_title}"
     sent = 0
 
@@ -989,9 +1570,9 @@ def notify_chat_message_targets(message: ChatMessage) -> int:
             sent += notify_users(
                 mention_recipients.values(),
                 title=title,
-                body=f"{author_name} vous a cité dans {room_title} : {preview}",
+                body=f"{author_name} vous interpelle dans {room_title} : {preview}",
                 url=url,
-                related_type="chat_msg",
+                related_type="chat_mention",
                 related_id=message.pk,
                 notify_type=TYPE_CHAT,
                 room=message.room,
@@ -1136,6 +1717,9 @@ def post_message(
     related_proposal=None,
     reply_to: ChatMessage | None = None,
     reply_to_id=None,
+    thread_event=None,
+    thread_event_id=None,
+    require_thread: bool | None = None,
     broadcast: bool = True,
 ) -> ChatMessage:
     body = (body or "").strip()
@@ -1148,6 +1732,30 @@ def post_message(
     elif reply_to is not None:
         if reply_to.room_id != room.pk or reply_to.is_deleted:
             reply_to = None
+
+    # Hérite du fil du message parent si réponse.
+    if reply_to is not None and reply_to.thread_event_id and thread_event is None:
+        thread_event = reply_to.thread_event
+        thread_event_id = reply_to.thread_event_id
+
+    if thread_event is None and thread_event_id is not None:
+        thread_event = resolve_rehearsal_thread_event(room, thread_event_id)
+        if thread_event is None and room.kind == ChatRoom.Kind.REHEARSALS:
+            raise ValueError("Fil de répétition invalide.")
+    elif thread_event is not None:
+        if room.kind == ChatRoom.Kind.REHEARSALS and not getattr(
+            thread_event, "is_rehearsal", False
+        ):
+            raise ValueError("Fil de répétition invalide.")
+        if room.kind != ChatRoom.Kind.REHEARSALS:
+            thread_event = None
+
+    if require_thread is None:
+        require_thread = (
+            room.kind == ChatRoom.Kind.REHEARSALS and kind == ChatMessage.Kind.NORMAL
+        )
+    if require_thread and thread_event is None:
+        raise ValueError("Choisissez une date de répétition pour publier.")
 
     max_bytes = getattr(settings, "CHAT_ATTACHMENT_MAX_BYTES", 25 * 1024 * 1024)
     max_count = getattr(settings, "CHAT_ATTACHMENT_MAX_COUNT", 20)
@@ -1168,6 +1776,7 @@ def post_message(
         kind=kind,
         related_proposal=related_proposal,
         reply_to=reply_to,
+        thread_event=thread_event,
     )
     for f, _ext, content_type in validated:
         ChatAttachment.objects.create(
@@ -1179,7 +1788,11 @@ def post_message(
         )
     message = (
         ChatMessage.objects.select_related(
-            "author", "related_proposal", "reply_to", "reply_to__author"
+            "author",
+            "related_proposal",
+            "reply_to",
+            "reply_to__author",
+            "thread_event",
         )
         .prefetch_related("attachments", "reactions", "reply_to__attachments")
         .get(pk=message.pk)
@@ -1257,6 +1870,7 @@ def edit_message(
             size=f.size,
         )
 
+    previous_body = message.body or ""
     message.body = body
     message.edited_at = timezone.now()
     message.save(update_fields=["body", "edited_at"])
@@ -1269,7 +1883,12 @@ def edit_message(
         .get(pk=message.pk)
     )
     broadcast_message_edit(message)
-    notify_chat_message_targets(message)
+    # Nouveaux @ seulement ; pas de 2ᵉ notif « réponse » à chaque édition.
+    notify_chat_message_targets(
+        message,
+        previous_body=previous_body,
+        notify_reply=False,
+    )
     return message
 
 
@@ -1423,10 +2042,15 @@ def build_room_embed_context(
     compact: bool = False,
     show_staff_panel: bool = True,
     history_limit: int | None = None,
+    thread_event_id=None,
 ) -> dict:
     """
     Contexte partagé salon chat (page dédiée ou embed poll / calendrier).
     Prérequis : l'utilisateur a déjà accès (membre actif ou staff).
+
+    Salon Répétitions :
+    - sans ``thread_event_id`` → liste des fils (pas de composer)
+    - avec ``thread_event_id`` → messages du fil + composer
     """
     user = request.user
     is_staff = user.is_staff or user.is_superuser
@@ -1434,39 +2058,82 @@ def build_room_embed_context(
     if membership is None and is_staff:
         membership = ensure_staff_membership(room, user)
 
-    is_rehearsal_room = bool(
+    is_rehearsal_room = room.kind == ChatRoom.Kind.REHEARSALS or bool(
         room.event_id and getattr(getattr(room, "event", None), "is_rehearsal", False)
     )
-    if room.event_id:
+    if room.kind == ChatRoom.Kind.REHEARSALS:
         ensure_rehearsal_setlist_tip(room)
 
-    # Curseur avant mark_room_read : pour scroller vers le 1er non-lu à l’ouverture
-    initial_last_read_at = (
-        membership.last_read_at.isoformat()
-        if membership and membership.last_read_at
-        else None
+    if thread_event_id is None and hasattr(request, "GET"):
+        thread_event_id = request.GET.get("thread")
+
+    active_thread_event = None
+    rehearsal_threads: list[dict] = []
+    rehearsal_threads_archived: list[dict] = []
+    threads_mode = False
+    if room.kind == ChatRoom.Kind.REHEARSALS:
+        active_thread_event = resolve_rehearsal_thread_event(room, thread_event_id)
+        if active_thread_event is None:
+            threads_mode = True
+            rehearsal_threads, rehearsal_threads_archived = partition_rehearsal_threads(
+                room, user
+            )
+
+    # Curseur avant mark_room_read : 1er non-lu + archive Orchestre (par personne).
+    initial_last_read_dt = (
+        membership.last_read_at if membership and membership.last_read_at else None
     )
-    mark_room_read(room, user, broadcast=True)
+    initial_last_read_at = (
+        initial_last_read_dt.isoformat() if initial_last_read_dt else None
+    )
+    # Liste des fils : ne pas marquer tout le salon lu (sinon badges fil inutiles).
+    if not threads_mode:
+        mark_room_read(room, user, broadcast=True)
+
     limit = history_limit if history_limit is not None else CHAT_HISTORY_LIMIT
     if compact and history_limit is None:
         limit = min(CHAT_HISTORY_LIMIT, 40)
-    history = list(
-        reversed(
-            list(
-                ChatMessage.objects.filter(room=room, deleted_at__isnull=True)
-                .select_related(
-                    "author", "related_proposal", "reply_to", "reply_to__author"
+
+    archive_enabled = (
+        room.kind == ChatRoom.Kind.ORCHESTRA and not compact and not threads_mode
+    )
+    archive_count = 0
+    archive_focus_id = None
+    api_archive_url = ""
+
+    if threads_mode:
+        history = []
+    else:
+        if active_thread_event is not None:
+            ensure_rehearsal_thread_opener(active_thread_event)
+        msg_qs = ChatMessage.objects.filter(room=room, deleted_at__isnull=True)
+        if active_thread_event is not None:
+            msg_qs = msg_qs.filter(thread_event_id=active_thread_event.pk)
+        if archive_enabled:
+            archived_q = orchestra_archived_q(user.pk, initial_last_read_dt)
+            archive_count = msg_qs.filter(archived_q).count()
+            msg_qs = msg_qs.filter(~archived_q)
+            api_archive_url = reverse(
+                "chat:api_archive", kwargs={"room_id": room.pk}
+            )
+            if hasattr(request, "GET"):
+                try:
+                    focus = int(request.GET.get("msg") or 0)
+                except (TypeError, ValueError):
+                    focus = 0
+                if focus and ChatMessage.objects.filter(
+                    pk=focus,
+                    room=room,
+                    deleted_at__isnull=True,
+                ).filter(archived_q).exists():
+                    archive_focus_id = focus
+        history = list(
+            reversed(
+                list(
+                    chat_messages_related(msg_qs).order_by("-created_at")[:limit]
                 )
-                .prefetch_related(
-                    "attachments",
-                    "reactions",
-                    "reply_to__attachments",
-                    replies_prefetch(),
-                )
-                .order_by("-created_at")[:limit]
             )
         )
-    )
 
     participation = None
     show_leave_hint = False
@@ -1516,6 +2183,15 @@ def build_room_embed_context(
             invite_musicians = invite_musicians_for_form(invite_users)
             invite_choices = invite_musicians  # truthy check in templates
 
+    active_thread = None
+    if active_thread_event is not None:
+        active_thread = serialize_rehearsal_thread(
+            active_thread_event,
+            room=room,
+            user=user,
+            last_read_at=membership.last_read_at if membership else None,
+        )
+
     ws_scheme = "wss" if request.is_secure() else "ws"
     ws_url = f"{ws_scheme}://{request.get_host()}/ws/chat/{room.pk}/"
     api_send_url = reverse("chat:api_send", kwargs={"room_id": room.pk})
@@ -1550,6 +2226,10 @@ def build_room_embed_context(
         "api_delete_url": api_delete_url,
         "api_members_url": api_members_url,
         "api_read_url": reverse("chat:api_read", kwargs={"room_id": room.pk}),
+        "api_archive_url": api_archive_url,
+        "archive_enabled": archive_enabled,
+        "archive_count": archive_count,
+        "archive_focus_id": archive_focus_id,
         "current_user_id": user.pk,
         "initial_last_read_at": initial_last_read_at,
         "is_planning_staff": is_staff,
@@ -1559,6 +2239,13 @@ def build_room_embed_context(
         "open_proposal": open_proposal,
         "lock_options": lock_options,
         "is_rehearsal_room": is_rehearsal_room,
+        "threads_mode": threads_mode,
+        "rehearsal_threads": rehearsal_threads,
+        "rehearsal_threads_archived": rehearsal_threads_archived,
+        "active_thread": active_thread,
+        "active_thread_event_id": (
+            active_thread_event.pk if active_thread_event else None
+        ),
         "composer_placeholder": (
             "Proposez un morceau… (votez avec 👍)"
             if is_rehearsal_room

@@ -1,0 +1,23 @@
+{# Carte d’un fil répétition (liste active ou archives). #}
+<li>
+  <a class="chat-threads__item{% if t.is_past %} is-past{% endif %}" href="{{ t.url }}">
+    <span class="chat-threads__when">{{ t.when_label }}</span>
+    <span class="chat-threads__title">{{ t.title }}</span>
+    <span class="chat-threads__meta">
+      {% if t.n_setlist %}
+      Setlist · {{ t.n_setlist }} morceau{{ t.n_setlist|pluralize:"x" }}
+      {% else %}
+      Setlist · à composer
+      {% endif %}
+      {% if t.n_messages %}
+      · {{ t.n_messages }} message{{ t.n_messages|pluralize }}
+      {% endif %}
+    </span>
+    {% if t.last_preview %}
+    <span class="chat-threads__preview">{{ t.last_preview }}</span>
+    {% endif %}
+    {% if t.unread %}
+    <span class="chat-threads__badge" aria-label="{{ t.unread }} non lus">{{ t.unread }}</span>
+    {% endif %}
+  </a>
+</li>
