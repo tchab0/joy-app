@@ -131,6 +131,43 @@ class DashboardTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Répète vendredi")
 
+    def test_my_board_upcoming_only_next_two_rehearsals(self):
+        """Prochaines dates : max 2 répétitions, autres dates conservées."""
+        from planning.services import invite_musician_to_event, set_participation_response
+
+        concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        concert = Event.objects.create(
+            titre="Concert confirmé",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=3),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        part, _ = invite_musician_to_event(
+            concert, self.musician, send_notification=False
+        )
+        set_participation_response(part, "yes")
+        for i, days in enumerate((14, 21, 28), start=2):
+            Event.objects.create(
+                titre=f"Répète {i}",
+                type=self.event_type,
+                venue=self.venue,
+                date_debut=timezone.now() + timedelta(days=days),
+                statut=Event.Statut.CONFIRME,
+                public=False,
+            )
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:my_board"))
+        self.assertEqual(r.status_code, 200)
+        upcoming_titles = [row.event.titre for row in r.context["upcoming"]]
+        self.assertEqual(
+            upcoming_titles,
+            ["Concert confirmé", "Répète vendredi", "Répète 2"],
+        )
+        self.assertNotIn("Répète 3", upcoming_titles)
+        self.assertNotIn("Répète 4", upcoming_titles)
+
     def test_my_board_lists_events_without_invitation(self):
         """Mes dates liste toutes les dates, même sans participation."""
         concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)

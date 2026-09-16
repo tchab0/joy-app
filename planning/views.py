@@ -342,8 +342,18 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
             and row.status.code in ("invited", "maybe")
         ]
         pending_event_ids = {row.event.pk for row in pending}
-        # « Prochaines dates » = le reste (pas de doublon avec « À répondre »).
-        upcoming = [row for row in all_rows if row.event.pk not in pending_event_ids]
+        # « Prochaines dates » = le reste (pas de doublon avec « À répondre »),
+        # avec au plus 2 répétitions (les plus proches).
+        upcoming = []
+        rehearsals_kept = 0
+        for row in all_rows:
+            if row.event.pk in pending_event_ids:
+                continue
+            if row.event.is_rehearsal:
+                if rehearsals_kept >= 2:
+                    continue
+                rehearsals_kept += 1
+            upcoming.append(row)
 
         sub_offers = (
             SubstituteRequest.objects.filter(
