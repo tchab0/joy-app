@@ -1,5 +1,5 @@
 {% load static %}
-<link rel="stylesheet" href="{% static 'planning/planning.css' %}?v=20">
+<link rel="stylesheet" href="{% static 'planning/planning.css' %}?v=22">
 <style>
   /* Compact + nav mobile — inline pour bypass cache CSS immutable */
   .pl { padding-top: .25rem !important; }
@@ -11,29 +11,43 @@
     gap: .35rem !important;
   }
   .pl-nav__group {
-    flex: 1 1 0 !important;
+    flex: 0 0 auto !important;
     min-width: 0 !important;
     padding: .3rem .35rem .35rem !important;
   }
-  .pl-nav__group:first-child { flex: 1.4 1 0 !important; }
+  .pl-nav__group:first-child { flex: 1 1 auto !important; }
+  .pl-nav__group:not(:first-child):not(.pl-nav__group--staff) {
+    flex: 0 0 auto !important;
+    padding: .3rem .25rem .35rem !important;
+  }
   .pl-nav__group--staff { flex: 1 1 100% !important; }
+  .pl-nav__group-head {
+    flex-wrap: nowrap !important;
+    justify-content: space-between !important;
+  }
+  .pl-ui-mode { flex-shrink: 0 !important; }
   .pl-nav__links { flex-wrap: wrap !important; }
   .pl-nav a {
     font-size: .62rem !important;
     padding: .25rem .3rem !important;
+  }
+  .pl-nav__group:not(:first-child):not(.pl-nav__group--staff) a {
+    padding: .25rem .22rem !important;
   }
   @media (min-width: 720px) {
     .pl { padding-top: 1rem !important; }
     .pl-head { margin-bottom: 1rem !important; }
     .pl-head .page-lead--in-head { margin-top: .45rem !important; }
     .pl-nav { gap: .65rem .85rem !important; }
-    .pl-nav__group {
+    .pl-nav__group,
+    .pl-nav__group:first-child,
+    .pl-nav__group:not(:first-child):not(.pl-nav__group--staff),
+    .pl-nav__group--staff {
       flex: 0 1 auto !important;
       padding: .45rem .7rem .5rem !important;
     }
-    .pl-nav__group:first-child,
-    .pl-nav__group--staff { flex: 0 1 auto !important; }
-    .pl-nav a {
+    .pl-nav a,
+    .pl-nav__group:not(:first-child):not(.pl-nav__group--staff) a {
       font-size: .8rem !important;
       padding: .45rem .7rem !important;
     }
