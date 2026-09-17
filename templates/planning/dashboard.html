@@ -10,7 +10,6 @@
 {% block content %}
 <div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   <header class="pl-head">
-    <h1 class="pl-head__title--module">Planning</h1>
     {% page_lead "planning.dashboard" class="page-lead--in-head" %}
       Prochaines dates, réponses et matériel — l’essentiel, rien de plus.
     {% endpage_lead %}

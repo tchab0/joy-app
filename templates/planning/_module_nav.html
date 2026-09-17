@@ -57,7 +57,7 @@ active : calendrier | mes_dates | repertoire | chat | chat_staff | repes | admin
   if (nav) {
     var active = nav.querySelector('a.is-active');
     if (active) {
-      /* Sur mobile (nav glissante), ramener le lien actif dans le viewport horizontal. */
+      /* Si un groupe déborde encore (ex. Staff dense), centrer le lien actif. */
       requestAnimationFrame(function () {
         if (nav.scrollWidth <= nav.clientWidth + 1) return;
         var navMid = nav.getBoundingClientRect().left + nav.clientWidth / 2;

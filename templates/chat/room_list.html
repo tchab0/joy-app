@@ -4,11 +4,13 @@
 {% block extra_css %}
 {% include "planning/_styles.html" %}
 <style>
-  /* Mobile-first room list */
+  /* Mobile-first room list — chat desktop = 2/3 écran */
   .chat-wrap {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 0 0 calc(1.5rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 720px) {
+    .pl { max-width: calc(100vw * 2 / 3); }
   }
   .chat-wrap h1 {
     font-family: var(--font-d);
@@ -24,61 +26,40 @@
   }
   .chat-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    gap: .5rem;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: .4rem;
     margin-bottom: 1rem;
   }
   .chat-toolbar a {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-height: 44px;
-    padding: .5rem .75rem;
+    padding: .4rem .35rem;
     border-radius: var(--r);
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--accent);
     text-decoration: none;
-    font-size: .9rem;
+    font-size: .78rem;
     font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
   }
   .chat-toolbar__staff {
     border-color: rgba(var(--staff-rgb), .35) !important;
     background: rgba(var(--staff-rgb), .08) !important;
     color: var(--staff) !important;
   }
-  .chat-view-toggle {
-    display: flex;
-    width: 100%;
-    gap: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    overflow: hidden;
-    background: var(--surface);
-    margin-bottom: 1rem;
-  }
-  .chat-view-toggle a {
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    padding: .5rem .75rem;
-    text-decoration: none;
-    font-size: .9rem;
-    font-weight: 600;
-    color: var(--muted);
-    background: transparent;
-    border: 0;
-    border-right: 1px solid var(--border);
-  }
-  .chat-view-toggle a:last-child { border-right: 0; }
-  .chat-view-toggle a.is-active {
+  .chat-toolbar a.is-active {
     color: #fff;
     background: var(--accent);
+    border-color: var(--accent);
   }
-  .chat-view-toggle a:not(.is-active):active {
+  .chat-toolbar a:not(.is-active):not(.chat-toolbar__staff):active {
     background: rgba(var(--accent-rgb), .08);
   }
   .chat-sections {
@@ -238,29 +219,29 @@
   @media (min-width: 640px) {
     .chat-wrap { padding-top: 1.5rem; }
     .chat-wrap h1 { font-size: 1.85rem; }
-    .chat-toolbar a { flex: 0 0 auto; min-width: 10rem; }
-    .chat-view-toggle { width: auto; max-width: 22rem; }
+    .chat-toolbar { gap: .5rem; }
+    .chat-toolbar a {
+      flex: 0 1 auto;
+      padding: .5rem .75rem;
+      font-size: .9rem;
+    }
     .chat-accordion__summary { font-size: 1.25rem; }
   }
 </style>
 {% endblock %}
 {% block content %}
-<div class="pl" style="max-width:720px;margin:0 auto;padding:0 1rem">
+<div class="pl" data-tour="chat-list">
   {% include "planning/_module_nav.html" with active="chat" %}
-</div>
-<div class="chat-wrap" data-tour="chat-list">
+  <div class="chat-wrap">
   <h1>Chat</h1>
   {% page_lead "chat.rooms" %}
     Salons de l’orchestre, des morceaux et des événements — messages et documents.
   {% endpage_lead %}
-  <div class="chat-toolbar">
+  <div class="chat-toolbar" role="group" aria-label="Actions et filtres des salons">
     <a href="{% url 'chat:prefs' %}">Notifications</a>
     {% if is_planning_staff %}
     <a href="{% url 'chat:thematic_create' %}" class="chat-toolbar__staff">Nouveau salon</a>
     {% endif %}
-  </div>
-
-  <div class="chat-view-toggle" role="group" aria-label="Filtrer les salons">
     <a href="{% url 'chat:list' %}?vue=mes"{% if list_view != 'tous' %} class="is-active" aria-current="page"{% endif %}>Mes salons</a>
     <a href="{% url 'chat:list' %}?vue=tous"{% if list_view == 'tous' %} class="is-active" aria-current="page"{% endif %}>Tous les salons</a>
   </div>
@@ -308,5 +289,6 @@
   {% else %}
   <p class="chat-empty">{% if list_view == 'tous' %}Aucun salon à afficher pour le moment.{% else %}Aucun salon pour le moment. Passez sur « Tous les salons » pour en rejoindre.{% endif %}</p>
   {% endif %}
+  </div>
 </div>
 {% endblock %}

@@ -1,20 +1,16 @@
-.pl { max-width: 900px; margin: 0 auto; padding: .25rem 1rem 3.5rem; }
+.pl { max-width: 100%; margin: 0 auto; padding: .25rem 1rem 3.5rem; }
   @media (min-width: 720px) {
-    .pl { padding: 2rem 1.5rem 4rem; }
+    .pl { max-width: 75vw; padding: 2rem 1.5rem 4rem; }
   }
-  .pl-head { margin-bottom: 1.75rem; }
+  .pl-head { margin-bottom: .75rem; }
   .pl-head h1 {
     font-family: var(--font-d); font-size: clamp(1.6rem, 3vw, 2.1rem);
     font-weight: 700; margin-bottom: .35rem;
   }
-  /* Titre « Planning » redondant avec le label de la module-nav — masqué sur mobile */
-  .pl-head h1.pl-head__title--module { display: none; }
-  .pl-head:has(h1.pl-head__title--module) { margin-bottom: .25rem; }
-  .pl-head:has(h1.pl-head__title--module) .page-lead--in-head { margin-top: 0; }
+  .pl-head .page-lead--in-head { margin-top: 0; }
   @media (min-width: 720px) {
-    .pl-head h1.pl-head__title--module { display: block; }
-    .pl-head:has(h1.pl-head__title--module) { margin-bottom: 1.75rem; }
-    .pl-head:has(h1.pl-head__title--module) .page-lead--in-head { margin-top: .45rem; }
+    .pl-head { margin-bottom: 1rem; }
+    .pl-head .page-lead--in-head { margin-top: .45rem; }
   }
   .pl-sub { color: var(--muted); font-size: .95rem; max-width: 36rem; }
   /* Vue Musicien / Staff — compact, à droite du label Planning */
@@ -56,46 +52,52 @@
       min-height: 26px; font-size: .62rem; padding: .15rem .5rem;
     }
   }
-  /* Module nav — Planning / Répertoire / Staff as distinct clusters */
-  /* Mobile: une seule ligne glissante (pas de wrap) */
+  /* Module nav — Planning / Répertoire / Chat sur la largeur mobile */
+  /* Mobile portrait: 3 groupes côte à côte (Staff passe en dessous) */
   .pl-nav {
-    display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch;
-    gap: .5rem; margin-bottom: .65rem;
+    display: flex; flex-direction: row; flex-wrap: wrap; align-items: stretch;
+    gap: .35rem; margin-bottom: .65rem;
     padding-bottom: .5rem; border-bottom: 1px solid var(--border);
-    overflow-x: auto; overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
+    overflow-x: visible;
     /* Reset site chrome <nav> styles if they ever leak again */
     position: static; z-index: auto; background: transparent;
   }
   .pl-nav__group {
     display: flex; flex-direction: column; gap: .2rem;
-    flex: 0 0 auto;
-    padding: .35rem .5rem .4rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: .3rem .35rem .35rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r);
     border-top: 2px solid rgba(var(--accent-rgb), .4);
   }
+  /* Planning (plus de liens) un peu plus large que Répertoire / Chat */
+  .pl-nav__group:first-child { flex: 1.4 1 0; }
   .pl-nav__group--staff {
+    flex: 1 1 100%;
     background: rgba(var(--staff-rgb), .07);
     border-color: rgba(var(--staff-rgb), .2);
     border-top-color: rgba(var(--staff-rgb), .55);
   }
+  .pl-nav__group-head {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: .2rem .35rem;
+  }
   .pl-nav__label {
     display: block;
-    font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    font-size: .55rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
     color: var(--gold-text); line-height: 1.2;
     white-space: nowrap;
   }
   .pl-nav__group--staff .pl-nav__label { color: var(--staff); }
   .pl-nav__links {
-    display: flex; flex-wrap: nowrap; gap: .15rem .2rem; align-items: center;
+    display: flex; flex-wrap: wrap; gap: .1rem .15rem; align-items: center;
   }
   .pl-nav a {
-    font-size: .7rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
-    color: var(--muted); text-decoration: none; padding: .3rem .45rem; min-height: 36px;
+    font-size: .62rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+    color: var(--muted); text-decoration: none; padding: .25rem .3rem; min-height: 36px;
     display: inline-flex; align-items: center; flex-shrink: 0;
     white-space: nowrap;
     border-radius: var(--r); transition: color var(--trans), background var(--trans);
@@ -109,17 +111,22 @@
   }
   @media (min-width: 720px) {
     .pl-nav {
-      flex-wrap: wrap; overflow-x: visible;
       gap: .65rem .85rem; margin-bottom: 1.5rem; padding-bottom: 1rem;
     }
     .pl-nav__group {
       flex: 0 1 auto; min-width: 0;
       padding: .45rem .7rem .5rem;
     }
-    .pl-nav__label {
-      font-size: .65rem; margin-bottom: .1rem;
+    .pl-nav__group:first-child { flex: 0 1 auto; }
+    .pl-nav__group--staff { flex: 0 1 auto; }
+    .pl-nav__group-head {
+      flex-wrap: nowrap;
+      justify-content: space-between;
     }
-    .pl-nav__links { flex-wrap: wrap; gap: .35rem; }
+    .pl-nav__label {
+      font-size: .65rem; margin-bottom: .1rem; letter-spacing: .12em;
+    }
+    .pl-nav__links { gap: .35rem; }
     .pl-nav a {
       font-size: .8rem; letter-spacing: .04em; padding: .45rem .7rem; min-height: 44px;
     }
@@ -1013,12 +1020,21 @@
   .pl-year {
     display: flex; flex-direction: column; gap: 1.75rem;
   }
-  @media (min-width: 900px) {
+  @media (min-width: 720px) {
     .pl-year {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1.5rem 1.75rem;
+      gap: 1.5rem 1.25rem;
     }
+  }
+  @media (min-width: 1100px) {
+    .pl-year {
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1.35rem 1.1rem;
+    }
+    .pl-month h2 { font-size: 1.05rem; }
+    .pl-cal__wd { font-size: .6rem; }
+    .pl-cal__num { font-size: .8rem; }
   }
   .pl-month h2 {
     font-family: var(--font-d); font-size: 1.15rem; margin-bottom: .65rem;

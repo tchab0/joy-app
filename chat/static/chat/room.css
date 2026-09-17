@@ -1605,10 +1605,15 @@
 
   @media (min-width: 768px) {
     .chat-room:not(.chat-room--embedded) {
+      width: calc(100vw * 2 / 3);
+      max-width: calc(100vw * 2 / 3);
       height: calc(100dvh - 64px);
       max-height: calc(100dvh - 64px);
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
+    }
+    .chat-room:not(.chat-room--embedded) .chat-composer__inner {
+      max-width: none;
     }
     .chat-room__titles h1 { font-size: 1.2rem; }
     .chat-msg { max-width: 72%; }
