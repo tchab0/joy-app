@@ -43,6 +43,40 @@
   }
   .rep-alert-dot { background: var(--accent); }
   .rep-solo-dot { background: var(--ok); }
+  /* Liste morceaux : titre + salon / aperçu / PDF / fiche (mobile portrait) */
+  @media (max-width: 639px) and (orientation: portrait) {
+    .rep-piece-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "title actions"
+        "meta meta";
+      column-gap: .5rem;
+      row-gap: .35rem;
+      align-items: center;
+    }
+    .rep-piece-row .pl-row__main { display: contents; }
+    .rep-piece-row .pl-row__title {
+      grid-area: title;
+      order: unset;
+      align-self: center;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .rep-piece-row > .pl-row__actions {
+      grid-area: actions;
+      order: unset;
+      flex-wrap: nowrap;
+      flex-shrink: 0;
+    }
+    .rep-piece-row .pl-row__meta {
+      grid-area: meta;
+      order: unset;
+    }
+  }
   .rep-alert-meta { color: var(--accent); font-weight: 600; }
   .rep-missing-alert {
     display: flex; flex-wrap: wrap; align-items: flex-start; gap: .45rem;

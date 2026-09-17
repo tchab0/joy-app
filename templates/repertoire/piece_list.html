@@ -33,7 +33,7 @@
   <section class="pl-section">
     {% for piece in pieces %}
     {% with missing=piece.missing_big_band_labels %}
-    <div class="pl-row">
+    <div class="pl-row rep-piece-row">
       <div class="pl-row__main">
         <a class="pl-row__title" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">
           {{ piece.title }}
