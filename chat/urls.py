@@ -13,6 +13,7 @@ urlpatterns = [
     path("<int:room_id>/", views.room_detail, name="room"),
     path("<int:room_id>/embed/", views.room_embed_fragment, name="room_embed"),
     path("<int:room_id>/rejoindre/", views.room_rejoin, name="rejoin"),
+    path("<int:room_id>/devenir-membre/", views.thematic_join, name="thematic_join"),
     path(
         "<int:room_id>/membres/ajouter/",
         views.thematic_member_add,

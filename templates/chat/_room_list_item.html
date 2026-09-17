@@ -1,7 +1,20 @@
 <li>
+  {% if item.can_join %}
+  <div class="chat-list__row chat-list__row--join">
+    <div class="chat-list__body">
+      <div class="chat-kind">Thématique</div>
+      <p class="chat-list__title">{{ item.room.title }}</p>
+      <p class="chat-list__meta">Salon thématique — rejoignez pour participer</p>
+    </div>
+    <form method="post" action="{% url 'chat:thematic_join' item.room.pk %}" class="chat-list__join">
+      {% csrf_token %}
+      <button type="submit">Devenir membre</button>
+    </form>
+  </div>
+  {% else %}
   <a href="{% url 'chat:room' item.room.pk %}">
     <div>
-      <div class="chat-kind{% if item.room.kind == 'staff' %} chat-kind--staff{% endif %}">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'staff' %}Staff{% elif item.room.kind == 'section' %}Pupitre{% elif item.room.kind == 'piece' %}Morceau{% else %}Événement{% endif %}</div>
+      <div class="chat-kind{% if item.room.kind == 'staff' %} chat-kind--staff{% endif %}">{% if item.room.kind == 'orchestra' %}Orchestre{% elif item.room.kind == 'staff' %}Staff{% elif item.room.kind == 'section' %}Pupitre{% elif item.room.kind == 'piece' %}Morceau{% elif item.room.kind == 'thematic' %}Thématique{% elif item.room.kind == 'event' and not item.room.event_id %}Privé{% else %}Événement{% endif %}</div>
       <p class="chat-list__title">{{ item.room.title }}</p>
       {% if item.last_message %}
       <p class="chat-list__meta">
@@ -15,4 +28,5 @@
     </div>
     {% if item.unread %}<span class="chat-badge{% if item.room.kind == 'staff' %} chat-badge--staff{% endif %}" aria-label="{{ item.unread }} non lus">{{ item.unread }}</span>{% endif %}
   </a>
+  {% endif %}
 </li>

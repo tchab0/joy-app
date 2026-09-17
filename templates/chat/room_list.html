@@ -24,6 +24,7 @@
   }
   .chat-toolbar {
     display: flex;
+    flex-wrap: wrap;
     gap: .5rem;
     margin-bottom: 1rem;
   }
@@ -47,6 +48,39 @@
     background: rgba(var(--staff-rgb), .08) !important;
     color: var(--staff) !important;
   }
+  .chat-view-toggle {
+    display: flex;
+    width: 100%;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    background: var(--surface);
+    margin-bottom: 1rem;
+  }
+  .chat-view-toggle a {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: .5rem .75rem;
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-right: 1px solid var(--border);
+  }
+  .chat-view-toggle a:last-child { border-right: 0; }
+  .chat-view-toggle a.is-active {
+    color: #fff;
+    background: var(--accent);
+  }
+  .chat-view-toggle a:not(.is-active):active {
+    background: rgba(var(--accent-rgb), .08);
+  }
   .chat-sections {
     display: flex;
     flex-direction: column;
@@ -60,7 +94,8 @@
     flex-direction: column;
     gap: .5rem;
   }
-  .chat-list a {
+  .chat-list > li > a,
+  .chat-list__row {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: .75rem;
@@ -74,7 +109,28 @@
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
   }
-  .chat-list a:active { background: rgba(var(--accent-rgb), .06); }
+  .chat-list > li > a:active { background: rgba(var(--accent-rgb), .06); }
+  .chat-list__row--join {
+    border-style: dashed;
+    border-color: rgba(var(--accent-rgb), .35);
+  }
+  .chat-list__join button {
+    min-height: 44px;
+    padding: .45rem .75rem;
+    border-radius: var(--r);
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chat-list__join button:active {
+    background: var(--accent-h);
+    border-color: var(--accent-h);
+  }
   .chat-list__title {
     font-weight: 600;
     font-size: 1.05rem;
@@ -170,7 +226,8 @@
     font-size: .85rem;
     font-weight: 500;
   }
-  .chat-accordion .chat-list a {
+  .chat-accordion .chat-list > li > a,
+  .chat-accordion .chat-list__row {
     background: var(--bg);
   }
   .chat-empty {
@@ -182,6 +239,7 @@
     .chat-wrap { padding-top: 1.5rem; }
     .chat-wrap h1 { font-size: 1.85rem; }
     .chat-toolbar a { flex: 0 0 auto; min-width: 10rem; }
+    .chat-view-toggle { width: auto; max-width: 22rem; }
     .chat-accordion__summary { font-size: 1.25rem; }
   }
 </style>
@@ -200,6 +258,11 @@
     {% if is_planning_staff %}
     <a href="{% url 'chat:thematic_create' %}" class="chat-toolbar__staff">Nouveau salon</a>
     {% endif %}
+  </div>
+
+  <div class="chat-view-toggle" role="group" aria-label="Filtrer les salons">
+    <a href="{% url 'chat:list' %}?vue=mes"{% if list_view != 'tous' %} class="is-active" aria-current="page"{% endif %}>Mes salons</a>
+    <a href="{% url 'chat:list' %}?vue=tous"{% if list_view == 'tous' %} class="is-active" aria-current="page"{% endif %}>Tous les salons</a>
   </div>
 
   {% if has_rooms %}
@@ -243,7 +306,7 @@
     {% endif %}
   </div>
   {% else %}
-  <p class="chat-empty">Aucun salon pour le moment.</p>
+  <p class="chat-empty">{% if list_view == 'tous' %}Aucun salon à afficher pour le moment.{% else %}Aucun salon pour le moment. Passez sur « Tous les salons » pour en rejoindre.{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}

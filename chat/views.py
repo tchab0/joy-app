@@ -10,6 +10,7 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
@@ -61,6 +62,10 @@ def room_list(request: HttpRequest) -> HttpResponse:
     if request.user.is_staff or request.user.is_superuser:
         sync_user_to_staff_room(request.user)
 
+    list_view = (request.GET.get("vue") or "mes").strip().lower()
+    if list_view not in {"mes", "tous"}:
+        list_view = "mes"
+
     from django.db.models import Count, OuterRef, Subquery
 
     last_msg = ChatMessage.objects.filter(
@@ -90,12 +95,17 @@ def room_list(request: HttpRequest) -> HttpResponse:
         last_ts = last.created_at.timestamp() if last else 0.0
         kind_rank = {
             ChatRoom.Kind.ORCHESTRA: 0,
-            ChatRoom.Kind.STAFF: 1,
-            ChatRoom.Kind.SECTION: 2,
-            ChatRoom.Kind.PIECE: 3,
-            ChatRoom.Kind.EVENT: 4,
+            ChatRoom.Kind.REHEARSALS: 1,
+            ChatRoom.Kind.STAFF: 2,
+            ChatRoom.Kind.SECTION: 3,
+            ChatRoom.Kind.PIECE: 4,
+            ChatRoom.Kind.THEMATIC: 5,
+            ChatRoom.Kind.EVENT: 6,
         }.get(item["room"].kind, 9)
+        # Salons à rejoindre après les salons déjà membres.
+        join_rank = 1 if item.get("can_join") else 0
         return (
+            join_rank,
             0 if item["unread"] else 1,
             kind_rank,
             -last_ts,
@@ -111,14 +121,28 @@ def room_list(request: HttpRequest) -> HttpResponse:
             "room": m.room,
             "unread": m.unread,
             "last_message": last_by_id.get(m.last_msg_id),
+            "can_join": False,
         }
         kind = m.room.kind
         if kind == ChatRoom.Kind.PIECE:
             piece_rooms.append(item)
-        elif kind == ChatRoom.Kind.EVENT:
+        elif kind == ChatRoom.Kind.EVENT and m.room.event_id:
             event_rooms.append(item)
         else:
+            # Thématiques + privés ad hoc (sans Event) → liste principale
             primary_rooms.append(item)
+
+    if list_view == "tous":
+        for room in list_discoverable_thematic_rooms(request.user):
+            primary_rooms.append(
+                {
+                    "membership": None,
+                    "room": room,
+                    "unread": 0,
+                    "last_message": None,
+                    "can_join": True,
+                }
+            )
 
     primary_rooms.sort(key=_sort_key)
     piece_rooms.sort(key=_sort_key)
@@ -131,6 +155,7 @@ def room_list(request: HttpRequest) -> HttpResponse:
         request,
         "chat/room_list.html",
         {
+            "list_view": list_view,
             "primary_rooms": primary_rooms,
             "piece_rooms": piece_rooms,
             "event_rooms": event_rooms,
@@ -144,6 +169,8 @@ def room_list(request: HttpRequest) -> HttpResponse:
             ),
         },
     )
+
+
 
 
 @login_required
@@ -214,6 +241,25 @@ def thematic_create(request: HttpRequest) -> HttpResponse:
             "is_planning_staff": True,
         },
     )
+
+
+@login_required
+@require_POST
+def thematic_join(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Musicien : devenir membre d’un salon thématique (vue Tous les salons)."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    try:
+        join_thematic_room(room, request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(f"{reverse('chat:list')}?vue=tous")
+
+    messages.success(request, f"Vous êtes membre de « {room.title} ».")
+    return redirect("chat:room", room_id=room.pk)
 
 
 @login_required

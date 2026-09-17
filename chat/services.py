@@ -580,7 +580,12 @@ def ensure_event_room(event) -> ChatRoom:
 
 
 def is_thematic_room(room: ChatRoom) -> bool:
-    """Salon thématique / privé : kind EVENT sans événement lié."""
+    """Salon thématique créé par le staff (kind=thematic)."""
+    return room.kind == ChatRoom.Kind.THEMATIC
+
+
+def is_private_adhoc_room(room: ChatRoom) -> bool:
+    """Ancien salon privé ad hoc (ex. Montaigu Joy) : EVENT sans événement."""
     return room.kind == ChatRoom.Kind.EVENT and not room.event_id
 
 
@@ -592,8 +597,7 @@ def create_thematic_room(
     created_by=None,
 ) -> ChatRoom:
     """
-    Crée un salon thématique (privé) : staff seed + musiciens choisis.
-    Stocké comme kind=EVENT sans Event (badge « Privé » dans la liste).
+    Crée un salon thématique : staff seed + musiciens choisis.
     """
     cleaned = (title or "").strip()
     if not cleaned:
@@ -602,7 +606,7 @@ def create_thematic_room(
         cleaned = cleaned[:200]
 
     room = ChatRoom.objects.create(
-        kind=ChatRoom.Kind.EVENT,
+        kind=ChatRoom.Kind.THEMATIC,
         title=cleaned,
         event=None,
         is_active=True,
@@ -655,6 +659,40 @@ def thematic_active_members(room: ChatRoom) -> list:
         .order_by("last_name", "first_name", "username")
     )
 
+
+def list_discoverable_thematic_rooms(user) -> list[ChatRoom]:
+    """
+    Salons thématiques actifs dont l’utilisateur n’est pas membre actif.
+    Visible dans la vue « Tous les salons » pour pouvoir rejoindre.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return []
+    member_ids = ChatMembership.objects.filter(
+        user=user, left_at__isnull=True
+    ).values_list("room_id", flat=True)
+    return list(
+        ChatRoom.objects.filter(
+            kind=ChatRoom.Kind.THEMATIC,
+            is_active=True,
+        )
+        .exclude(pk__in=member_ids)
+        .order_by("-created_at", "title")
+    )
+
+
+def join_thematic_room(room: ChatRoom, user) -> ChatMembership:
+    """Auto-adhésion d’un musicien (ou staff) à un salon thématique."""
+    if not is_thematic_room(room) or not room.is_active:
+        raise ValueError("Ce salon n’est pas rejoignable.")
+    if not getattr(user, "is_active", False):
+        raise ValueError("Compte inactif.")
+    if not (
+        getattr(user, "is_musician", False)
+        or user.is_staff
+        or user.is_superuser
+    ):
+        raise ValueError("Réservé aux musiciens.")
+    return add_member(room, user)
 
 def thematic_member_candidates(room: ChatRoom) -> list:
     """Musiciens actifs non déjà membres du salon thématique."""

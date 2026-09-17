@@ -11,7 +11,9 @@ from django.utils import timezone
 class ChatRoom(models.Model):
     class Kind(models.TextChoices):
         ORCHESTRA = "orchestra", "Orchestre"
+        REHEARSALS = "rehearsals", "Répétitions"
         EVENT = "event", "Événement"
+        THEMATIC = "thematic", "Thématique"
         PIECE = "piece", "Morceau"
         STAFF = "staff", "Staff"
         SECTION = "section", "Pupitre"
@@ -59,6 +61,11 @@ class ChatRoom(models.Model):
                 fields=["kind"],
                 condition=models.Q(kind="orchestra"),
                 name="unique_orchestra_chat_room",
+            ),
+            models.UniqueConstraint(
+                fields=["kind"],
+                condition=models.Q(kind="rehearsals"),
+                name="unique_rehearsals_chat_room",
             ),
             models.UniqueConstraint(
                 fields=["kind"],
@@ -194,6 +201,15 @@ class ChatMessage(models.Model):
         related_name="chat_messages",
         verbose_name="Sondage lié",
     )
+    thread_event = models.ForeignKey(
+        "events.Event",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_thread_messages",
+        verbose_name="Fil répétition",
+        help_text="Dans le salon Répétitions : messages rattachés à une date.",
+    )
     reply_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -218,6 +234,10 @@ class ChatMessage(models.Model):
             models.Index(
                 fields=["room", "deleted_at", "created_at"],
                 name="chat_msg_room_del_created_idx",
+            ),
+            models.Index(
+                fields=["room", "thread_event", "created_at"],
+                name="chat_msg_thread_created_idx",
             ),
         ]
 

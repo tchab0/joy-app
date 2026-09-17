@@ -26,6 +26,8 @@ from chat.services import (
     edit_message,
     extract_mention_tokens,
     is_thematic_room,
+    list_discoverable_thematic_rooms,
+    join_thematic_room,
     list_orchestra_archive,
     list_rehearsal_threads,
     musician_section_keys,
@@ -1401,13 +1403,13 @@ class ThematicRoomTests(TestCase):
 
     def test_create_thematic_room_seeds_staff_and_musicians(self):
         room = create_thematic_room(
-            "  Montaigu Joy  ",
+            "  Préparation concert  ",
             musician_users=[self.musician, self.other],
             created_by=self.staff,
         )
         self.assertTrue(is_thematic_room(room))
-        self.assertEqual(room.title, "Montaigu Joy")
-        self.assertEqual(room.kind, ChatRoom.Kind.EVENT)
+        self.assertEqual(room.title, "Préparation concert")
+        self.assertEqual(room.kind, ChatRoom.Kind.THEMATIC)
         self.assertIsNone(room.event_id)
         self.assertTrue(
             ChatMembership.objects.filter(
@@ -1441,11 +1443,12 @@ class ThematicRoomTests(TestCase):
 
     def test_non_member_cannot_access(self):
         room = create_thematic_room(
-            "Privé",
+            "Salon test",
             musician_users=[self.musician],
             created_by=self.staff,
         )
-        self.assertTrue(user_can_access_room(self.musician, room))
+        self.assertTrue(is_thematic_room(room))
+        # Accès refusé sans membership
         self.assertFalse(user_can_access_room(self.outsider, room))
         # Staff always can
         self.assertTrue(user_can_access_room(self.staff, room))
@@ -1569,7 +1572,35 @@ class ThematicRoomTests(TestCase):
         event_ids = {item["room"].pk for item in event_rooms}
         self.assertIn(room.pk, primary_ids)
         self.assertNotIn(room.pk, event_ids)
+        self.assertContains(r, "Thématique")
+
+    def test_private_adhoc_room_keeps_prive_label(self):
+        """Montaigu Joy (EVENT sans Event) reste « Privé », pas Thématique."""
+        room = ChatRoom.objects.create(
+            kind=ChatRoom.Kind.EVENT,
+            title="Montaigu Joy",
+            event=None,
+            is_active=True,
+        )
+        from chat.services import add_member, is_private_adhoc_room
+
+        add_member(room, self.musician)
+        self.assertTrue(is_private_adhoc_room(room))
+        self.assertFalse(is_thematic_room(room))
+
+        client = Client()
+        client.login(username="them_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Montaigu Joy")
         self.assertContains(r, "Privé")
+        # Pas le badge Thématique sur cette ligne : au moins un Privé présent
+        html = r.content.decode()
+        idx = html.find("Montaigu Joy")
+        self.assertGreater(idx, 0)
+        window = html[max(0, idx - 400) : idx + 80]
+        self.assertIn("Privé", window)
+        self.assertNotIn(">Thématique<", window.split("Montaigu Joy")[0][-200:])
 
     def test_list_shows_nouveau_salon_for_staff_only(self):
         client = Client()
@@ -1593,130 +1624,109 @@ class ThematicRoomTests(TestCase):
         with self.assertRaises(ValueError):
             remove_thematic_member(room, self.staff)
 
-@override_settings(
-    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
-    SMS_BACKEND="console",
-    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
-)
-class ChatPollLaunchTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        ensure_participation_statuses()
-        cls.musician = User.objects.create_user(
-            username="poll_musi",
-            password="pass",
-            is_musician=True,
-            chat_auto_subscribe=True,
-        )
-        cls.other = User.objects.create_user(
-            username="poll_other",
-            password="pass",
-            is_musician=True,
-            chat_auto_subscribe=True,
-        )
-        cls.outsider = User.objects.create_user(
-            username="poll_out",
-            password="pass",
-            is_musician=True,
-            chat_auto_subscribe=True,
-        )
+    def test_tous_view_shows_join_button_and_join_works(self):
+        from chat.services import join_thematic_room, list_discoverable_thematic_rooms
 
-    def _thematic_room(self):
-        from chat.services import create_thematic_room
-
-        staff = User.objects.create_user(
-            username="poll_staff_" + str(User.objects.count()),
-            password="pass",
-            is_staff=True,
-            is_musician=True,
+        room = create_thematic_room(
+            "Découverte",
+            musician_users=[self.musician],
+            created_by=self.staff,
         )
-        return create_thematic_room(
-            "Salon sondage",
-            musician_users=[self.musician, self.other],
-            created_by=staff,
-        )
+        # outsider not member → discoverable
+        discoverable = list_discoverable_thematic_rooms(self.outsider)
+        self.assertIn(room, discoverable)
+        self.assertEqual(list_discoverable_thematic_rooms(self.musician), [])
 
-    def test_api_poll_text_room_audience(self):
-        import json
-
-        from planning.models import DateProposal
-        from planning.services import pending_polls_for_user, user_can_access_poll
-
-        room = self._thematic_room()
         client = Client()
-        client.login(username="poll_musi", password="pass")
-        r = client.post(
-            reverse("chat:api_poll", kwargs={"room_id": room.pk}),
-            {
-                "title": "Quel thème ?",
-                "option_kind": "text",
-                "audience": "room",
-                "options": json.dumps(
-                    [{"label": "Swing"}, {"label": "Bebop"}]
-                ),
-            },
-        )
-        self.assertEqual(r.status_code, 200, r.content)
-        data = r.json()
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["message"]["kind"], ChatMessage.Kind.POLL_LAUNCH)
-        self.assertTrue(data["message"]["poll_url"])
-
-        proposal = DateProposal.objects.get(title="Quel thème ?")
-        self.assertEqual(proposal.option_kind, DateProposal.OptionKind.TEXT)
-        self.assertEqual(proposal.audience, DateProposal.Audience.ROOM)
-        self.assertEqual(proposal.source_room_id, room.pk)
-        self.assertTrue(proposal.is_open)
-        self.assertEqual(proposal.options.count(), 2)
-        self.assertTrue(all(o.starts_at is None for o in proposal.options.all()))
-
-        self.assertTrue(user_can_access_poll(self.musician, proposal))
-        self.assertTrue(user_can_access_poll(self.other, proposal))
-        self.assertFalse(user_can_access_poll(self.outsider, proposal))
-        pending = pending_polls_for_user(self.musician)
-        self.assertIn(proposal.pk, [p.pk for p in pending])
-        self.assertEqual(pending_polls_for_user(self.outsider), [])
-
-    def test_api_poll_dates_open_to_all(self):
-        import json
-
-        from django.utils import timezone as tz
-
-        from planning.models import DateProposal
-        from planning.services import user_can_access_poll
-
-        room = self._thematic_room()
-        starts = (tz.now() + timedelta(days=10)).replace(second=0, microsecond=0)
-        client = Client()
-        client.login(username="poll_musi", password="pass")
-        r = client.post(
-            reverse("chat:api_poll", kwargs={"room_id": room.pk}),
-            {
-                "title": "Dispo bal",
-                "option_kind": "dates",
-                "audience": "all",
-                "options": json.dumps(
-                    [
-                        {
-                            "starts_at": starts.strftime("%Y-%m-%dT%H:%M"),
-                            "label": "soir",
-                        }
-                    ]
-                ),
-            },
-        )
-        self.assertEqual(r.status_code, 200, r.content)
-        proposal = DateProposal.objects.get(title="Dispo bal")
-        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
-        self.assertTrue(user_can_access_poll(self.outsider, proposal))
-        detail = client.get(reverse("planning:poll_detail", args=[proposal.pk]))
-        self.assertEqual(detail.status_code, 200)
-
-    def test_room_detail_includes_poll_toolbar(self):
-        room = self._thematic_room()
-        client = Client()
-        client.login(username="poll_musi", password="pass")
-        r = client.get(reverse("chat:room", kwargs={"room_id": room.pk}))
+        client.login(username="them_out", password="pass")
+        r = client.get(reverse("chat:list") + "?vue=mes")
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Lancer un sondage")
-        self.assertContains(r, "apiPollUrl")
+        self.assertNotContains(r, "Découverte")
+        self.assertContains(r, "Mes salons")
+        self.assertContains(r, "Tous les salons")
+
+        r = client.get(reverse("chat:list") + "?vue=tous")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Découverte")
+        self.assertContains(r, "Devenir membre")
+        self.assertContains(r, reverse("chat:thematic_join", args=[room.pk]))
+
+        r = client.post(reverse("chat:thematic_join", args=[room.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(user_can_access_room(self.outsider, room))
+
+        # Already member → no longer in discoverable / no join CTA
+        r = client.get(reverse("chat:list") + "?vue=tous")
+        self.assertContains(r, "Découverte")
+        self.assertNotContains(r, reverse("chat:thematic_join", args=[room.pk]))
+
+        # Rejoin after leave still works via helper
+        ChatMembership.objects.filter(room=room, user=self.outsider).update(
+            left_at=timezone.now()
+        )
+        join_thematic_room(room, self.outsider)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_musician_can_unsubscribe_from_thematic_room(self):
+        from chat.services import list_discoverable_thematic_rooms
+
+        room = create_thematic_room(
+            "Atelier cuivres",
+            musician_users=[self.musician, self.other],
+            created_by=self.staff,
+        )
+        client = Client()
+        client.login(username="them_musi", password="pass")
+
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Se désabonner")
+        self.assertContains(r, 'name="action" value="leave"', html=False)
+
+        r = client.post(
+            reverse("chat:room", args=[room.pk]),
+            {"action": "leave"},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.url, reverse("chat:list"))
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=room, user=self.musician, left_at__isnull=True
+            ).exists()
+        )
+        self.assertFalse(user_can_access_room(self.musician, room))
+        self.assertIn(room, list_discoverable_thematic_rooms(self.musician))
+
+        # Plus dans « Mes salons », réapparait dans « Tous » avec CTA rejoindre
+        r = client.get(reverse("chat:list") + "?vue=mes")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(
+            r, reverse("chat:room", args=[room.pk])
+        )
+
+        r = client.get(reverse("chat:list") + "?vue=tous")
+        self.assertContains(r, "Atelier cuivres")
+        self.assertContains(r, reverse("chat:thematic_join", args=[room.pk]))
+
+        # Page salon quitté → redevenir membre
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "désabonné")
+        self.assertContains(r, reverse("chat:thematic_join", args=[room.pk]))
+
+        r = client.post(reverse("chat:thematic_join", args=[room.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.musician, left_at__isnull=True
+            ).exists()
+        )

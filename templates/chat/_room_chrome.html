@@ -1,23 +1,55 @@
 <div class="chat-room__bar">
+  {% if threads_mode or not active_thread %}
   <a class="chat-room__back" href="{% url 'chat:list' %}" aria-label="Retour aux salons">←</a>
+  {% else %}
+  <a class="chat-room__back" href="{% url 'chat:room' room.pk %}" aria-label="Retour aux dates">←</a>
+  {% endif %}
   <div class="chat-room__titles">
-    <h1>{{ room.title }}</h1>
+    <h1>{% if active_thread %}{{ active_thread.when_label }}{% else %}{{ room.title }}{% endif %}</h1>
     <p class="chat-room__sub">
-      {% if room.kind == 'orchestra' %}
+      {% if active_thread %}
+        {{ active_thread.title }} — propositions setlist
+      {% elif room.kind == 'orchestra' %}
         Salon orchestre
+      {% elif room.kind == 'rehearsals' %}
+        Choisissez une date de répétition
       {% elif room.kind == 'staff' %}
         Salon staff — privé
       {% elif room.kind == 'section' %}
         Salon pupitre
       {% elif room.kind == 'piece' and room.piece %}
         Répertoire · {{ room.piece.title }}
+      {% elif room.kind == 'thematic' %}
+        Salon thématique
       {% elif room.event %}
         {{ room.event.date_debut|date:"D d/m · H:i" }}{% if room.event.venue %} · {{ room.event.venue.nom }}{% endif %}
+      {% elif room.kind == 'event' %}
+        Salon privé
       {% else %}
         Salon événement
       {% endif %}
     </p>
   </div>
+  {% if archive_enabled %}
+  <button type="button"
+          class="chat-archive-btn"
+          @click="toggleArchive()"
+          :class="{ 'is-open': archiveOpen }"
+          :aria-expanded="archiveOpen.toString()"
+          aria-label="Messages archivés"
+          title="Messages archivés">
+    <svg class="chat-archive-btn__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+            d="M4.5 7.25h15l-1.1 11.1a1.75 1.75 0 0 1-1.74 1.55H7.34a1.75 1.75 0 0 1-1.74-1.55L4.5 7.25Z"/>
+      <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+            d="M3.75 7.25h16.5V5.6A1.6 1.6 0 0 0 18.65 4H5.35a1.6 1.6 0 0 0-1.6 1.6v1.65ZM9 12.25h6"/>
+    </svg>
+    <span class="chat-archive-btn__text">Archives</span>
+    {% if archive_count %}
+    <span class="chat-archive-btn__n" aria-hidden="true">{% if archive_count > 99 %}99+{% else %}{{ archive_count }}{% endif %}</span>
+    {% endif %}
+  </button>
+  {% endif %}
   <div class="chat-menu" @click.stop>
     <button type="button" class="chat-menu__btn" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen.toString()" aria-label="Options du salon">⋯</button>
     <div class="chat-menu__panel" x-show="menuOpen" x-cloak x-transition.opacity.duration.150ms>
@@ -32,7 +64,12 @@
         <button type="submit" class="chat-menu__item">Activer les alertes</button>
       </form>
       {% endif %}
-      {% if room.kind == 'event' or room.kind == 'piece' %}
+      {% if room.kind == 'thematic' %}
+      <form method="post" action="{% url 'chat:room' room.pk %}" onsubmit="return confirm('Se désabonner de ce salon ? Vous pourrez le rejoindre plus tard depuis Tous les salons.');">
+        {% csrf_token %}<input type="hidden" name="action" value="leave">
+        <button type="submit" class="chat-menu__item chat-menu__item--warn">Se désabonner</button>
+      </form>
+      {% elif room.kind == 'event' or room.kind == 'piece' %}
       <form method="post" action="{% url 'chat:room' room.pk %}" onsubmit="return confirm('Quitter ce salon ? Vous pourrez le rejoindre plus tard.');">
         {% csrf_token %}<input type="hidden" name="action" value="leave">
         <button type="submit" class="chat-menu__item chat-menu__item--warn">Quitter le salon</button>
