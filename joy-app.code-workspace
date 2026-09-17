@@ -1,0 +1,30 @@
+{
+  "folders": [
+    {
+      "name": "joy-app",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.watcherExclude": {
+      "**/.venv/**": true,
+      "**/staticfiles/**": true,
+      "**/__pycache__/**": true,
+      "**/media/**": true,
+      "**/db.sqlite3": true
+    },
+    "search.exclude": {
+      "**/.venv": true,
+      "**/staticfiles": true,
+      "**/__pycache__": true,
+      "**/media": true,
+      "**/*.sqlite3": true,
+      "**/*.log": true
+    },
+    "files.exclude": {
+      "**/.venv": true,
+      "**/__pycache__": true,
+      "**/*.pyc": true
+    }
+  }
+}

@@ -13,6 +13,16 @@ Le workspace Cursor ouvre souvent `/srv/jazz-orchestra-yonnais` — ce dossier *
 | `media/`, `data/`, `logs/` | Données / médias / logs hors Git |
 | `.env`, `.env.dev`, `.venv/` | Config locale & venv (hors Git) |
 
+## Ouvrir le bon workspace (rapide)
+
+Préférer **une** de ces options, dans l’ordre :
+
+1. `File → Open Workspace from File…` → `/srv/jazz-orchestra-yonnais/joy-app.code-workspace` (ou `repo/joy-app.code-workspace`)
+2. `File → Open Folder…` → `/srv/jazz-orchestra-yonnais/repo`
+3. Éviter d’ouvrir le parent `/srv/jazz-orchestra-yonnais` comme racine de travail
+
+L’agent et les terminaux doivent travailler dans `repo/` (cwd Git). Les `.cursorignore` excluent venv, media, logs, sqlite, etc. de l’index.
+
 ## Git / commits
 
 - Exécuter `git status`, `commit`, `push` **depuis `repo/`** (cwd = `/srv/jazz-orchestra-yonnais/repo`).

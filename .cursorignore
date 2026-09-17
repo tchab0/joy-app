@@ -1,0 +1,27 @@
+# Index / agent : garder le bruit hors du scope
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+.env
+.env.*
+!.env.example
+
+staticfiles/
+media/
+data/
+logs/
+
+db.sqlite3
+*.sqlite3
+
+.idea/
+.DS_Store
+
+# Gros logs de debug Cursor
+debug-*.log
+*.log
