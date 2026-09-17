@@ -1,15 +1,72 @@
-/* Full-viewport mobile chat shell (standalone salon only) */
-  body:has(.chat-room:not(.chat-room--embedded)) nav { position: sticky; top: 0; z-index: 20; }
+/* Full-viewport mobile chat shell (standalone salon only).
+     Lock document scroll so site nav + salon bar stay visible at bottom of thread. */
+  html:has(.chat-room:not(.chat-room--embedded)),
+  body:has(.chat-room:not(.chat-room--embedded)) {
+    height: 100%;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  body:has(.chat-room:not(.chat-room--embedded)) {
+    display: flex;
+    flex-direction: column;
+  }
+  body:has(.chat-room:not(.chat-room--embedded)) > nav {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 100;
+  }
   body:has(.chat-room:not(.chat-room--embedded)) footer { display: none; }
-  body:has(.chat-room:not(.chat-room--embedded)) main { padding: 0; }
+  body:has(.chat-room:not(.chat-room--embedded)) > main {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* Banners above the salon: keep them, but don’t let them blow past the shell */
+  body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-poll-banner,
+  body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-notif-banner {
+    flex-shrink: 0;
+    max-height: 28vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Nav Coulisses : toujours visible au-dessus du salon (hors barre site) */
+  body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-nav {
+    flex-shrink: 0;
+    margin: 0;
+    padding: .35rem .75rem .45rem;
+    padding-left: max(.75rem, env(safe-area-inset-left));
+    padding-right: max(.75rem, env(safe-area-inset-right));
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    z-index: 6;
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  @media (min-width: 768px) {
+    body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-nav {
+      width: calc(100vw * 2 / 3);
+      max-width: calc(100vw * 2 / 3);
+      margin: 0 auto;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+  }
 
   .chat-room {
     --composer-h: 7.5rem;
     --keyboard-inset: 0px;
     max-width: 720px;
     margin: 0 auto;
-    height: calc(100dvh - 56px);
-    max-height: calc(100dvh - 56px);
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
     display: flex;
     flex-direction: column;
     background: var(--bg);
@@ -26,6 +83,8 @@
 
   .chat-room__bar {
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
     z-index: 5;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
@@ -1607,8 +1666,9 @@
     .chat-room:not(.chat-room--embedded) {
       width: calc(100vw * 2 / 3);
       max-width: calc(100vw * 2 / 3);
-      height: calc(100dvh - 64px);
-      max-height: calc(100dvh - 64px);
+      /* Height comes from the flex shell (nav + remaining main), not a fixed dvh calc */
+      height: auto;
+      max-height: none;
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
     }

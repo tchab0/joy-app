@@ -5,9 +5,15 @@
 <script defer src="{% static 'chat/room.js' %}?v=15"></script>
 {% endblock %}
 {% block extra_css %}
+{% include "planning/_styles.html" %}
 {% include "chat/_room_styles.html" %}
 {% endblock %}
 {% block content %}
+{% if room.kind == 'staff' %}
+{% include "planning/_module_nav.html" with active="chat_staff" %}
+{% else %}
+{% include "planning/_module_nav.html" with active="chat" %}
+{% endif %}
 {{ messages_data|json_script:messages_script_id }}
 {{ mention_members|json_script:mention_members_script_id }}
 {{ read_cursors|json_script:read_cursors_script_id }}
