@@ -14,7 +14,11 @@ from django.utils.text import slugify
 from django.views import View
 from django.views.generic import DetailView, FormView, ListView
 
-from chat.services import ensure_piece_room, notify_piece_chorus_update
+from chat.services import (
+    attach_piece_chat_stats,
+    ensure_piece_room,
+    notify_piece_chorus_update,
+)
 from planning.models import MusicianProfile
 from planning.views import PlanningStaffRequiredMixin
 from repertoire.chorus import solo_builder_context
@@ -114,6 +118,7 @@ class PieceListView(MusicianRequiredMixin, ListView):
                 parts_by_piece[piece.pk] = part
                 piece.matching_part = part
         ctx["parts_by_piece"] = parts_by_piece
+        attach_piece_chat_stats(ctx["pieces"], self.request.user)
         return ctx
 
 
@@ -214,6 +219,9 @@ class PieceAudioDownloadView(MusicianRequiredMixin, View):
 
 
 class CreatePieceSalonView(MusicianRequiredMixin, View):
+    def get(self, request, slug: str):
+        return self.post(request, slug)
+
     def post(self, request, slug: str):
         piece = get_object_or_404(Piece, slug=slug)
         if not piece.is_published and not (

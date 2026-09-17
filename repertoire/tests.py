@@ -309,6 +309,19 @@ class MusicianViewsTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, "Route 66")
 
+    def test_list_shows_salon_icon(self):
+        self.client.login(username="player", password="x")
+        r = self.client.get(reverse("repertoire:list"), {"poste": "basse"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "rep-salon-icon")
+        self.assertContains(r, reverse("repertoire:create_salon", args=[self.piece.slug]))
+        room = ensure_piece_room(self.piece)
+        r2 = self.client.get(reverse("repertoire:list"), {"poste": "basse"})
+        self.assertContains(r2, reverse("chat:room", args=[room.pk]))
+        self.assertNotContains(
+            r2, reverse("repertoire:create_salon", args=[self.piece.slug])
+        )
+
     def test_pdf_download_vs_inline_preview(self):
         self.client.login(username="player", password="x")
         part = self.piece.parts.get()

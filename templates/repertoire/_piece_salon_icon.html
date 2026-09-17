@@ -1,0 +1,20 @@
+{% comment %}
+  Icône salon du morceau — à gauche de l’aperçu PDF.
+  Attendu : piece avec chat_stats {room_id, unread, total}.
+{% endcomment %}
+{% with s=piece.chat_stats %}
+<a class="pl-btn pl-btn--icon rep-salon-icon{% if s.unread %} rep-salon-icon--unread{% endif %}"
+   href="{% if s.room_id %}{% url 'chat:room' s.room_id %}{% else %}{% url 'repertoire:create_salon' piece.slug %}{% endif %}"
+   title="Salon · {{ s.unread }} non lu{{ s.unread|pluralize }} · {{ s.total }} message{{ s.total|pluralize }}"
+   aria-label="Salon du morceau, {{ s.unread }} non lu{{ s.unread|pluralize }}, {{ s.total }} message{{ s.total|pluralize }}">
+  <svg class="rep-salon-icon__bubble" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+          d="M5 6.75A2.25 2.25 0 0 1 7.25 4.5h9.5A2.25 2.25 0 0 1 19 6.75v6.5A2.25 2.25 0 0 1 16.75 15.5H9.5L5 19V6.75Z"/>
+  </svg>
+  <span class="rep-salon-icon__counts" aria-hidden="true">
+    <span class="rep-salon-icon__unread">{{ s.unread }}</span>
+    <span class="rep-salon-icon__sep">/</span>
+    <span class="rep-salon-icon__total">{{ s.total }}</span>
+  </span>
+</a>
+{% endwith %}
