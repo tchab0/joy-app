@@ -447,6 +447,32 @@ class SoloBuilderStaffTests(TestCase):
         self.assertIn("Piano", self.piece.chorus_order)
         self.assertIsNotNone(self.piece.chorus_order_updated_at)
 
+    def test_lists_show_solo_dot_when_chorus_order_set(self):
+        self.client.login(username="solo-staff", password="x")
+        staff_list = self.client.get(reverse("repertoire:staff_list"))
+        self.assertEqual(staff_list.status_code, 200)
+        self.assertContains(staff_list, 'class="rep-solo-dot"')
+        self.assertContains(staff_list, "Solos attribués")
+
+        musician = User.objects.create_user(
+            username="solo-player", password="x", is_musician=True
+        )
+        self.client.login(username="solo-player", password="x")
+        musician_list = self.client.get(reverse("repertoire:list"), {"poste": "all"})
+        self.assertEqual(musician_list.status_code, 200)
+        self.assertContains(musician_list, "Cherokee")
+        self.assertContains(musician_list, 'class="rep-solo-dot"')
+
+    def test_lists_hide_solo_dot_without_chorus_order(self):
+        self.piece.chorus_order = ""
+        self.piece.save(update_fields=["chorus_order"])
+        self.client.login(username="solo-staff", password="x")
+        r = self.client.get(reverse("repertoire:staff_list"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Cherokee")
+        self.assertNotContains(r, 'class="rep-solo-dot"')
+        self.assertNotContains(r, "Solos attribués")
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class PdfDecoupeEditorTests(TestCase):

@@ -37,6 +37,11 @@
       <div class="pl-row__main">
         <a class="pl-row__title" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">
           {{ piece.title }}
+          {% if piece.chorus_order %}
+          <span class="rep-solo-dot"
+                title="Solos attribués"
+                aria-label="Solos attribués"></span>
+          {% endif %}
           {% if missing %}
           <span class="rep-alert-dot"
                 title="Partitions manquantes : {{ missing|join:', ' }}"

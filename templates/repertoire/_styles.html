@@ -32,15 +32,17 @@
     font-family: var(--font-b); line-height: 1.45;
   }
   .rep-muted { color: var(--muted); font-size: .85rem; }
-  .rep-alert-dot {
+  .rep-alert-dot,
+  .rep-solo-dot {
     display: inline-block;
     width: .55rem; height: .55rem;
     border-radius: 50%;
-    background: var(--accent);
     vertical-align: middle;
     margin-left: .35rem;
     flex-shrink: 0;
   }
+  .rep-alert-dot { background: var(--accent); }
+  .rep-solo-dot { background: var(--ok); }
   .rep-alert-meta { color: var(--accent); font-weight: 600; }
   .rep-missing-alert {
     display: flex; flex-wrap: wrap; align-items: flex-start; gap: .45rem;
