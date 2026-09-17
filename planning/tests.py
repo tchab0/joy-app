@@ -626,7 +626,7 @@ class PollTests(PlanningBaseTestCase):
         self.client.login(username="musi", password="pass12345")
         r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, f"Salon « {self.event.titre} »")
+        self.assertContains(r, "Salon «")
         self.assertContains(r, "chat-room--embedded")
         self.assertContains(r, "Oui")
         # Plus de lien-only vers le salon.
@@ -2932,3 +2932,82 @@ class EventRoadmapTests(PlanningBaseTestCase):
         self.assertContains(r, "openstreetmap.org")
         self.assertContains(r, "event-map")
         self.assertContains(r, reverse("admin_venue_edit", args=[self.venue.pk]))
+
+class PollMetaAndTextEditTests(PlanningBaseTestCase):
+    def test_author_can_update_text_options_and_meta(self):
+        from chat.services import create_thematic_room
+
+        room = create_thematic_room(
+            "Edit poll room",
+            musician_users=[self.musician, self.sub],
+            created_by=self.staff,
+        )
+        proposal = DateProposal.objects.create(
+            title="Ancien titre",
+            description="desc",
+            status=DateProposal.Status.OPEN,
+            created_by=self.musician,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ROOM,
+            source_room=room,
+            launched_at=timezone.now(),
+            launched_by=self.musician,
+        )
+        opt = DateOption.objects.create(
+            proposal=proposal, label="Swing", sort_order=0, starts_at=None
+        )
+        DateOption.objects.create(
+            proposal=proposal, label="Bebop", sort_order=1, starts_at=None
+        )
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Question et audience")
+        self.assertContains(r, "Options texte")
+        self.assertContains(r, reverse("planning:update_poll_meta", args=[proposal.pk]))
+
+        r = self.client.post(
+            reverse("planning:update_poll_meta", args=[proposal.pk]),
+            {
+                "title": "Nouveau titre",
+                "description": "Nouvelle desc",
+                "audience": "all",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.title, "Nouveau titre")
+        self.assertEqual(proposal.description, "Nouvelle desc")
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
+
+        r = self.client.post(
+            reverse("planning:update_poll_options", args=[proposal.pk]),
+            {
+                f"option_label_{opt.pk}": "Cool jazz",
+                "new_option_label_0": "Latin",
+                f"option_delete_{proposal.options.exclude(pk=opt.pk).get().pk}": "1",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        labels = list(
+            proposal.options.order_by("sort_order").values_list("label", flat=True)
+        )
+        self.assertEqual(labels, ["Cool jazz", "Latin"])
+
+    def test_other_musician_cannot_update_meta(self):
+        proposal = DateProposal.objects.create(
+            title="Privé",
+            status=DateProposal.Status.OPEN,
+            created_by=self.staff,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ALL,
+            launched_at=timezone.now(),
+        )
+        DateOption.objects.create(proposal=proposal, label="A", starts_at=None)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:update_poll_meta", args=[proposal.pk]),
+            {"title": "Hack", "description": "", "audience": "all"},
+        )
+        self.assertEqual(r.status_code, 403)

@@ -24,6 +24,7 @@ urlpatterns = [
         name="thematic_member_remove",
     ),
     path("<int:room_id>/api/send/", views.api_send, name="api_send"),
+    path("<int:room_id>/api/poll/", views.api_poll, name="api_poll"),
     path("<int:room_id>/api/edit/", views.api_edit, name="api_edit"),
     path("<int:room_id>/api/delete/", views.api_delete, name="api_delete"),
     path("<int:room_id>/api/members/", views.api_members, name="api_members"),

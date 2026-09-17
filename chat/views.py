@@ -575,6 +575,67 @@ def api_send(request: HttpRequest, room_id: int) -> JsonResponse:
 
 @login_required
 @require_POST
+def api_poll(request: HttpRequest, room_id: int) -> JsonResponse:
+    """Créer et lancer un sondage depuis le composer d’un salon."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+    if active_membership(room, request.user) is None and not (
+        request.user.is_staff or request.user.is_superuser
+    ):
+        return JsonResponse(
+            {"ok": False, "error": "Rejoignez le salon pour lancer un sondage."},
+            status=403,
+        )
+
+    import json
+
+    from django.utils.dateparse import parse_date
+
+    from planning.models import DateProposal
+    from planning.services import create_and_launch_chat_poll
+
+    title = (request.POST.get("title") or "").strip()
+    description = (request.POST.get("description") or "").strip()
+    option_kind = (request.POST.get("option_kind") or DateProposal.OptionKind.DATES).strip()
+    audience = (request.POST.get("audience") or DateProposal.Audience.ROOM).strip()
+    deadline_raw = (request.POST.get("deadline") or "").strip()
+    deadline = parse_date(deadline_raw) if deadline_raw else None
+    thread_event_id = request.POST.get("thread_event_id") or None
+
+    options_raw = request.POST.get("options") or "[]"
+    try:
+        options = json.loads(options_raw)
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "Options invalides."}, status=400)
+    if not isinstance(options, list):
+        return JsonResponse({"ok": False, "error": "Options invalides."}, status=400)
+
+    try:
+        _proposal, message = create_and_launch_chat_poll(
+            room=room,
+            author=request.user,
+            title=title,
+            description=description,
+            option_kind=option_kind,
+            audience=audience,
+            options=options,
+            deadline=deadline,
+            thread_event_id=thread_event_id,
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse(
+        {"ok": True, "message": serialize_message(message, viewer=request.user)}
+    )
+
+
+@login_required
+@require_POST
 def api_edit(request: HttpRequest, room_id: int) -> JsonResponse:
     denied = _require_musician(request)
     if denied:

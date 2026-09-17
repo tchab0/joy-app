@@ -2334,6 +2334,7 @@ def build_room_embed_context(
         "show_leave_hint": show_leave_hint,
         "ws_url": ws_url,
         "api_send_url": api_send_url,
+        "api_poll_url": reverse("chat:api_poll", kwargs={"room_id": room.pk}),
         "api_react_url": api_react_url,
         "api_edit_url": api_edit_url,
         "api_delete_url": api_delete_url,

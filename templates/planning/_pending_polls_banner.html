@@ -173,9 +173,9 @@
        x-show="remaining > 0"
        @poll-complete="remaining = Math.max(0, remaining - 1)">
   <h2 class="pl-poll-banner__title">
-    {% if pending_polls_count == 1 %}À répondre · Sondage de dates{% else %}À répondre · Sondages de dates{% endif %}
+    {% if pending_polls_count == 1 %}À répondre · Sondage{% else %}À répondre · Sondages{% endif %}
   </h2>
-  <p class="pl-poll-banner__lead">Indiquez Oui / Peut-être / Non pour chaque date proposée.</p>
+  <p class="pl-poll-banner__lead">Indiquez Oui / Peut-être / Non pour chaque option.</p>
   {% for poll in pending_polls %}
   <div class="pl-poll-banner__poll"
        x-data="pollVotes({
@@ -212,10 +212,14 @@
       {% for item in poll.banner_options %}
       <div class="pl-poll-banner__option">
         <p class="pl-poll-banner__when">
+          {% if item.option.starts_at %}
           <span class="pl-poll-banner__day">{{ item.option.starts_at|date:"D" }}</span>
           <span>{{ item.option.starts_at|date:"d/m/Y" }}</span>
           <span>{{ item.option.starts_at|date:"H:i" }}{% if item.option.ends_at %}–{{ item.option.ends_at|date:"H:i" }}{% endif %}</span>
           {% if item.option.label %}<span class="pl-poll-banner__label">· {{ item.option.label }}</span>{% endif %}
+          {% else %}
+          <span class="pl-poll-banner__day">{{ item.option.label|default:item.option.display_label }}</span>
+          {% endif %}
         </p>
         <p class="pl-poll-banner__counts"
            x-text="countsLabel({{ item.option.pk }})">{{ item.counts_label }}</p>

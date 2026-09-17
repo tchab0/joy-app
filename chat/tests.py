@@ -1592,3 +1592,131 @@ class ThematicRoomTests(TestCase):
         self.assertFalse(remove_thematic_member(room, self.musician))
         with self.assertRaises(ValueError):
             remove_thematic_member(room, self.staff)
+
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
+    SMS_BACKEND="console",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class ChatPollLaunchTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        ensure_participation_statuses()
+        cls.musician = User.objects.create_user(
+            username="poll_musi",
+            password="pass",
+            is_musician=True,
+            chat_auto_subscribe=True,
+        )
+        cls.other = User.objects.create_user(
+            username="poll_other",
+            password="pass",
+            is_musician=True,
+            chat_auto_subscribe=True,
+        )
+        cls.outsider = User.objects.create_user(
+            username="poll_out",
+            password="pass",
+            is_musician=True,
+            chat_auto_subscribe=True,
+        )
+
+    def _thematic_room(self):
+        from chat.services import create_thematic_room
+
+        staff = User.objects.create_user(
+            username="poll_staff_" + str(User.objects.count()),
+            password="pass",
+            is_staff=True,
+            is_musician=True,
+        )
+        return create_thematic_room(
+            "Salon sondage",
+            musician_users=[self.musician, self.other],
+            created_by=staff,
+        )
+
+    def test_api_poll_text_room_audience(self):
+        import json
+
+        from planning.models import DateProposal
+        from planning.services import pending_polls_for_user, user_can_access_poll
+
+        room = self._thematic_room()
+        client = Client()
+        client.login(username="poll_musi", password="pass")
+        r = client.post(
+            reverse("chat:api_poll", kwargs={"room_id": room.pk}),
+            {
+                "title": "Quel thème ?",
+                "option_kind": "text",
+                "audience": "room",
+                "options": json.dumps(
+                    [{"label": "Swing"}, {"label": "Bebop"}]
+                ),
+            },
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["message"]["kind"], ChatMessage.Kind.POLL_LAUNCH)
+        self.assertTrue(data["message"]["poll_url"])
+
+        proposal = DateProposal.objects.get(title="Quel thème ?")
+        self.assertEqual(proposal.option_kind, DateProposal.OptionKind.TEXT)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ROOM)
+        self.assertEqual(proposal.source_room_id, room.pk)
+        self.assertTrue(proposal.is_open)
+        self.assertEqual(proposal.options.count(), 2)
+        self.assertTrue(all(o.starts_at is None for o in proposal.options.all()))
+
+        self.assertTrue(user_can_access_poll(self.musician, proposal))
+        self.assertTrue(user_can_access_poll(self.other, proposal))
+        self.assertFalse(user_can_access_poll(self.outsider, proposal))
+        pending = pending_polls_for_user(self.musician)
+        self.assertIn(proposal.pk, [p.pk for p in pending])
+        self.assertEqual(pending_polls_for_user(self.outsider), [])
+
+    def test_api_poll_dates_open_to_all(self):
+        import json
+
+        from django.utils import timezone as tz
+
+        from planning.models import DateProposal
+        from planning.services import user_can_access_poll
+
+        room = self._thematic_room()
+        starts = (tz.now() + timedelta(days=10)).replace(second=0, microsecond=0)
+        client = Client()
+        client.login(username="poll_musi", password="pass")
+        r = client.post(
+            reverse("chat:api_poll", kwargs={"room_id": room.pk}),
+            {
+                "title": "Dispo bal",
+                "option_kind": "dates",
+                "audience": "all",
+                "options": json.dumps(
+                    [
+                        {
+                            "starts_at": starts.strftime("%Y-%m-%dT%H:%M"),
+                            "label": "soir",
+                        }
+                    ]
+                ),
+            },
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        proposal = DateProposal.objects.get(title="Dispo bal")
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
+        self.assertTrue(user_can_access_poll(self.outsider, proposal))
+        detail = client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(detail.status_code, 200)
+
+    def test_room_detail_includes_poll_toolbar(self):
+        room = self._thematic_room()
+        client = Client()
+        client.login(username="poll_musi", password="pass")
+        r = client.get(reverse("chat:room", kwargs={"room_id": room.pk}))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Lancer un sondage")
+        self.assertContains(r, "apiPollUrl")

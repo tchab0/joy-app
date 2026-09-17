@@ -386,6 +386,14 @@ class DateProposal(models.Model):
         LOCKED = "locked", "Verrouillé"
         CANCELLED = "cancelled", "Annulé"
 
+    class OptionKind(models.TextChoices):
+        DATES = "dates", "Dates"
+        TEXT = "text", "Texte"
+
+    class Audience(models.TextChoices):
+        ROOM = "room", "Membres du salon"
+        ALL = "all", "Tous les musiciens"
+
     title = models.CharField(max_length=200, verbose_name="Titre")
     description = models.TextField(blank=True, verbose_name="Description")
     status = models.CharField(
@@ -393,6 +401,31 @@ class DateProposal(models.Model):
         choices=Status.choices,
         default=Status.DRAFT,
         verbose_name="Statut",
+    )
+    option_kind = models.CharField(
+        max_length=10,
+        choices=OptionKind.choices,
+        default=OptionKind.DATES,
+        db_index=True,
+        verbose_name="Type d’options",
+        help_text="Dates/heures ou propositions textuelles.",
+    )
+    audience = models.CharField(
+        max_length=10,
+        choices=Audience.choices,
+        default=Audience.ROOM,
+        db_index=True,
+        verbose_name="Audience",
+        help_text="Qui peut répondre : membres du salon source, ou tous les musiciens.",
+    )
+    source_room = models.ForeignKey(
+        "chat.ChatRoom",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="polls_launched",
+        verbose_name="Salon source",
+        help_text="Salon depuis lequel le sondage a été lancé (accès / notifications).",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -448,8 +481,8 @@ class DateProposal(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        verbose_name = "Sondage de dates"
-        verbose_name_plural = "Sondages de dates"
+        verbose_name = "Sondage"
+        verbose_name_plural = "Sondages"
         indexes = [
             models.Index(fields=["status"], name="plan_proposal_status_idx"),
         ]
@@ -465,6 +498,14 @@ class DateProposal(models.Model):
     def is_open(self) -> bool:
         return self.status == self.Status.OPEN
 
+    @property
+    def is_text_poll(self) -> bool:
+        return self.option_kind == self.OptionKind.TEXT
+
+    @property
+    def is_dates_poll(self) -> bool:
+        return self.option_kind == self.OptionKind.DATES
+
 
 class DateOption(models.Model):
     proposal = models.ForeignKey(
@@ -473,20 +514,31 @@ class DateOption(models.Model):
         related_name="options",
         verbose_name="Sondage",
     )
-    starts_at = models.DateTimeField(verbose_name="Début")
+    starts_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Début",
+        help_text="Obligatoire pour un sondage de dates ; vide pour une option texte.",
+    )
     ends_at = models.DateTimeField(null=True, blank=True, verbose_name="Fin")
     label = models.CharField(max_length=120, blank=True, verbose_name="Libellé")
     sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre")
 
     class Meta:
         ordering = ["sort_order", "starts_at"]
-        verbose_name = "Option de date"
-        verbose_name_plural = "Options de date"
+        verbose_name = "Option de sondage"
+        verbose_name_plural = "Options de sondage"
 
     def __str__(self):
         if self.label:
             return self.label
-        return timezone.localtime(self.starts_at).strftime("%d/%m/%Y %H:%M")
+        if self.starts_at:
+            return timezone.localtime(self.starts_at).strftime("%d/%m/%Y %H:%M")
+        return f"Option #{self.pk or '?'}"
+
+    @property
+    def display_label(self) -> str:
+        return str(self)
 
 
 class DateVote(models.Model):

@@ -50,6 +50,8 @@ from planning.services.polls import (
     notify_poll_deadline_reminder,
     send_due_poll_deadline_reminders,
     launch_availability_poll,
+    close_poll,
+    create_and_launch_chat_poll,
     lock_date_proposal,
     vote_counts_for_option,
     format_poll_vote_counts,
@@ -65,6 +67,7 @@ from planning.services.polls import (
     user_can_edit_poll_deadline,
     user_can_edit_poll_options,
     update_poll_options,
+    update_poll_meta,
 )
 from planning.services.roster import (
     roster_by_stage,

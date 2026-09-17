@@ -62,6 +62,8 @@ from planning.services import (
     invite_musicians_for_form,
     invite_titulaires_to_event,
     launch_availability_poll,
+    update_poll_meta,
+    close_poll,
     lock_date_proposal,
     notify_roadmap,
     open_poll_calendar_markers_for_user,
@@ -881,6 +883,7 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "linked_event__venue",
                 "linked_event__type",
                 "linked_event__chat_room",
+                "source_room",
                 "created_by",
             ).prefetch_related(
                 Prefetch(
@@ -924,18 +927,36 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "event": event,
                 "options_data": options_data,
                 "is_planning_staff": is_staff,
-                "can_edit_deadline": user_can_edit_poll_deadline(user, proposal),
+                "can_edit_deadline": user_can_edit_poll_deadline(user, proposal)
+                and proposal.status
+                not in (
+                    DateProposal.Status.LOCKED,
+                    DateProposal.Status.CANCELLED,
+                ),
                 "can_edit_options": user_can_edit_poll_options(user, proposal)
                 and proposal.status
                 not in (
                     DateProposal.Status.LOCKED,
                     DateProposal.Status.CANCELLED,
                 ),
+                "can_edit_meta": user_can_edit_poll_deadline(user, proposal)
+                and proposal.status
+                not in (
+                    DateProposal.Status.LOCKED,
+                    DateProposal.Status.CANCELLED,
+                ),
+                "can_close_poll": user_can_edit_poll_deadline(user, proposal)
+                and proposal.is_open,
                 "hide_pending_polls_banner": True,
             }
         )
-        # Formulaire de confirmation (création d’événement) pour sondage autonome.
-        if is_staff and proposal.is_open and event is None:
+        # Formulaire de confirmation (création d’événement) pour sondage autonome de dates.
+        if (
+            is_staff
+            and proposal.is_open
+            and event is None
+            and proposal.is_dates_poll
+        ):
             context.update(
                 {
                     "venues": Venue.objects.all().order_by("ville", "nom"),
@@ -946,18 +967,24 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 }
             )
 
-        # Salon embarqué si événement lié et accès (membre ou staff).
+        # Salon embarqué : événement lié, sinon salon source du sondage chat.
+        embed_room = None
         if event:
+            from chat.services import ensure_event_room
+
+            embed_room = ensure_event_room(event)
+        elif proposal.source_room_id:
+            embed_room = proposal.source_room
+
+        if embed_room is not None:
             from chat.services import (
                 active_membership,
                 build_room_embed_context,
-                ensure_event_room,
             )
 
-            room = ensure_event_room(event)
-            membership = active_membership(room, user)
+            membership = active_membership(embed_room, user)
             if membership is not None or is_staff:
-                embed = build_room_embed_context(self.request, room)
+                embed = build_room_embed_context(self.request, embed_room)
                 embed["embedded"] = True
                 embed["show_chat_chrome"] = False
                 # Sur la page sondage, open_proposal = ce sondage s'il est ouvert.
@@ -1373,24 +1400,49 @@ class UpdatePollDeadlineView(MusicianRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
         deadline_raw = (request.POST.get("deadline") or "").strip()
         deadline = parse_date(deadline_raw) if deadline_raw else None
-        if deadline is None:
-            messages.error(request, "Indiquez une date limite de réponse.")
-            return redirect("planning:poll_detail", pk=pk)
         proposal.deadline = deadline
         # Nouvelle échéance → un nouveau rappel J−7 pourra partir.
         proposal.deadline_reminder_sent_at = None
         proposal.save(
             update_fields=["deadline", "deadline_reminder_sent_at", "updated_at"]
         )
-        messages.success(
-            request,
-            f"Date limite mise à jour : {deadline.strftime('%d/%m/%Y')}.",
-        )
+        if deadline:
+            messages.success(
+                request,
+                f"Date limite mise à jour : {deadline.strftime('%d/%m/%Y')}.",
+            )
+        else:
+            messages.success(request, "Date limite retirée.")
+        return redirect("planning:poll_detail", pk=pk)
+
+
+class UpdatePollMetaView(MusicianRequiredMixin, View):
+    """Auteur (ou staff) : titre, description, audience."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(DateProposal, pk=pk)
+        if not user_can_edit_poll_deadline(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Seul l’auteur ou le staff peut modifier ce sondage."
+            )
+        try:
+            update_poll_meta(
+                proposal,
+                title=request.POST.get("title"),
+                description=request.POST.get("description"),
+                audience=(request.POST.get("audience") or "").strip() or None,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:poll_detail", pk=pk)
+        messages.success(request, "Sondage mis à jour.")
         return redirect("planning:poll_detail", pk=pk)
 
 
 class UpdatePollOptionsView(MusicianRequiredMixin, View):
-    """Auteur (ou staff) : modifier / ajouter / retirer des options de date."""
+    """Auteur (ou staff) : modifier / ajouter / retirer des options."""
 
     def post(self, request, pk):
         proposal = get_object_or_404(
@@ -1400,15 +1452,27 @@ class UpdatePollOptionsView(MusicianRequiredMixin, View):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied(
-                "Seul l’auteur ou le staff peut modifier les dates du sondage."
+                "Seul l’auteur ou le staff peut modifier les options du sondage."
             )
 
         existing_ids = {o.pk for o in proposal.options.all()}
         updates = []
         delete_ids = []
+        text_mode = proposal.is_text_poll
+
         for opt_id in existing_ids:
             if request.POST.get(f"option_delete_{opt_id}"):
                 delete_ids.append(opt_id)
+                continue
+            label = (request.POST.get(f"option_label_{opt_id}") or "").strip()
+            if text_mode:
+                if not label:
+                    messages.error(
+                        request,
+                        "Chaque option conservée doit avoir un libellé.",
+                    )
+                    return redirect("planning:poll_detail", pk=pk)
+                updates.append({"id": opt_id, "label": label})
                 continue
             starts_raw = (request.POST.get(f"option_starts_{opt_id}") or "").strip()
             starts = _parse_local_dt(starts_raw) if starts_raw else None
@@ -1425,12 +1489,18 @@ class UpdatePollOptionsView(MusicianRequiredMixin, View):
                     "id": opt_id,
                     "starts_at": starts,
                     "ends_at": ends,
-                    "label": (request.POST.get(f"option_label_{opt_id}") or "").strip(),
+                    "label": label,
                 }
             )
 
         new_options = []
         for i in range(20):
+            if text_mode:
+                label = (request.POST.get(f"new_option_label_{i}") or "").strip()
+                if not label:
+                    continue
+                new_options.append({"label": label})
+                continue
             starts_raw = (request.POST.get(f"new_option_starts_{i}") or "").strip()
             if not starts_raw:
                 continue
@@ -1460,9 +1530,8 @@ class UpdatePollOptionsView(MusicianRequiredMixin, View):
             messages.error(request, str(exc))
             return redirect("planning:poll_detail", pk=pk)
 
-        messages.success(request, "Dates / heures du sondage mises à jour.")
+        messages.success(request, "Options du sondage mises à jour.")
         return redirect("planning:poll_detail", pk=pk)
-
 
 class LaunchPollView(PlanningStaffRequiredMixin, View):
     """Autorise / lance le sondage de disponibilité (+ notification)."""
@@ -1527,6 +1596,9 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             messages.error(request, "Choisissez une date à confirmer.")
             return redirect("planning:poll_detail", pk=pk)
         option = get_object_or_404(DateOption, pk=option_id, proposal=proposal)
+        if option.starts_at is None:
+            messages.error(request, "Cette option n’a pas de date — clôturez le sondage sans créer d’événement.")
+            return redirect("planning:poll_detail", pk=pk)
 
         def _done(default_name: str, **kwargs):
             next_url = (request.POST.get("next") or "").strip()
@@ -1545,7 +1617,9 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             messages.success(
                 request,
                 f"Date validée — « {event.titre} » confirmé "
-                f"({option.starts_at.strftime('%d/%m/%Y %H:%M')}).",
+                f"({option.starts_at.strftime('%d/%m/%Y %H:%M')}). "
+                f"Les réponses Oui / Non / Peut-être du sondage ont été "
+                f"reportées sur les participations (modifiables ensuite).",
             )
             return _done("planning:poll_detail", pk=pk)
 
@@ -1599,6 +1673,31 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             f"Invitez les musiciens depuis le roster ou le salon.",
         )
         return _done("planning:event_roster", pk=event.pk)
+
+
+class ClosePollView(MusicianRequiredMixin, View):
+    """Auteur ou staff : clôturer un sondage (sans créer d’événement)."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(DateProposal, pk=pk)
+        if not user_can_edit_poll_deadline(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Seul l’auteur ou le staff peut clôturer ce sondage.")
+        if not proposal.is_open:
+            messages.error(request, "Ce sondage n’est plus ouvert.")
+            return redirect("planning:poll_detail", pk=pk)
+        option = None
+        option_id = (request.POST.get("option_id") or "").strip()
+        if option_id:
+            option = get_object_or_404(DateOption, pk=option_id, proposal=proposal)
+        try:
+            close_poll(proposal, locked_option=option)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:poll_detail", pk=pk)
+        messages.success(request, "Sondage clôturé.")
+        return redirect("planning:poll_detail", pk=pk)
 
 
 class InviteMusicianView(PlanningStaffRequiredMixin, View):

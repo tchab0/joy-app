@@ -1,6 +1,6 @@
 <p class="chat-status" :class="statusClass" x-text="statusLabel"></p>
 
-<div class="chat-thread" x-ref="thread">
+<div class="chat-thread" x-ref="thread" :class="{ 'chat-thread--archive': archiveOpen }">
 {% if show_chat_chrome %}
 {% if room.piece %}
 <aside class="chat-piece-intro" aria-label="Infos du morceau">
@@ -86,7 +86,23 @@
 {% endif %}
 {% endif %}
 
-<template x-for="(msg, index) in messages" :key="msg.id">
+<div class="chat-archive-lead" x-show="archiveOpen" x-cloak>
+  <p class="chat-archive-lead__title">Messages archivés</p>
+  <p class="chat-archive-lead__sub">Messages lus depuis plus d’un mois — toujours consultables ici.</p>
+  <button type="button"
+          class="chat-archive-lead__more"
+          x-show="archiveHasMore"
+          :disabled="archiveBusy"
+          @click="loadOlderArchive()">
+    Charger plus anciens
+  </button>
+  <p class="chat-archive-lead__empty" x-show="!archiveBusy && !archiveMessages.length">
+    Aucun message archivé pour le moment.
+  </p>
+  <p class="chat-archive-lead__err" x-show="archiveError" x-text="archiveError"></p>
+</div>
+
+<template x-for="(msg, index) in threadList" :key="msg.id">
     <div class="chat-msg-slot" style="display:contents">
       <template x-if="!msg.deleted && msg.hidden && isLeadingHidden(index)">
         <button type="button" class="chat-react__unhide chat-react__unhide--leading"
@@ -238,7 +254,7 @@
 
 <button type="button"
         class="chat-jump-bottom"
-        x-show="!embedded && showJumpBottom"
+        x-show="!embedded && showJumpBottom && !archiveOpen"
         x-cloak
         x-transition.opacity.duration.150ms
         @click="jumpToBottom()"
@@ -249,6 +265,7 @@
 
 <form class="chat-composer"
       x-ref="composer"
+      x-show="!archiveOpen"
       :class="{ 'is-dragover': dragOver }"
       @submit.prevent="send()"
       @focusin="onComposerFocusIn()"
@@ -349,7 +366,7 @@
            contenteditable="true"
            role="textbox"
            aria-multiline="true"
-           enterkeyhint="send"
+           :enterkeyhint="_isDesktopKeyboard() ? 'enter' : 'send'"
            autocomplete="off"
            x-ref="input"
            :data-placeholder="editingId ? 'Modifier le message…' : composerPlaceholder"
@@ -412,6 +429,15 @@
                 title="Liste à puces">
           •−
         </button>
+        <button type="button" class="chat-attach chat-fmt"
+                @mousedown.prevent
+                @click="openPollComposer()"
+                aria-label="Lancer un sondage"
+                title="Sondage">
+          <svg class="chat-fmt__poll" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>
+          </svg>
+        </button>
         <button type="button" class="chat-attach"
                 @click="startMentionPicker()"
                 aria-label="Mentionner quelqu’un"
@@ -426,6 +452,7 @@
         </label>
       </div>
       <button type="submit" class="chat-send" :disabled="busy"
+              :title="_isDesktopKeyboard() ? 'Ctrl+Entrée' : ''"
               x-text="editingId ? 'Enregistrer' : 'Envoyer'"></button>
     </div>
   </div>
@@ -437,5 +464,114 @@
        :style="attZoomStyle"
        @mouseleave="hideAttZoom()">
     <img :src="attZoom ? attZoom.url : ''" :alt="attZoom ? attZoom.name : ''">
+  </div>
+</template>
+<template x-teleport="body">
+  <div class="chat-poll-modal"
+       x-show="pollOpen"
+       x-cloak
+       @keydown.escape.window="pollOpen && closePollComposer()">
+    <div class="chat-poll-modal__backdrop" @click="closePollComposer()"></div>
+    <div class="chat-poll-modal__panel"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="chat-poll-title"
+         @click.stop>
+      <header class="chat-poll-modal__head">
+        <h2 id="chat-poll-title">Nouveau sondage</h2>
+        <button type="button" class="chat-poll-modal__close" @click="closePollComposer()"
+                aria-label="Fermer">×</button>
+      </header>
+      <div class="chat-poll-modal__body">
+        <p class="chat-poll-modal__error" x-show="pollError" x-text="pollError" x-cloak></p>
+        <label class="chat-poll-modal__label" for="chat-poll-q">Question</label>
+        <input id="chat-poll-q" type="text" class="chat-poll-modal__input"
+               x-model="pollTitle" maxlength="200"
+               placeholder="Ex. Dispo pour le bal ?"
+               autocomplete="off">
+        <label class="chat-poll-modal__label" for="chat-poll-desc">Description (optionnel)</label>
+        <textarea id="chat-poll-desc" class="chat-poll-modal__textarea" rows="2"
+                  x-model="pollDescription"
+                  placeholder="Précisions…"></textarea>
+
+        <fieldset class="chat-poll-modal__fieldset">
+          <legend>Type</legend>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-kind" value="dates"
+                   :checked="pollKind === 'dates'"
+                   @change="setPollKind('dates')">
+            <span>Dates</span>
+          </label>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-kind" value="text"
+                   :checked="pollKind === 'text'"
+                   @change="setPollKind('text')">
+            <span>Texte</span>
+          </label>
+        </fieldset>
+
+        <div class="chat-poll-modal__options">
+          <p class="chat-poll-modal__label">Options</p>
+          <template x-for="(opt, i) in pollOptions" :key="opt._id">
+            <div class="chat-poll-modal__option">
+              <template x-if="pollKind === 'dates'">
+                <div class="chat-poll-modal__option-dates">
+                  <input type="datetime-local" class="chat-poll-modal__input"
+                         x-model="opt.starts_at" :aria-label="'Début option ' + (i + 1)">
+                  <input type="text" class="chat-poll-modal__input"
+                         x-model="opt.label" maxlength="120"
+                         :placeholder="'Libellé (opt.)'"
+                         :aria-label="'Libellé option ' + (i + 1)">
+                </div>
+              </template>
+              <template x-if="pollKind === 'text'">
+                <input type="text" class="chat-poll-modal__input"
+                       x-model="opt.label" maxlength="120"
+                       :placeholder="'Option ' + (i + 1)"
+                       :aria-label="'Option ' + (i + 1)">
+              </template>
+              <button type="button" class="chat-poll-modal__remove"
+                      @click="removePollOption(i)"
+                      :disabled="pollOptions.length <= 2"
+                      aria-label="Retirer cette option">×</button>
+            </div>
+          </template>
+          <button type="button" class="chat-poll-modal__add" @click="addPollOption()"
+                  :disabled="pollOptions.length >= 12">
+            + Option
+          </button>
+        </div>
+
+        <fieldset class="chat-poll-modal__fieldset">
+          <legend>Qui peut répondre</legend>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-audience" value="room"
+                   :checked="pollAudience === 'room'"
+                   @change="pollAudience = 'room'">
+            <span>Membres du salon</span>
+          </label>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-audience" value="all"
+                   :checked="pollAudience === 'all'"
+                   @change="pollAudience = 'all'">
+            <span>Tous les musiciens</span>
+          </label>
+        </fieldset>
+
+        <label class="chat-poll-modal__label" for="chat-poll-deadline">Date limite (optionnel)</label>
+        <input id="chat-poll-deadline" type="date" class="chat-poll-modal__input"
+               x-model="pollDeadline">
+      </div>
+      <footer class="chat-poll-modal__foot">
+        <button type="button" class="chat-poll-modal__cancel" @click="closePollComposer()">
+          Annuler
+        </button>
+        <button type="button" class="chat-poll-modal__submit"
+                :disabled="pollBusy || !pollTitle.trim()"
+                @click="submitPoll()">
+          <span x-text="pollBusy ? 'Lancement…' : 'Lancer le sondage'"></span>
+        </button>
+      </footer>
+    </div>
   </div>
 </template>

@@ -1,7 +1,12 @@
 <section class="pl-accept__dates{% if poll_votes_bottom %} pl-accept__dates--bottom{% endif %}"
-         aria-label="{% if poll_votes_bottom %}Dates proposées (bas de page){% else %}Dates proposées{% endif %}">
+         aria-label="{% if poll_votes_bottom %}{% if proposal.is_text_poll %}Propositions (bas de page){% else %}Dates proposées (bas de page){% endif %}{% else %}{% if proposal.is_text_poll %}Propositions{% else %}Dates proposées{% endif %}{% endif %}">
   {% for item in options_data %}
   <div class="pl-accept__date">
+    {% if proposal.is_text_poll or not item.option.starts_at %}
+    <p class="pl-accept__when">
+      <span class="pl-accept__fulldate">{{ item.option.label|default:item.option.display_label }}</span>
+    </p>
+    {% else %}
     <p class="pl-accept__when">
       <span class="pl-accept__day">{{ item.option.starts_at|date:"l" }}</span>
       <span class="pl-accept__fulldate">{{ item.option.starts_at|date:"j F Y" }}</span>
@@ -9,6 +14,7 @@
     </p>
     {% if item.option.label %}
     <p class="pl-row__meta" style="margin:0 0 .75rem">{{ item.option.label }}</p>
+    {% endif %}
     {% endif %}
     {% if not proposal.is_draft %}
     <p class="pl-option__counts"
@@ -46,7 +52,7 @@
   </div>
   {% empty %}
   {% if not poll_votes_bottom %}
-  <p class="pl-empty">Aucune date proposée.</p>
+  <p class="pl-empty">{% if proposal.is_text_poll %}Aucune option proposée.{% else %}Aucune date proposée.{% endif %}</p>
   {% endif %}
   {% endfor %}
 </section>

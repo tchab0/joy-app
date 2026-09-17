@@ -30,6 +30,7 @@ function chatRoom(cfg) {
     currentUserId: cfg.currentUserId,
     wsUrl: cfg.wsUrl,
     apiSendUrl: cfg.apiSendUrl || '',
+    apiPollUrl: cfg.apiPollUrl || '',
     apiReactUrl: cfg.apiReactUrl || '',
     apiEditUrl: cfg.apiEditUrl || '',
     apiDeleteUrl: cfg.apiDeleteUrl || '',
@@ -57,6 +58,16 @@ function chatRoom(cfg) {
     attZoom: null,
     attZoomStyle: '',
     emojiOpen: false,
+    pollOpen: false,
+    pollBusy: false,
+    pollError: '',
+    pollTitle: '',
+    pollDescription: '',
+    pollKind: 'dates',
+    pollAudience: 'room',
+    pollDeadline: '',
+    pollOptions: [],
+    _pollOptSeq: 0,
     replyTo: null,
     editingId: null,
     editPreview: '',
@@ -1716,6 +1727,121 @@ function chatRoom(cfg) {
       }
       this._syncFilesInput();
       this.$nextTick(() => this.measureComposer());
+    },
+    _newPollOption(partial) {
+      this._pollOptSeq += 1;
+      return Object.assign({
+        _id: 'po-' + this._pollOptSeq,
+        label: '',
+        starts_at: '',
+      }, partial || {});
+    },
+    openPollComposer() {
+      this.emojiOpen = false;
+      this.closeMention();
+      this.pollError = '';
+      this.pollBusy = false;
+      this.pollTitle = '';
+      this.pollDescription = '';
+      this.pollKind = 'dates';
+      this.pollAudience = 'room';
+      this.pollDeadline = '';
+      this.pollOptions = [
+        this._newPollOption(),
+        this._newPollOption(),
+      ];
+      this.pollOpen = true;
+      this.composerToolsOpen = true;
+    },
+    closePollComposer() {
+      if (this.pollBusy) return;
+      this.pollOpen = false;
+      this.pollError = '';
+    },
+    setPollKind(kind) {
+      if (kind !== 'dates' && kind !== 'text') return;
+      this.pollKind = kind;
+      this.pollOptions = this.pollOptions.map((o) => this._newPollOption({
+        label: o.label || '',
+        starts_at: kind === 'dates' ? (o.starts_at || '') : '',
+      }));
+      while (this.pollOptions.length < 2) {
+        this.pollOptions.push(this._newPollOption());
+      }
+    },
+    addPollOption() {
+      if (this.pollOptions.length >= 12) return;
+      this.pollOptions.push(this._newPollOption());
+    },
+    removePollOption(index) {
+      if (this.pollOptions.length <= 2) return;
+      this.pollOptions.splice(index, 1);
+    },
+    async submitPoll() {
+      if (this.pollBusy) return;
+      const title = (this.pollTitle || '').trim();
+      if (!title) {
+        this.pollError = 'Indiquez une question.';
+        return;
+      }
+      if (!this.apiPollUrl) {
+        this.pollError = 'Sondage indisponible.';
+        return;
+      }
+      let options;
+      if (this.pollKind === 'text') {
+        options = this.pollOptions
+          .map((o) => ({ label: (o.label || '').trim() }))
+          .filter((o) => o.label);
+      } else {
+        options = this.pollOptions
+          .map((o) => ({
+            starts_at: (o.starts_at || '').trim(),
+            label: (o.label || '').trim(),
+          }))
+          .filter((o) => o.starts_at);
+      }
+      if (options.length < 1) {
+        this.pollError = this.pollKind === 'text'
+          ? 'Ajoutez au moins une option texte.'
+          : 'Ajoutez au moins une date.';
+        return;
+      }
+      this.pollBusy = true;
+      this.pollError = '';
+      const fd = new FormData();
+      fd.append('title', title);
+      fd.append('description', (this.pollDescription || '').trim());
+      fd.append('option_kind', this.pollKind);
+      fd.append('audience', this.pollAudience === 'all' ? 'all' : 'room');
+      if (this.pollDeadline) fd.append('deadline', this.pollDeadline);
+      fd.append('options', JSON.stringify(options));
+      if (this.activeThreadEventId) {
+        fd.append('thread_event_id', String(this.activeThreadEventId));
+      }
+      try {
+        const res = await fetch(this.apiPollUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          body: fd,
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          this.pollError = (data && data.error) || 'Impossible de lancer le sondage.';
+          return;
+        }
+        if (data.message) {
+          this.ingestMessage(data.message);
+          this.$nextTick(() => this.scrollToBottom(true));
+        }
+        this.pollBusy = false;
+        this.pollOpen = false;
+      } catch (e) {
+        this.pollError = 'Erreur réseau — réessayez.';
+      } finally {
+        this.pollBusy = false;
+      }
     },
     insertEmoji(em) {
       const el = this.$refs.input;

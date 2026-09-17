@@ -9,7 +9,7 @@
       </button>
     </form>
     {% endif %}
-    {% if open_proposal and open_proposal.is_open %}
+    {% if open_proposal and open_proposal.is_open and open_proposal.is_dates_poll %}
     <form method="post" action="{% url 'planning:lock_poll' open_proposal.pk %}">
       {% csrf_token %}
       {% if lock_options|length == 1 %}
@@ -19,13 +19,21 @@
       <select name="option_id" id="chat_lock_option" required>
         <option value="">Choisir la date…</option>
         {% for opt in lock_options %}
+        {% if opt.starts_at %}
         <option value="{{ opt.pk }}">
           {{ opt.starts_at|date:"D d/m/Y H:i" }}{% if opt.label %} — {{ opt.label }}{% endif %}
         </option>
+        {% endif %}
         {% endfor %}
       </select>
       {% endif %}
       <button type="submit" class="btn-launch" style="width:100%">Confirmer l’événement</button>
+    </form>
+    {% elif open_proposal and open_proposal.is_open %}
+    <form method="post" action="{% url 'planning:close_poll' open_proposal.pk %}"
+          onsubmit="return confirm('Clôturer ce sondage ?');">
+      {% csrf_token %}
+      <button type="submit" class="btn-launch" style="width:100%">Clôturer le sondage</button>
     </form>
     {% endif %}
     {% if invite_musicians %}

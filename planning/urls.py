@@ -92,6 +92,11 @@ urlpatterns = [
         name="update_poll_deadline",
     ),
     path(
+        "admin/polls/<int:pk>/meta/",
+        views.UpdatePollMetaView.as_view(),
+        name="update_poll_meta",
+    ),
+    path(
         "admin/polls/<int:pk>/options/",
         views.UpdatePollOptionsView.as_view(),
         name="update_poll_options",
@@ -110,6 +115,11 @@ urlpatterns = [
         "admin/polls/<int:pk>/lock/",
         views.LockPollView.as_view(),
         name="lock_poll",
+    ),
+    path(
+        "polls/<int:pk>/cloturer/",
+        views.ClosePollView.as_view(),
+        name="close_poll",
     ),
     path(
         "admin/events/<int:pk>/invite/",
