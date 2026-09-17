@@ -370,6 +370,56 @@ class ChatCoreTests(TestCase):
         self.assertContains(r, "Système")
         self.assertContains(r, "Message système de bienvenue")
 
+    def test_room_list_excludes_rehearsals_from_evenements(self):
+        """L’accordéon Événements ne liste pas les salons liés à une répétition."""
+        from planning.services import invite_musician_to_event
+
+        concert = Event.objects.create(
+            titre="Concert public JOY",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 10, 1, 20, 0)),
+            statut="confirme",
+        )
+        invite_musician_to_event(concert, self.musician, send_notification=False)
+        concert_room = ChatRoom.objects.get(event=concert)
+
+        # Ancien salon EVENT encore lié à une répétition (avant le salon unique).
+        legacy_rehearsal = Event.objects.create(
+            titre="Répé legacy lundi",
+            type=self.etype,
+            venue=self.venue,
+            date_debut=timezone.make_aware(timezone.datetime(2030, 10, 6, 20, 15)),
+            statut="confirme",
+        )
+        legacy_room = ChatRoom.objects.create(
+            kind=ChatRoom.Kind.EVENT,
+            title=legacy_rehearsal.titre,
+            event=legacy_rehearsal,
+            is_active=True,
+        )
+        ChatMembership.objects.create(room=legacy_room, user=self.musician)
+
+        shared = ensure_rehearsals_room()
+        ChatMembership.objects.get_or_create(room=shared, user=self.musician)
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+
+        event_room_ids = {item["room"].pk for item in r.context["event_rooms"]}
+        self.assertIn(concert_room.pk, event_room_ids)
+        self.assertNotIn(legacy_room.pk, event_room_ids)
+        self.assertContains(r, "Concert public JOY")
+        self.assertNotContains(r, "Répé legacy lundi")
+
+        legacy_room.refresh_from_db()
+        self.assertFalse(legacy_room.is_active)
+
+        primary_ids = {item["room"].pk for item in r.context["primary_rooms"]}
+        self.assertIn(shared.pk, primary_ids)
+
     def test_event_room_shows_event_intro(self):
         from planning.services import invite_musician_to_event
 

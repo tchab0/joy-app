@@ -17,6 +17,7 @@ from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 from chat.services import (
     active_membership,
     build_room_embed_context,
+    deactivate_rehearsal_event_rooms,
     delete_message,
     edit_message,
     ensure_staff_membership,
@@ -62,6 +63,9 @@ def room_list(request: HttpRequest) -> HttpResponse:
     if request.user.is_staff or request.user.is_superuser:
         sync_user_to_staff_room(request.user)
 
+    # Anciens salons EVENT liés à une répétition → hors liste « Événements ».
+    deactivate_rehearsal_event_rooms()
+
     list_view = (request.GET.get("vue") or "mes").strip().lower()
     if list_view not in {"mes", "tous"}:
         list_view = "mes"
@@ -72,8 +76,12 @@ def room_list(request: HttpRequest) -> HttpResponse:
         room_id=OuterRef("room_id"), deleted_at__isnull=True
     ).order_by("-created_at")
     memberships = list(
-        ChatMembership.objects.filter(user=request.user, left_at__isnull=True)
-        .select_related("room", "room__event", "room__piece")
+        ChatMembership.objects.filter(
+            user=request.user,
+            left_at__isnull=True,
+            room__is_active=True,
+        )
+        .select_related("room", "room__event", "room__event__type", "room__piece")
         .annotate(
             last_msg_id=Subquery(last_msg.values("pk")[:1]),
             unread=Count(
@@ -127,6 +135,10 @@ def room_list(request: HttpRequest) -> HttpResponse:
         if kind == ChatRoom.Kind.PIECE:
             piece_rooms.append(item)
         elif kind == ChatRoom.Kind.EVENT and m.room.event_id:
+            event = m.room.event
+            # Les répétitions ont le salon dédié « Répétitions ».
+            if event is not None and getattr(event, "is_rehearsal", False):
+                continue
             event_rooms.append(item)
         else:
             # Thématiques + privés ad hoc (sans Event) → liste principale
