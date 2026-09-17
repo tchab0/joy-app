@@ -579,6 +579,111 @@ def ensure_event_room(event) -> ChatRoom:
     return room
 
 
+def is_thematic_room(room: ChatRoom) -> bool:
+    """Salon thématique / privé : kind EVENT sans événement lié."""
+    return room.kind == ChatRoom.Kind.EVENT and not room.event_id
+
+
+@transaction.atomic
+def create_thematic_room(
+    title: str,
+    *,
+    musician_users=None,
+    created_by=None,
+) -> ChatRoom:
+    """
+    Crée un salon thématique (privé) : staff seed + musiciens choisis.
+    Stocké comme kind=EVENT sans Event (badge « Privé » dans la liste).
+    """
+    cleaned = (title or "").strip()
+    if not cleaned:
+        raise ValueError("Le titre du salon est obligatoire.")
+    if len(cleaned) > 200:
+        cleaned = cleaned[:200]
+
+    room = ChatRoom.objects.create(
+        kind=ChatRoom.Kind.EVENT,
+        title=cleaned,
+        event=None,
+        is_active=True,
+    )
+    seed_staff_members(room)
+
+    seen: set[int] = set()
+    for user in musician_users or []:
+        if not user or not getattr(user, "pk", None):
+            continue
+        if user.pk in seen:
+            continue
+        seen.add(user.pk)
+        if not user.is_active:
+            continue
+        if not getattr(user, "is_musician", False):
+            # Staff déjà seedés ; ignorer les non-musiciens hors staff.
+            if not (user.is_staff or user.is_superuser):
+                continue
+        add_member(room, user)
+
+    creator_name = ""
+    if created_by is not None:
+        creator_name = (
+            created_by.get_full_name() or created_by.username or ""
+        ).strip()
+    body = (
+        f"Salon créé par {creator_name}."
+        if creator_name
+        else "Salon thématique créé."
+    )
+    post_message(
+        room=room,
+        author=None,
+        body=body,
+        kind=ChatMessage.Kind.SYSTEM,
+    )
+    return room
+
+
+def thematic_active_members(room: ChatRoom) -> list:
+    """Membres actifs du salon thématique (affichage panel staff)."""
+    return list(
+        User.objects.filter(
+            is_active=True,
+            chat_memberships__room=room,
+            chat_memberships__left_at__isnull=True,
+        )
+        .distinct()
+        .order_by("last_name", "first_name", "username")
+    )
+
+
+def thematic_member_candidates(room: ChatRoom) -> list:
+    """Musiciens actifs non déjà membres du salon thématique."""
+    already = ChatMembership.objects.filter(
+        room=room, left_at__isnull=True
+    ).values_list("user_id", flat=True)
+    return list(
+        User.objects.filter(is_musician=True, is_active=True)
+        .exclude(pk__in=already)
+        .order_by("last_name", "first_name", "username")[:300]
+    )
+
+
+def remove_thematic_member(room: ChatRoom, user) -> bool:
+    """
+    Retire un musicien d’un salon thématique (leave).
+    Ne retire pas les comptes staff / superuser.
+    """
+    if not is_thematic_room(room):
+        raise ValueError("Ce salon n’est pas thématique.")
+    if user.is_staff or user.is_superuser:
+        raise ValueError("Les comptes staff ne peuvent pas être retirés ainsi.")
+    membership = active_membership(room, user)
+    if membership is None:
+        return False
+    membership.leave()
+    return True
+
+
 def deactivate_rehearsal_event_rooms() -> int:
     """Désactive les anciens salons EVENT liés à une répétition."""
     qs = ChatRoom.objects.filter(kind=ChatRoom.Kind.EVENT, event__isnull=False)
@@ -1309,12 +1414,13 @@ def room_mention_members(room: ChatRoom) -> list:
     Candidats @mention pour l’autocomplete.
     Salons généraux : musiciens actifs (+ membres du salon).
     Salon Staff : uniquement comptes staff (pas tout l’orchestre).
+    Salon thématique / pupitre : uniquement les membres actifs.
     """
     User = get_user_model()
     if room.kind == ChatRoom.Kind.STAFF:
         q = Q(is_staff=True) | Q(is_superuser=True)
-    elif room.kind == ChatRoom.Kind.SECTION:
-        # Pupitre : uniquement les membres actifs (pas tout l’orchestre).
+    elif room.kind == ChatRoom.Kind.SECTION or is_thematic_room(room):
+        # Composition figée : pas tout l’orchestre.
         q = Q(
             chat_memberships__room=room,
             chat_memberships__left_at__isnull=True,
@@ -1400,8 +1506,8 @@ def resolve_mentioned_users(room: ChatRoom, body: str, *, exclude_user=None) -> 
             continue
         if not user_can_access_room(u, room):
             # Événement / morceau : ajouter pour que la notif soit ouvrable.
-            # Pupitre : pas d’ajout auto (composition figée par poste).
-            if room.kind == ChatRoom.Kind.SECTION:
+            # Pupitre / thématique : pas d’ajout auto (composition figée).
+            if room.kind == ChatRoom.Kind.SECTION or is_thematic_room(room):
                 continue
             try:
                 add_member(room, u, subscribed=bool(getattr(u, "chat_auto_subscribe", True)))
@@ -2142,6 +2248,13 @@ def build_room_embed_context(
     invite_choices: list = []
     open_proposal = None
     lock_options: list = []
+    thematic_members: list = []
+    thematic_candidates: list = []
+    is_thematic = is_thematic_room(room)
+
+    if is_thematic and is_staff and show_staff_panel:
+        thematic_members = thematic_active_members(room)
+        thematic_candidates = thematic_member_candidates(room)
 
     if room.event_id:
         participation = (
@@ -2233,6 +2346,9 @@ def build_room_embed_context(
         "current_user_id": user.pk,
         "initial_last_read_at": initial_last_read_at,
         "is_planning_staff": is_staff,
+        "is_thematic_room": is_thematic,
+        "thematic_members": thematic_members,
+        "thematic_candidates": thematic_candidates,
         "draft_proposal": draft_proposal,
         "invite_musicians": invite_musicians,
         "invite_choices": invite_choices,

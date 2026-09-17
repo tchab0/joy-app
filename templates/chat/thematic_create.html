@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Nouveau salon — Chat JOY{% endblock %}
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<style>
+  .chat-thematic-create {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 1rem calc(2rem + env(safe-area-inset-bottom));
+    color: var(--text);
+  }
+  .chat-thematic-create h1 {
+    font-family: var(--font-d);
+    font-size: 1.6rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .chat-thematic-create__lead {
+    color: var(--muted);
+    margin: 0 0 1.25rem;
+    font-size: .95rem;
+    line-height: 1.4;
+  }
+  .chat-thematic-create label {
+    display: block;
+    font-weight: 600;
+    font-size: .9rem;
+    margin-bottom: .35rem;
+    color: var(--text);
+  }
+  .chat-thematic-create input[type="text"] {
+    width: 100%;
+    min-height: 44px;
+    padding: .55rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .chat-thematic-create__field {
+    margin-bottom: 1.15rem;
+  }
+  .chat-thematic-create__help {
+    margin: .35rem 0 0;
+    font-size: .82rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .chat-thematic-create__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    max-height: min(50vh, 420px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    padding: .5rem;
+  }
+  .chat-thematic-create__item {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border-radius: var(--r);
+    cursor: pointer;
+    color: var(--text);
+  }
+  .chat-thematic-create__item:hover,
+  .chat-thematic-create__item:focus-within {
+    background: rgba(var(--staff-rgb), .08);
+  }
+  .chat-thematic-create__item input {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+    accent-color: var(--staff);
+  }
+  .chat-thematic-create__actions {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: 1.25rem;
+  }
+  .chat-thematic-create__actions .pl-btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  @media (min-width: 560px) {
+    .chat-thematic-create__actions {
+      flex-direction: row;
+    }
+    .chat-thematic-create__actions .pl-btn {
+      width: auto;
+      flex: 1;
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pl" style="max-width:720px;margin:0 auto;padding:0 1rem">
+  {% include "planning/_module_nav.html" with active="chat" %}
+</div>
+<div class="chat-thematic-create" data-tour="chat-thematic-create">
+  <h1>Nouveau salon</h1>
+  {% page_lead "chat.thematic_create" %}
+    Salon thématique privé : seuls le staff et les musiciens choisis y ont accès.
+  {% endpage_lead %}
+
+  <form method="post" class="pl-form">
+    {% csrf_token %}
+    <div class="chat-thematic-create__field">
+      <label for="thematic_title">Titre</label>
+      <input id="thematic_title" type="text" name="title" maxlength="200"
+             value="{{ title_value }}" required autocomplete="off"
+             placeholder="Ex. Préparation Montaigu">
+    </div>
+
+    <div class="chat-thematic-create__field">
+      <label id="thematic_musicians_label">Musiciens</label>
+      <p class="chat-thematic-create__help">
+        Le staff est ajouté automatiquement. Vous pourrez en ajouter d’autres ensuite.
+      </p>
+      {% if musicians %}
+      <ul class="chat-thematic-create__list" role="group" aria-labelledby="thematic_musicians_label">
+        {% for m in musicians %}
+        <li>
+          <label class="chat-thematic-create__item">
+            <input type="checkbox" name="musician_ids" value="{{ m.pk }}"
+                   {% if m.pk in selected_ids %}checked{% endif %}>
+            <span>{{ m.get_full_name|default:m.username }}</span>
+          </label>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="chat-thematic-create__help">Aucun musicien actif pour le moment.</p>
+      {% endif %}
+    </div>
+
+    <div class="chat-thematic-create__actions">
+      <button type="submit" class="pl-btn pl-btn--primary">Créer le salon</button>
+      <a class="pl-btn" href="{% url 'chat:list' %}">Annuler</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

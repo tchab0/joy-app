@@ -14,6 +14,7 @@ from chat.models import ChatMembership, ChatMessage, ChatMessageReaction, ChatRo
 from chat.services import (
     assign_mention_handles,
     chat_room_url,
+    create_thematic_room,
     delete_message,
     ensure_event_room,
     ensure_orchestra_room,
@@ -24,14 +25,17 @@ from chat.services import (
     ensure_staff_room,
     edit_message,
     extract_mention_tokens,
+    is_thematic_room,
     list_orchestra_archive,
     list_rehearsal_threads,
     musician_section_keys,
     orchestra_archived_q,
     partition_rehearsal_threads,
     post_message,
+    remove_thematic_member,
     replies_prefetch,
     resolve_mentioned_users,
+    room_mention_members,
     serialize_mention_members,
     serialize_message,
     sync_musician_to_orchestra,
@@ -1351,3 +1355,240 @@ class ChatNotificationDeepLinkTests(TestCase):
         notify_event_invite(event, [self.musician])
         notif = UserNotification.objects.get(user=self.musician)
         self.assertEqual(notif.url, reverse("chat:room", args=[room.pk]))
+
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
+    SMS_BACKEND="console",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class ThematicRoomTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        ensure_participation_statuses()
+        cls.musician = User.objects.create_user(
+            username="them_musi",
+            password="pass",
+            email="them_musi@example.com",
+            is_musician=True,
+            first_name="Alice",
+            last_name="Martin",
+        )
+        cls.other = User.objects.create_user(
+            username="them_other",
+            password="pass",
+            email="them_other@example.com",
+            is_musician=True,
+            first_name="Bob",
+            last_name="Dupont",
+        )
+        cls.outsider = User.objects.create_user(
+            username="them_out",
+            password="pass",
+            email="them_out@example.com",
+            is_musician=True,
+            first_name="Claire",
+            last_name="Petit",
+        )
+        cls.staff = User.objects.create_user(
+            username="them_staff",
+            password="pass",
+            email="them_staff@example.com",
+            is_musician=True,
+            is_staff=True,
+            first_name="Staff",
+            last_name="Joy",
+        )
+
+    def test_create_thematic_room_seeds_staff_and_musicians(self):
+        room = create_thematic_room(
+            "  Montaigu Joy  ",
+            musician_users=[self.musician, self.other],
+            created_by=self.staff,
+        )
+        self.assertTrue(is_thematic_room(room))
+        self.assertEqual(room.title, "Montaigu Joy")
+        self.assertEqual(room.kind, ChatRoom.Kind.EVENT)
+        self.assertIsNone(room.event_id)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.staff, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.musician, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.other, left_at__isnull=True
+            ).exists()
+        )
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(
+            ChatMessage.objects.filter(
+                room=room, kind=ChatMessage.Kind.SYSTEM
+            ).exists()
+        )
+
+    def test_create_requires_title(self):
+        with self.assertRaises(ValueError):
+            create_thematic_room("   ", musician_users=[self.musician])
+
+    def test_non_member_cannot_access(self):
+        room = create_thematic_room(
+            "Privé",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        self.assertTrue(user_can_access_room(self.musician, room))
+        self.assertFalse(user_can_access_room(self.outsider, room))
+        # Staff always can
+        self.assertTrue(user_can_access_room(self.staff, room))
+
+        client = Client()
+        client.login(username="them_out", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 403)
+
+        client.login(username="them_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+
+    def test_staff_create_view_and_forbidden_for_musician(self):
+        client = Client()
+        client.login(username="them_musi", password="pass")
+        r = client.get(reverse("chat:thematic_create"))
+        self.assertEqual(r.status_code, 403)
+
+        client.login(username="them_staff", password="pass")
+        r = client.get(reverse("chat:thematic_create"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Nouveau salon")
+
+        r = client.post(
+            reverse("chat:thematic_create"),
+            {
+                "title": "Salon test",
+                "musician_ids": [str(self.musician.pk)],
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        room = ChatRoom.objects.get(title="Salon test", event__isnull=True)
+        self.assertTrue(is_thematic_room(room))
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.musician, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_staff_add_and_remove_member(self):
+        room = create_thematic_room(
+            "Membres",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        client = Client()
+        client.login(username="them_staff", password="pass")
+
+        r = client.post(
+            reverse("chat:thematic_member_add", args=[room.pk]),
+            {"user_id": str(self.other.pk)},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.other, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(user_can_access_room(self.other, room))
+
+        r = client.post(
+            reverse("chat:thematic_member_remove", args=[room.pk]),
+            {"user_id": str(self.other.pk)},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=room, user=self.other, left_at__isnull=True
+            ).exists()
+        )
+        self.assertFalse(user_can_access_room(self.other, room))
+
+        # Cannot remove staff this way
+        r = client.post(
+            reverse("chat:thematic_member_remove", args=[room.pk]),
+            {"user_id": str(self.staff.pk)},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.staff, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_mention_does_not_auto_add(self):
+        room = create_thematic_room(
+            "Mentions",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        candidates = room_mention_members(room)
+        candidate_ids = {u.pk for u in candidates}
+        self.assertIn(self.musician.pk, candidate_ids)
+        self.assertIn(self.staff.pk, candidate_ids)
+        self.assertNotIn(self.outsider.pk, candidate_ids)
+
+        matched = resolve_mentioned_users(
+            room, f"@{self.outsider.username} hello", exclude_user=self.musician
+        )
+        self.assertEqual(matched, [])
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_thematic_in_primary_rooms_not_events(self):
+        room = create_thematic_room(
+            "Liste principale",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        client = Client()
+        client.login(username="them_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+        primary = r.context["primary_rooms"]
+        event_rooms = r.context["event_rooms"]
+        primary_ids = {item["room"].pk for item in primary}
+        event_ids = {item["room"].pk for item in event_rooms}
+        self.assertIn(room.pk, primary_ids)
+        self.assertNotIn(room.pk, event_ids)
+        self.assertContains(r, "Privé")
+
+    def test_list_shows_nouveau_salon_for_staff_only(self):
+        client = Client()
+        client.login(username="them_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertNotContains(r, reverse("chat:thematic_create"))
+
+        client.login(username="them_staff", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertContains(r, reverse("chat:thematic_create"))
+        self.assertContains(r, "Nouveau salon")
+
+    def test_remove_thematic_member_helper(self):
+        room = create_thematic_room(
+            "Helper",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        self.assertTrue(remove_thematic_member(room, self.musician))
+        self.assertFalse(remove_thematic_member(room, self.musician))
+        with self.assertRaises(ValueError):
+            remove_thematic_member(room, self.staff)

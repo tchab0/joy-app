@@ -42,6 +42,11 @@
     font-size: .9rem;
     font-weight: 600;
   }
+  .chat-toolbar__staff {
+    border-color: rgba(var(--staff-rgb), .35) !important;
+    background: rgba(var(--staff-rgb), .08) !important;
+    color: var(--staff) !important;
+  }
   .chat-sections {
     display: flex;
     flex-direction: column;
@@ -192,6 +197,9 @@
   {% endpage_lead %}
   <div class="chat-toolbar">
     <a href="{% url 'chat:prefs' %}">Notifications</a>
+    {% if is_planning_staff %}
+    <a href="{% url 'chat:thematic_create' %}" class="chat-toolbar__staff">Nouveau salon</a>
+    {% endif %}
   </div>
 
   {% if has_rooms %}

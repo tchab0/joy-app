@@ -42,6 +42,15 @@ def _require_musician(request: HttpRequest) -> HttpResponse | None:
     return None
 
 
+def _require_staff(request: HttpRequest) -> HttpResponse | None:
+    denied = _require_musician(request)
+    if denied:
+        return denied
+    if not (request.user.is_staff or request.user.is_superuser):
+        return HttpResponseForbidden("Accès réservé au staff.")
+    return None
+
+
 @login_required
 @require_GET
 def room_list(request: HttpRequest) -> HttpResponse:
@@ -141,14 +150,141 @@ def room_list(request: HttpRequest) -> HttpResponse:
 @require_GET
 def staff_room(request: HttpRequest) -> HttpResponse:
     """Raccourci Coulisses → salon Staff (staff uniquement)."""
-    denied = _require_musician(request)
+    denied = _require_staff(request)
     if denied:
         return denied
-    if not (request.user.is_staff or request.user.is_superuser):
-        return HttpResponseForbidden("Salon réservé au staff.")
     room = ensure_staff_room()
     sync_user_to_staff_room(request.user)
     return redirect("chat:room", room_id=room.pk)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def thematic_create(request: HttpRequest) -> HttpResponse:
+    """Staff : créer un salon thématique et y ajouter des musiciens."""
+    denied = _require_staff(request)
+    if denied:
+        return denied
+
+    User = get_user_model()
+    musicians = list(
+        User.objects.filter(is_musician=True, is_active=True).order_by(
+            "last_name", "first_name", "username"
+        )[:300]
+    )
+
+    if request.method == "POST":
+        title = (request.POST.get("title") or "").strip()
+        raw_ids = request.POST.getlist("musician_ids")
+        selected_ids: set[int] = set()
+        for raw in raw_ids:
+            try:
+                selected_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        selected = [m for m in musicians if m.pk in selected_ids]
+        try:
+            room = create_thematic_room(
+                title,
+                musician_users=selected,
+                created_by=request.user,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return render(
+                request,
+                "chat/thematic_create.html",
+                {
+                    "musicians": musicians,
+                    "title_value": title,
+                    "selected_ids": selected_ids,
+                    "is_planning_staff": True,
+                },
+            )
+        messages.success(request, f"Salon « {room.title} » créé.")
+        return redirect("chat:room", room_id=room.pk)
+
+    return render(
+        request,
+        "chat/thematic_create.html",
+        {
+            "musicians": musicians,
+            "title_value": "",
+            "selected_ids": set(),
+            "is_planning_staff": True,
+        },
+    )
+
+
+@login_required
+@require_POST
+def thematic_member_add(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Staff : ajouter un musicien à un salon thématique."""
+    denied = _require_staff(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not is_thematic_room(room):
+        messages.error(request, "Ce salon n’est pas thématique.")
+        return redirect("chat:room", room_id=room.pk)
+
+    User = get_user_model()
+    try:
+        user_id = int(request.POST.get("user_id") or 0)
+    except (TypeError, ValueError):
+        user_id = 0
+    user = User.objects.filter(
+        pk=user_id, is_musician=True, is_active=True
+    ).first()
+    if user is None:
+        messages.error(request, "Musicien invalide.")
+        return redirect("chat:room", room_id=room.pk)
+
+    add_member(room, user)
+    name = user.get_full_name() or user.username
+    messages.success(request, f"{name} a été ajouté au salon.")
+    return redirect("chat:room", room_id=room.pk)
+
+
+@login_required
+@require_POST
+def thematic_member_remove(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Staff : retirer un musicien d’un salon thématique."""
+    denied = _require_staff(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not is_thematic_room(room):
+        messages.error(request, "Ce salon n’est pas thématique.")
+        return redirect("chat:room", room_id=room.pk)
+
+    User = get_user_model()
+    try:
+        user_id = int(request.POST.get("user_id") or 0)
+    except (TypeError, ValueError):
+        user_id = 0
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        messages.error(request, "Utilisateur invalide.")
+        return redirect("chat:room", room_id=room.pk)
+
+    try:
+        removed = remove_thematic_member(room, user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("chat:room", room_id=room.pk)
+
+    if removed:
+        name = user.get_full_name() or user.username
+        messages.success(request, f"{name} a été retiré du salon.")
+    else:
+        messages.info(request, "Cette personne n’était pas membre du salon.")
+    return redirect("chat:room", room_id=room.pk)
+
+
+
 
 
 @login_required

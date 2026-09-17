@@ -1,0 +1,45 @@
+<aside class="chat-staff-panel chat-staff-panel--thematic" aria-label="Membres du salon">
+  <h2>Membres</h2>
+  <div class="chat-staff-panel__actions">
+    {% if thematic_members %}
+    <ul class="chat-thematic-members">
+      {% for m in thematic_members %}
+      <li class="chat-thematic-members__row">
+        <span class="chat-thematic-members__name">
+          {{ m.get_full_name|default:m.username }}
+          {% if m.is_staff or m.is_superuser %}
+          <span class="chat-thematic-members__badge">staff</span>
+          {% endif %}
+        </span>
+        {% if not m.is_staff and not m.is_superuser %}
+        <form method="post" action="{% url 'chat:thematic_member_remove' room.pk %}"
+              onsubmit="return confirm('Retirer {{ m.get_full_name|default:m.username|escapejs }} du salon ?');">
+          {% csrf_token %}
+          <input type="hidden" name="user_id" value="{{ m.pk }}">
+          <button type="submit" class="chat-thematic-members__remove" aria-label="Retirer {{ m.get_full_name|default:m.username }}">
+            Retirer
+          </button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="chat-thematic-members__empty">Aucun membre pour le moment.</p>
+    {% endif %}
+
+    {% if thematic_candidates %}
+    <form method="post" action="{% url 'chat:thematic_member_add' room.pk %}" class="chat-thematic-add">
+      {% csrf_token %}
+      <label class="visually-hidden" for="thematic_add_user">Ajouter un musicien</label>
+      <select id="thematic_add_user" name="user_id" required>
+        <option value="">Ajouter un musicien…</option>
+        {% for m in thematic_candidates %}
+        <option value="{{ m.pk }}">{{ m.get_full_name|default:m.username }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-launch">Ajouter</button>
+    </form>
+    {% endif %}
+  </div>
+</aside>

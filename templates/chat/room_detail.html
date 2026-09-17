@@ -38,6 +38,8 @@
 
   {% if is_planning_staff and room.event %}
   {% include "chat/_room_staff_panel.html" %}
+  {% elif is_planning_staff and is_thematic_room %}
+  {% include "chat/_room_thematic_staff_panel.html" %}
   {% endif %}
 
   {% if show_leave_hint %}
