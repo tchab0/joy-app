@@ -90,7 +90,7 @@ def room_list(request: HttpRequest) -> HttpResponse:
                 distinct=True,
             ),
         )
-        .order_by("room__kind", "-room__created_at")
+        .order_by("-room__created_at")
     )
     last_ids = [m.last_msg_id for m in memberships if m.last_msg_id]
     last_by_id = {
@@ -99,23 +99,12 @@ def room_list(request: HttpRequest) -> HttpResponse:
     }
 
     def _sort_key(item: dict):
+        """Plus récent message en premier ; salons à rejoindre en bas."""
         last = item["last_message"]
         last_ts = last.created_at.timestamp() if last else 0.0
-        kind_rank = {
-            ChatRoom.Kind.ORCHESTRA: 0,
-            ChatRoom.Kind.REHEARSALS: 1,
-            ChatRoom.Kind.STAFF: 2,
-            ChatRoom.Kind.SECTION: 3,
-            ChatRoom.Kind.PIECE: 4,
-            ChatRoom.Kind.THEMATIC: 5,
-            ChatRoom.Kind.EVENT: 6,
-        }.get(item["room"].kind, 9)
-        # Salons à rejoindre après les salons déjà membres.
         join_rank = 1 if item.get("can_join") else 0
         return (
             join_rank,
-            0 if item["unread"] else 1,
-            kind_rank,
             -last_ts,
             -item["room"].created_at.timestamp(),
         )

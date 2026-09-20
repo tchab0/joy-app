@@ -420,6 +420,32 @@ class ChatCoreTests(TestCase):
         primary_ids = {item["room"].pk for item in r.context["primary_rooms"]}
         self.assertIn(shared.pk, primary_ids)
 
+    def test_room_list_orders_by_last_message(self):
+        """Les salons sont triés du plus récent message au plus ancien."""
+        orchestra = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        thematic = create_thematic_room(
+            title="Salon récent",
+            musician_users=[self.musician],
+            created_by=self.musician,
+        )
+
+        older = timezone.now() - timedelta(hours=2)
+        newer = timezone.now() - timedelta(minutes=5)
+        msg_orch = post_message(room=orchestra, author=self.musician, body="Ancien")
+        ChatMessage.objects.filter(pk=msg_orch.pk).update(created_at=older)
+        msg_them = post_message(room=thematic, author=self.musician, body="Récent")
+        ChatMessage.objects.filter(pk=msg_them.pk).update(created_at=newer)
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+        primary = r.context["primary_rooms"]
+        member_rooms = [i for i in primary if not i.get("can_join")]
+        ids = [i["room"].pk for i in member_rooms]
+        self.assertLess(ids.index(thematic.pk), ids.index(orchestra.pk))
+
     def test_event_room_shows_event_intro(self):
         from planning.services import invite_musician_to_event
 
