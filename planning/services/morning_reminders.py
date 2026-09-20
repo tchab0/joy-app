@@ -19,17 +19,14 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def venue_address_line(event: Event) -> str:
-    """Adresse lisible (nom + rue + ville, sans doublon)."""
+def venue_street_line(event: Event) -> str:
+    """Rue + ville (sans le nom du lieu), sans doublon."""
     venue = getattr(event, "venue", None)
     if venue is None:
         return ""
-    nom = (venue.nom or "").strip()
     adresse = (venue.adresse or "").strip()
     ville = (venue.ville or "").strip()
     parts: list[str] = []
-    if nom:
-        parts.append(nom)
     if adresse:
         parts.append(adresse)
         # Adresse postale complète → ne pas répéter la ville.
@@ -39,6 +36,21 @@ def venue_address_line(event: Event) -> str:
             parts.append(ville)
     elif ville:
         parts.append(ville)
+    return " — ".join(parts)
+
+
+def venue_address_line(event: Event) -> str:
+    """Adresse lisible (nom + rue + ville, sans doublon)."""
+    venue = getattr(event, "venue", None)
+    if venue is None:
+        return ""
+    nom = (venue.nom or "").strip()
+    street = venue_street_line(event)
+    parts: list[str] = []
+    if nom:
+        parts.append(nom)
+    if street:
+        parts.append(street)
     return " — ".join(parts)
 
 
@@ -129,7 +141,9 @@ def build_morning_reminder_message(event: Event) -> tuple[str, str, str]:
         roadmap = None
 
     rv = arrival_rendezvous_phrase(roadmap, event)
-    address = venue_address_line(event)
+    venue = getattr(event, "venue", None)
+    venue_name = (venue.nom or "").strip() if venue is not None else ""
+    street = venue_street_line(event)
     weather = forecast_for_event(event)
     weather_line = format_weather_line(weather)
     site = getattr(settings, "SITE_URL", "https://jazz-orchestra-yonnais.fr").rstrip(
@@ -147,8 +161,14 @@ def build_morning_reminder_message(event: Event) -> tuple[str, str, str]:
         f"rendez-vous ++{rv}++.",
         "",
     ]
-    if address:
-        lines.append(f"📍 **Lieu** : {address}")
+    if venue_name or street:
+        # Nom du lieu en évidence (gras + ligne dédiée), adresse en dessous.
+        if venue_name:
+            lines.append(f"📍 **{venue_name}**")
+            if street:
+                lines.append(street)
+        else:
+            lines.append(f"📍 {street}")
         lines.append("")
     if weather_line:
         lines.append(f"{weather_emoji(weather)} **Météo** : {weather_line}")

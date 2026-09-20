@@ -2600,7 +2600,9 @@ class EventMorningReminderTests(TestCase):
         self.assertIn("++entre 15h30 et 16h15++", kwargs["body"])
         self.assertNotIn("rendez-vous vers 18h30", kwargs["body"])
         self.assertIn("Le Stella", kwargs["body"])
+        self.assertIn("📍 **Le Stella**", kwargs["body"])
         self.assertIn("10 Bd du Souvenir", kwargs["body"])
+        self.assertNotIn("📍 **Lieu**", kwargs["body"])
         self.assertIn("18 °C", kwargs["body"])
         self.assertIn("/feuille-de-route/", kwargs["url"])
         self.assertIn("Feuille de route", kwargs["body"])
@@ -2610,7 +2612,6 @@ class EventMorningReminderTests(TestCase):
         self.assertIn("Programme test", kwargs["body"])
         self.assertIn("**«", kwargs["body"])
         self.assertIn("### ✅", kwargs["body"])
-        self.assertIn("📍 **Lieu**", kwargs["body"])
         # Pas d’URL collée en clair après un libellé « : https://… ».
         self.assertNotIn("Feuille de route : http", kwargs["body"])
         self.assertNotIn("Setlist « Programme test » : http", kwargs["body"])

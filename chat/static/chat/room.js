@@ -1726,12 +1726,30 @@ function chatRoom(cfg) {
       const t = threshold == null ? 120 : threshold;
       return el.scrollHeight - el.scrollTop - el.clientHeight < t;
     },
+    /**
+     * True si le dernier message est entièrement sous le viewport du fil
+     * (l’utilisateur a remonté vers d’anciens messages).
+     * False s’il est déjà « dessus », même sans en voir la fin (message long).
+     */
+    isLastMessageBelowView() {
+      const list = this.messages;
+      if (!list || !list.length) return false;
+      const last = list[list.length - 1];
+      if (!last || !last.id) return false;
+      const thread = this.$refs.thread;
+      const el = document.getElementById('chat-msg-' + last.id);
+      if (!thread || !el) return false;
+      const tRect = thread.getBoundingClientRect();
+      const mRect = el.getBoundingClientRect();
+      return mRect.top >= tRect.bottom - 1;
+    },
     updateJumpBottom() {
       if (this.embedded) {
         this.showJumpBottom = false;
         return;
       }
-      this.showJumpBottom = !this.isNearBottom(160);
+      // FAB seulement après avoir quitté le dernier message — pas pendant sa lecture.
+      this.showJumpBottom = this.isLastMessageBelowView();
     },
     queueJumpBottomUpdate() {
       if (this.embedded) return;
