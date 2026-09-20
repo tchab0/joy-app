@@ -173,6 +173,7 @@ def _collect_inbox(drafts, users_by_id, *, now) -> None:
         UserNotification.objects.filter(
             user__is_active=True,
             read_at__isnull=True,
+            archived_at__isnull=True,
         )
         .filter(Q(requires_response=False) | Q(responded_at__isnull=True))
         .exclude(related_type__in=CHAT_RELATED_TYPES)

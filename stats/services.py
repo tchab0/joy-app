@@ -5,8 +5,8 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
-from django.db.models import Count, Q
-from django.db.models.functions import TruncDate
+from django.db.models import Count, F, Q
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 
@@ -97,32 +97,33 @@ def build_dashboard_context(*, period: Period, ga_id: str = "") -> dict[str, Any
     since = period.since
     now = timezone.now()
 
-    musicians = User.objects.filter(is_musician=True, is_active=True)
+    musicians = User.objects.filter(is_musician=True, is_active=True).annotate(
+        last_activity=Coalesce("last_seen_at", "last_login")
+    )
     musician_count = musicians.count()
 
     login_buckets = {
-        "7j": musicians.filter(last_login__gte=now - timedelta(days=7)).count(),
-        "30j": musicians.filter(last_login__gte=now - timedelta(days=30)).count(),
-        "90j": musicians.filter(last_login__gte=now - timedelta(days=90)).count(),
-        "never": musicians.filter(last_login__isnull=True).count(),
+        "7j": musicians.filter(last_activity__gte=now - timedelta(days=7)).count(),
+        "30j": musicians.filter(last_activity__gte=now - timedelta(days=30)).count(),
+        "90j": musicians.filter(last_activity__gte=now - timedelta(days=90)).count(),
+        "never": musicians.filter(last_activity__isnull=True).count(),
         "stale_90": musicians.filter(
-            Q(last_login__lt=now - timedelta(days=90)) | Q(last_login__isnull=True)
+            Q(last_activity__lt=now - timedelta(days=90)) | Q(last_activity__isnull=True)
         ).count(),
     }
 
     inactive_qs = musicians.filter(
-        Q(last_login__lt=now - timedelta(days=90)) | Q(last_login__isnull=True)
+        Q(last_activity__lt=now - timedelta(days=90)) | Q(last_activity__isnull=True)
     ).select_related("musician_profile", "musician_profile__section")
-    # Jamais connectés d’abord, puis plus anciennes connexions.
-    inactive_musicians = sorted(
-        inactive_qs[:80],
-        key=lambda u: (u.last_login is not None, u.last_login or now),
-    )[:40]
+    # Jamais vus d’abord, puis activités les plus anciennes (tri SQL, pas un slice arbitraire).
+    inactive_musicians = list(
+        inactive_qs.order_by(F("last_activity").asc(nulls_first=True))[:40]
+    )
 
     recent_logins = list(
-        musicians.exclude(last_login__isnull=True)
+        musicians.exclude(last_activity__isnull=True)
         .select_related("musician_profile", "musician_profile__section")
-        .order_by("-last_login")[:40]
+        .order_by(F("last_activity").desc(nulls_last=True))[:40]
     )
 
     participations_period = EventParticipation.objects.filter(updated_at__gte=since)
@@ -373,7 +374,7 @@ def _build_insights(
                 {
                     "kind": "prune",
                     "text": (
-                        f"{login_buckets['stale_90']} musicien(s) sans connexion "
+                        f"{login_buckets['stale_90']} musicien(s) sans activité "
                         f"depuis 90 j ({stale_pct} %) — candidats à un nettoyage de comptes."
                     ),
                 }
@@ -383,7 +384,8 @@ def _build_insights(
                 {
                     "kind": "prune",
                     "text": (
-                        f"{login_buckets['never']} compte(s) musicien jamais connecté(s)."
+                        f"{login_buckets['never']} compte(s) musicien jamais vu(s) "
+                        f"sur les outils (ni login, ni visite session)."
                     ),
                 }
             )

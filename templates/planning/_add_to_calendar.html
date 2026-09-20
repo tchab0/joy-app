@@ -1,0 +1,9 @@
+{# Lien agenda perso — uniquement si événement confirmé. #}
+{% if event.statut == 'confirme' %}
+<a class="pl-day-events__salon"
+   href="{% url 'planning:event_ics' event.pk %}"
+   download>
+  <span>Ajouter à mon agenda</span>
+  <span>ICS</span>
+</a>
+{% endif %}

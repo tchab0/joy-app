@@ -220,15 +220,16 @@
       <p class="sub">Engagement sur le planning, le chat, les sondages et les comptes.</p>
       <div class="stats-kpis">
         <div class="stats-kpi"><div class="n">{{ musicians.count }}</div><div class="l">Comptes musiciens actifs</div></div>
-        <div class="stats-kpi"><div class="n">{{ musicians.login_buckets.30j }}</div><div class="l">Connectés (30 j)</div></div>
+        <div class="stats-kpi"><div class="n">{{ musicians.login_buckets.30j }}</div><div class="l">Actifs (30 j)</div></div>
         <div class="stats-kpi"><div class="n">{{ musicians.chat_authors }}</div><div class="l">Auteurs chat (période)</div></div>
         <div class="stats-kpi"><div class="n">{{ musicians.poll_voters }}</div><div class="l">Votants sondages</div></div>
       </div>
       <div class="stats-grid">
         <div class="stats-panel">
-          <h3>Connexions</h3>
-          <canvas id="chart-logins" aria-label="Répartition des connexions"></canvas>
+          <h3>Activité récente</h3>
+          <canvas id="chart-logins" aria-label="Répartition de l’activité"></canvas>
           <p class="stats-muted" style="margin-top:.75rem">
+            Basé sur la dernière visite authentifiée (session), pas seulement le login formulaire.
             7&nbsp;j&nbsp;{{ musicians.login_buckets.7j }} ·
             30&nbsp;j&nbsp;{{ musicians.login_buckets.30j }} ·
             90&nbsp;j&nbsp;{{ musicians.login_buckets.90j }} ·
@@ -278,14 +279,14 @@
 
       <div class="stats-grid" style="margin-top:1rem">
         <div class="stats-panel">
-          <h3>Dernières connexions</h3>
+          <h3>Dernières activités</h3>
           {% if musicians.recent_logins %}
           <table class="stats-table">
             <thead>
               <tr>
                 <th>Nom</th>
                 <th>Pupitre</th>
-                <th>Connexion</th>
+                <th>Vu</th>
               </tr>
             </thead>
             <tbody>
@@ -293,24 +294,24 @@
               <tr>
                 <td>{{ u.get_full_name|default:u.username }}</td>
                 <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
-                <td>{{ u.last_login|date:"d/m/Y H:i" }}</td>
+                <td>{{ u.last_activity|date:"d/m/Y H:i" }}</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
           {% else %}
-          <p class="stats-muted">Aucune connexion enregistrée pour l’instant.</p>
+          <p class="stats-muted">Aucune activité enregistrée pour l’instant.</p>
           {% endif %}
         </div>
         <div class="stats-panel">
-          <h3>Musiciens inactifs (≥ 90 j ou jamais connectés)</h3>
+          <h3>Musiciens inactifs (≥ 90 j ou jamais vus)</h3>
           {% if musicians.inactive %}
           <table class="stats-table">
             <thead>
               <tr>
                 <th>Nom</th>
                 <th>Pupitre</th>
-                <th>Dernière connexion</th>
+                <th>Dernière activité</th>
               </tr>
             </thead>
             <tbody>
@@ -318,7 +319,7 @@
               <tr>
                 <td>{{ u.get_full_name|default:u.username }}</td>
                 <td>{% if u.musician_profile and u.musician_profile.section %}{{ u.musician_profile.section.name }}{% else %}—{% endif %}</td>
-                <td>{% if u.last_login %}{{ u.last_login|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
+                <td>{% if u.last_activity %}{{ u.last_activity|date:"d/m/Y" }}{% else %}Jamais{% endif %}</td>
               </tr>
               {% endfor %}
             </tbody>

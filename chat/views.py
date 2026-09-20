@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.http import (
     FileResponse,
@@ -11,19 +12,28 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from chat.models import ChatAttachment, ChatMembership, ChatMessage, ChatRoom
 from chat.services import (
     active_membership,
+    add_member,
     build_room_embed_context,
+    create_thematic_room,
     deactivate_rehearsal_event_rooms,
     delete_message,
     edit_message,
     ensure_staff_membership,
     ensure_staff_room,
+    is_thematic_room,
+    join_thematic_room,
+    list_discoverable_thematic_rooms,
+    list_orchestra_archive,
     mark_room_read,
     post_message,
+    remove_thematic_member,
     room_mention_members,
     serialize_mention_members,
     serialize_message,
@@ -810,6 +820,67 @@ def api_read(request: HttpRequest, room_id: int) -> JsonResponse:
 
     cursor = mark_room_read(room, request.user, broadcast=True)
     return JsonResponse({"ok": True, "cursor": cursor})
+
+
+def _parse_archive_as_of(raw, fallback):
+    """``as_of`` vide / none = curseur d’avant ouverture (aucun watermark)."""
+    if raw is None:
+        return fallback
+    raw = str(raw).strip()
+    if raw == "" or raw.lower() in {"none", "null"}:
+        return None
+    parsed = parse_datetime(raw)
+    if parsed is None:
+        return fallback
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+@login_required
+@require_GET
+def api_archive(request: HttpRequest, room_id: int) -> JsonResponse:
+    """Messages archivés du salon Orchestre (lus depuis plus d’un mois)."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+    if room.kind != ChatRoom.Kind.ORCHESTRA:
+        return JsonResponse(
+            {"ok": False, "error": "Pas d’archive sur ce salon."}, status=400
+        )
+
+    if active_membership(room, request.user) is None:
+        if request.user.is_staff or request.user.is_superuser:
+            ensure_staff_membership(room, request.user)
+        else:
+            return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    try:
+        membership = ChatMembership.objects.get(
+            room=room, user=request.user, left_at__isnull=True
+        )
+        last_read_at = membership.last_read_at
+    except ChatMembership.DoesNotExist:
+        last_read_at = None
+    last_read_at = _parse_archive_as_of(
+        request.GET["as_of"] if "as_of" in request.GET else None,
+        last_read_at,
+    )
+
+    payload = list_orchestra_archive(
+        room,
+        request.user,
+        last_read_at=last_read_at,
+        before_id=request.GET.get("before"),
+        include_id=request.GET.get("include"),
+        limit=request.GET.get("limit") or 50,
+        viewer=request.user,
+    )
+    return JsonResponse({"ok": True, **payload})
 
 
 @login_required

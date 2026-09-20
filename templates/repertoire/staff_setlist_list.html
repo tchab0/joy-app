@@ -10,6 +10,8 @@
 
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="setlists" %}
+
   <header class="pl-head">
     <div class="pl-head__row">
       <div>
@@ -21,8 +23,6 @@
       <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_setlist_create' %}">+ Nouvelle</a>
     </div>
   </header>
-
-  {% include "planning/_module_nav.html" with active="setlists" %}
 
   {% if setlists %}
   <section class="pl-section">

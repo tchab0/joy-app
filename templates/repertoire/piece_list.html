@@ -10,14 +10,14 @@
 
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="repertoire" %}
+
   <header class="pl-head">
     <h1>Répertoire</h1>
     {% page_lead "repertoire.pieces" class="page-lead--in-head" %}
       Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.
     {% endpage_lead %}
   </header>
-
-  {% include "planning/_module_nav.html" with active="repertoire" %}
 
   <form class="rep-filter" method="get" action="" data-tour="repertoire-filter">
     <label for="poste">Poste</label>

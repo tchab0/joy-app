@@ -2504,6 +2504,166 @@ class EventPhotosRequestTests(TestCase):
         self.assertContains(r, "sélectionné")
 
 
+class EventMorningReminderTests(TestCase):
+    def setUp(self):
+        from planning.services import ensure_participation_statuses
+        from planning.services.roadmap import get_or_create_roadmap
+
+        planning_services._constants._STATUS_CACHE = None
+        self.statuses = ensure_participation_statuses(force=True)
+        self.venue = Venue.objects.create(
+            nom="Le Stella",
+            adresse="10 Bd du Souvenir",
+            ville="Les Sables",
+            latitude=46.5,
+            longitude=-1.78,
+        )
+        self.concert_type = EventType.objects.create(nom="Concert")
+        self.rehearsal_type = EventType.objects.create(
+            nom="Répétition", is_rehearsal=True
+        )
+        self.musician = User.objects.create_user(
+            username="morn1",
+            password="pass12345",
+            email="morn1@example.com",
+            is_musician=True,
+            first_name="Ada",
+            last_name="Lovelace",
+        )
+        self.other = User.objects.create_user(
+            username="morn2",
+            password="pass12345",
+            is_musician=True,
+        )
+        start = timezone.make_aware(
+            datetime.combine(timezone.localdate(), time(18, 30))
+        )
+        self.concert = Event.objects.create(
+            titre="Groove Test",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=start,
+            statut=Event.Statut.CONFIRME,
+        )
+        get_or_create_roadmap(self.concert)
+        roadmap = self.concert.roadmap
+        roadmap.arrival_start = time(15, 30)
+        roadmap.arrival_end = time(16, 15)
+        roadmap.save(update_fields=["arrival_start", "arrival_end", "updated_at"])
+        from repertoire.models import Setlist
+
+        Setlist.objects.create(
+            title="Programme test",
+            event=self.concert,
+            is_active=True,
+        )
+        EventParticipation.objects.create(
+            event=self.concert,
+            user=self.musician,
+            status=self.statuses["confirmed"],
+            poste=MusicianProfile.Poste.TROMPETTE_1,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+        EventParticipation.objects.create(
+            event=self.concert,
+            user=self.other,
+            status=self.statuses["declined"],
+            poste=MusicianProfile.Poste.TROMPETTE_2,
+            role_kind=EventParticipation.RoleKind.TITULAIRE,
+        )
+
+    @patch(
+        "planning.services.morning_reminders.forecast_for_event",
+        return_value={
+            "temp_c": 18,
+            "label": "Peu nuageux",
+            "at_hour": "18h",
+            "precip_prob": 10,
+            "unreliable": False,
+        },
+    )
+    @patch("planning.services.morning_reminders.notify_users", return_value=1)
+    def test_send_morning_reminder_to_presents(self, mock_notify, _wx):
+        from planning.services import send_event_morning_reminders
+
+        sent = send_event_morning_reminders([self.concert])
+        self.assertEqual(sent, 1)
+        self.concert.refresh_from_db()
+        self.assertIsNotNone(self.concert.morning_reminder_sent_at)
+        mock_notify.assert_called_once()
+        kwargs = mock_notify.call_args.kwargs
+        users = list(mock_notify.call_args.args[0])
+        self.assertEqual([u.pk for u in users], [self.musician.pk])
+        self.assertIn("grand jour", kwargs["title"].lower())
+        self.assertIn("🎺", kwargs["title"])
+        self.assertIn("entre 15h30 et 16h15", kwargs["body"])
+        self.assertIn("++entre 15h30 et 16h15++", kwargs["body"])
+        self.assertNotIn("rendez-vous vers 18h30", kwargs["body"])
+        self.assertIn("Le Stella", kwargs["body"])
+        self.assertIn("10 Bd du Souvenir", kwargs["body"])
+        self.assertIn("18 °C", kwargs["body"])
+        self.assertIn("/feuille-de-route/", kwargs["url"])
+        self.assertIn("Feuille de route", kwargs["body"])
+        self.assertIn("[Feuille de route](", kwargs["body"])
+        self.assertIn("[Setlist « Programme test »](", kwargs["body"])
+        self.assertIn("#setlist", kwargs["body"])
+        self.assertIn("Programme test", kwargs["body"])
+        self.assertIn("**«", kwargs["body"])
+        self.assertIn("### ✅", kwargs["body"])
+        self.assertIn("📍 **Lieu**", kwargs["body"])
+        # Pas d’URL collée en clair après un libellé « : https://… ».
+        self.assertNotIn("Feuille de route : http", kwargs["body"])
+        self.assertNotIn("Setlist « Programme test » : http", kwargs["body"])
+        self.assertTrue(kwargs["force_immediate"])
+        from chat.models import ChatMessage, ChatRoom
+
+        room = ChatRoom.objects.get(event=self.concert)
+        sys_msgs = ChatMessage.objects.filter(
+            room=room, kind=ChatMessage.Kind.SYSTEM
+        )
+        self.assertEqual(sys_msgs.count(), 1)
+        chat_body = sys_msgs.first().body
+        self.assertIn("grand jour", chat_body.lower())
+        self.assertTrue(
+            chat_body.startswith("## ") and "grand jour" in chat_body.lower()
+        )
+        self.assertIn("entre 15h30 et 16h15", chat_body)
+
+    @patch("planning.services.morning_reminders.notify_users", return_value=1)
+    def test_only_user_does_not_mark_by_default_via_command(self, mock_notify):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command(
+            "remind_event_morning",
+            f"--force-event={self.concert.pk}",
+            f"--only-user={self.musician.username}",
+            stdout=out,
+        )
+        self.concert.refresh_from_db()
+        self.assertIsNone(self.concert.morning_reminder_sent_at)
+        self.assertIn("non marqué", out.getvalue())
+        mock_notify.assert_called_once()
+
+    def test_events_due_skips_rehearsal_and_already_sent(self):
+        from planning.services import events_due_for_morning_reminder
+
+        Event.objects.create(
+            titre="Répète du jour",
+            type=self.rehearsal_type,
+            venue=self.venue,
+            date_debut=self.concert.date_debut,
+            statut=Event.Statut.CONFIRME,
+        )
+        due = events_due_for_morning_reminder()
+        self.assertEqual([e.pk for e in due], [self.concert.pk])
+        self.concert.morning_reminder_sent_at = timezone.now()
+        self.concert.save(update_fields=["morning_reminder_sent_at"])
+        self.assertEqual(events_due_for_morning_reminder(), [])
+
+
 class MaybeRemindTests(PlanningBaseTestCase):
     @patch("planning.services.rsvp.notify_users", return_value=1)
     def test_send_due_maybe_reminds(self, mock_notify):
@@ -2559,6 +2719,33 @@ class MaybeRemindTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Votre poste")
         self.assertContains(r, "1er trompette")
+
+    def test_event_detail_salon_shows_unread_count(self):
+        from chat.services import ensure_event_room, post_message
+
+        concert_type = EventType.objects.create(nom="Concert salon")
+        concert = Event.objects.create(
+            titre="Groove Unread",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=2),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        from planning.services import invite_musician_to_event
+
+        invite_musician_to_event(concert, self.musician, send_notification=False)
+        room = ensure_event_room(concert)
+        post_message(room=room, author=self.staff, body="Info salon")
+        post_message(room=room, author=self.staff, body="Deuxième")
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:event_detail", args=[concert.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, f"Salon « {concert.titre} »")
+        self.assertContains(r, 'aria-label="2 non lus"')
+        self.assertContains(r, "non lus")
+        self.assertContains(r, reverse("chat:room", args=[room.pk]))
 
     def test_event_setlist_pdf_columns_titulaire_remplacant(self):
         import tempfile

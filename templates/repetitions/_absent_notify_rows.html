@@ -1,0 +1,225 @@
+{# Absents / chaises libérées — invitation remplaçant avec modale d’édition du message. #}
+{% for row in absent_rows %}
+<div class="rep-absent-row"
+     x-data="absentNotifyRow({
+       participationId: {{ row.participation.pk }},
+       targetPoste: '{{ row.target_poste|escapejs }}',
+       kind: '{{ row.kind|escapejs }}',
+       defaultMessage: '{{ row.default_message|escapejs }}',
+       reassignMessage: '{{ row.reassign_message|escapejs }}',
+       notifyUrl: '{% url 'repetitions:staff_notify_sub' event.pk %}',
+       clearUrl: '{% url 'repetitions:staff_clear_sub' event.pk %}',
+       csrfToken: '{{ csrf_token }}',
+       assignedId: {% if row.assigned %}{{ row.assigned.participation_id }}{% else %}null{% endif %},
+       assignedName: '{% if row.assigned %}{{ row.assigned.name|escapejs }}{% endif %}',
+       assignedStatus: '{% if row.assigned %}{{ row.assigned.status|escapejs }}{% endif %}'
+     })">
+  <div>
+    <strong>{{ row.display_name }}</strong>
+    <span class="pl-row__meta"> · {{ row.poste_label }}</span>
+    {% if row.comment %}
+    <p class="pl-row__meta" style="margin:.2rem 0 0;color:var(--text)">{{ row.comment }}</p>
+    {% endif %}
+  </div>
+
+  {% if row.assigned %}
+  {# Remplaçant déjà placé — libellé + poubelle pour rechoisir #}
+  <div class="rep-absent-assigned">
+    <span class="rep-absent-assigned__name">remplacé par {{ row.assigned.name }}</span>
+    {% if row.assigned.status == "invited" %}
+    <span class="pl-row__meta"> · invité</span>
+    {% endif %}
+    <button type="button"
+            class="pl-btn rep-absent-assigned__clear"
+            :disabled="busy"
+            @click="clearAssigned()"
+            aria-label="Retirer le remplaçant"
+            title="Retirer le remplaçant"
+            style="min-height:44px;min-width:44px;padding:.35rem .55rem">
+      <span aria-hidden="true">🗑️</span>
+    </button>
+  </div>
+  {% elif row.eligible %}
+  <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;width:100%;max-width:28rem">
+    <select x-model="candidate" style="flex:1;min-width:10rem;min-height:44px;padding:.55rem;border:1px solid var(--border);border-radius:var(--r);font:inherit;color:var(--text);background:var(--surface)">
+      <option value="">Remplaçant…</option>
+      {% for sub in row.eligible %}
+      <option value="{{ sub.user_id }}" data-reassign="{% if sub.eligible_hint %}1{% else %}0{% endif %}">{{ sub.user.get_full_name|default:sub.user.username }}{% if sub.eligible_hint %} ({{ sub.eligible_hint }}){% endif %}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="pl-btn pl-btn--primary" :disabled="!candidate || busy" @click="openModal()" style="min-height:44px">
+      Notifier / inviter
+    </button>
+  </div>
+  {% else %}
+  <span class="pl-row__meta">Aucun remplaçant éligible.</span>
+  {% endif %}
+
+  <div class="pl-modal-root" x-show="showModal" x-cloak
+       x-transition.opacity
+       role="dialog" aria-modal="true" :aria-labelledby="'abs-msg-title-' + participationId">
+    <div class="pl-modal-backdrop" @click="closeModal()"></div>
+    <div class="pl-modal" @click.stop>
+      <header class="pl-modal__head">
+        <h2 :id="'abs-msg-title-' + participationId">Message au remplaçant</h2>
+        <button type="button" class="pl-btn" @click="closeModal()" aria-label="Fermer" style="min-height:44px;min-width:44px">✕</button>
+      </header>
+      <p class="pl-row__meta" style="margin:0 0 .75rem;line-height:1.45;color:var(--text)">
+        Vérifiez ou modifiez le texte avant envoi.
+      </p>
+      <div class="pl-form" style="border-top:none;margin:0;padding:0">
+        <div>
+          <label :for="'abs-msg-' + participationId">Texte de la notification</label>
+          <textarea :id="'abs-msg-' + participationId"
+                    x-model="message"
+                    rows="5"
+                    maxlength="800"
+                    style="resize:vertical;min-height:7rem;width:100%;color:var(--text);font:inherit;padding:.65rem;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)"></textarea>
+        </div>
+        <p class="pl-row__meta" x-show="error" x-text="error" style="color:var(--accent);margin:.35rem 0 0"></p>
+        <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem;margin-top:.75rem">
+          <button type="button" class="pl-btn" :disabled="busy" @click="closeModal()" style="min-height:44px;flex:1 1 8rem">Annuler</button>
+          <button type="button" class="pl-btn pl-btn--primary" :disabled="busy || !message.trim()" @click="send()" style="min-height:44px;flex:1 1 8rem">
+            <span x-text="busy ? 'Envoi…' : 'Envoyer'">Envoyer</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<style>
+  .rep-absent-assigned {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem .5rem;
+    max-width: 28rem;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  @media (min-width: 640px) {
+    .rep-absent-assigned { justify-content: flex-end; margin-left: auto; }
+  }
+  .rep-absent-assigned__name {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .rep-absent-assigned__clear {
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .rep-absent-assigned__clear:hover,
+  .rep-absent-assigned__clear:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>
+
+<script>
+(function () {
+  if (window.absentNotifyRow) return;
+  window.absentNotifyRow = function (opts) {
+    opts = opts || {};
+    return {
+      participationId: opts.participationId,
+      targetPoste: opts.targetPoste || '',
+      kind: opts.kind || 'absent',
+      defaultMessage: opts.defaultMessage || '',
+      reassignMessage: opts.reassignMessage || '',
+      notifyUrl: opts.notifyUrl || '',
+      clearUrl: opts.clearUrl || '',
+      csrfToken: opts.csrfToken || '',
+      assignedId: opts.assignedId || null,
+      assignedName: opts.assignedName || '',
+      assignedStatus: opts.assignedStatus || '',
+      candidate: '',
+      message: '',
+      showModal: false,
+      busy: false,
+      error: '',
+      openModal() {
+        if (!this.candidate) return;
+        const sel = this.$el.querySelector('select');
+        const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+        const reassign = opt && opt.dataset && opt.dataset.reassign === '1';
+        this.message = reassign ? (this.reassignMessage || this.defaultMessage) : this.defaultMessage;
+        this.error = '';
+        this.showModal = true;
+      },
+      closeModal() {
+        if (this.busy) return;
+        this.showModal = false;
+        this.error = '';
+      },
+      send() {
+        const body = (this.message || '').trim();
+        if (!this.candidate || !body) return;
+        this.busy = true;
+        this.error = '';
+        fetch(this.notifyUrl, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.csrfToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            participation_id: this.participationId,
+            candidate_id: Number(this.candidate),
+            target_poste: this.targetPoste,
+            kind: this.kind,
+            message: body,
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            this.busy = false;
+            if (d.ok) {
+              this.showModal = false;
+              this.candidate = '';
+              window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.message || 'Notifié' }));
+              window.setTimeout(() => window.location.reload(), 600);
+            } else {
+              this.error = d.error || 'Erreur';
+            }
+          })
+          .catch(() => {
+            this.busy = false;
+            this.error = 'Erreur réseau';
+          });
+      },
+      clearAssigned() {
+        if (!this.assignedId || this.busy) return;
+        if (!window.confirm('Retirer ce remplaçant et pouvoir en choisir un autre ?')) return;
+        this.busy = true;
+        fetch(this.clearUrl, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.csrfToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            covering_participation_id: this.assignedId,
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            this.busy = false;
+            if (d.ok) {
+              window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.message || 'Retiré' }));
+              window.setTimeout(() => window.location.reload(), 500);
+            } else {
+              window.dispatchEvent(new CustomEvent('pl-toast', { detail: d.error || 'Erreur' }));
+            }
+          })
+          .catch(() => {
+            this.busy = false;
+            window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Erreur réseau' }));
+          });
+      },
+    };
+  };
+})();
+</script>

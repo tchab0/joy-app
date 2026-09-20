@@ -758,6 +758,11 @@ class EventRoadmap(models.Model):
         "Mot de clôture",
         blank=True,
     )
+    misc_info = models.TextField(
+        "Infos diverses",
+        blank=True,
+        help_text="Consignes optionnelles sous les horaires (accès, repas, contacts…).",
+    )
     notified_at = models.DateTimeField(
         "Dernière notification",
         null=True,

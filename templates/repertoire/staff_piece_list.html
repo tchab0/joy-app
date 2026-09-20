@@ -10,6 +10,8 @@
 
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="atelier" %}
+
   <header class="pl-head" data-tour="staff-atelier">
     <div class="pl-head__row">
       <div>
@@ -21,8 +23,6 @@
       <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:staff_piece_create' %}">+ Nouveau</a>
     </div>
   </header>
-
-  {% include "planning/_module_nav.html" with active="atelier" %}
 
   {% if pieces %}
   <section class="pl-section">

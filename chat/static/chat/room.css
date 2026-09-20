@@ -292,8 +292,8 @@
   /* Infos événement / morceau : dans le fil, scrollent vers le haut pour libérer l’espace messages */
   .chat-event-intro {
     flex-shrink: 0;
-    margin: -.75rem -1rem .15rem -2.35rem;
-    padding: .75rem 1rem .75rem 1rem;
+    margin: -.65rem -.4rem .15rem -1.65rem;
+    padding: .75rem .65rem .75rem .65rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
@@ -342,8 +342,8 @@
 
   .chat-piece-intro {
     flex-shrink: 0;
-    margin: -.75rem -1rem .15rem -2.35rem;
-    padding: .75rem 1rem .75rem 1rem;
+    margin: -.65rem -.4rem .15rem -1.65rem;
+    padding: .75rem .65rem .75rem .65rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
@@ -695,14 +695,15 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: .75rem 1rem .75rem 2.35rem;
+    /* Mobile : marges serrées ; gutter gauche pour les œils « unhide » */
+    padding: .65rem .4rem .65rem 1.65rem;
     padding-bottom: calc(var(--composer-h) + .75rem);
     display: flex;
     flex-direction: column;
     gap: .65rem;
   }
   .chat-msg {
-    max-width: 88%;
+    max-width: 96%;
     padding: .7rem .85rem;
     border-radius: var(--r);
     background: var(--surface);
@@ -729,6 +730,31 @@
   .chat-msg__body { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: .98rem; line-height: 1.4; color: var(--text); }
   .chat-msg__body strong { font-weight: 700; color: inherit; }
   .chat-msg__body em { font-style: italic; color: inherit; }
+  .chat-msg__body u.chat-msg__u,
+  .chat-composer__editor u.chat-msg__u {
+    text-decoration: underline;
+    text-underline-offset: .14em;
+    text-decoration-thickness: from-font;
+  }
+  .chat-msg__heading {
+    margin: .45rem 0 .3rem;
+    color: var(--text);
+    font-family: var(--font-d), Georgia, serif;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .chat-msg__heading:first-child { margin-top: 0; }
+  .chat-msg__heading--2 {
+    font-size: 1.12rem;
+    padding-bottom: .2rem;
+    border-bottom: 1px solid rgba(141, 95, 22, .28);
+  }
+  .chat-msg__heading--3 {
+    font-size: 1.02rem;
+    font-family: var(--font-b), system-ui, sans-serif;
+    color: var(--gold-text, #8d5f16);
+  }
   .chat-msg__body a.chat-msg__link {
     color: var(--accent);
     text-decoration: underline;
@@ -1061,10 +1087,17 @@
   }
 
   .chat-composer {
+    /* Aligné sur .chat-room : left/right + margin auto (pas de transform —
+       transform + overflow:hidden sur .chat-room clippait le composer). */
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
+    width: 100%;
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
     z-index: 15;
     background: var(--surface);
     border-top: 1px solid var(--border);
@@ -1094,8 +1127,9 @@
     border-radius: var(--r) var(--r) 0 0;
   }
   .chat-composer__inner {
-    max-width: 720px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     display: flex;
     flex-direction: column;
     gap: .4rem;
@@ -1104,7 +1138,8 @@
   .chat-composer__editor {
     width: 100%;
     min-height: 44px;
-    max-height: 110px;
+    /* Auto-grow : assez haut pour lire tout le texte (scroll au-delà) */
+    max-height: min(50dvh, 20rem);
     resize: none;
     border: 1px solid var(--border);
     border-radius: var(--r);
@@ -1693,10 +1728,22 @@
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
     }
-    .chat-room:not(.chat-room--embedded) .chat-composer__inner {
-      max-width: none;
+    .chat-room:not(.chat-room--embedded) .chat-composer {
+      width: calc(100vw * 2 / 3);
+      max-width: calc(100vw * 2 / 3);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
     }
     .chat-room__titles h1 { font-size: 1.2rem; }
+    .chat-thread {
+      padding: .75rem 1rem .75rem 2.35rem;
+      padding-bottom: calc(var(--composer-h) + .75rem);
+    }
+    .chat-event-intro,
+    .chat-piece-intro {
+      margin: -.75rem -1rem .15rem -2.35rem;
+      padding: .75rem 1rem;
+    }
     .chat-msg { max-width: 72%; }
     .chat-composer__row {
       gap: .45rem;
@@ -1730,6 +1777,12 @@
     bottom: 0;
     left: auto;
     right: auto;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+    border-left: 0;
+    border-right: 0;
   }
   /* Compact embed (calendrier panneau jour) ~10–15 lignes */
   .chat-room--embedded.chat-room--compact {

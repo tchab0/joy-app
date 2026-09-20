@@ -13,10 +13,12 @@ self.addEventListener("push", (event) => {
     }
   }
   const title = data.title || "JOY";
+  const defaultIcon =
+    "/static/users/icons/icon-192.png?v=__JOY_ICON_VERSION__";
   const options = {
     body: data.body || "",
-    icon: "/static/users/icons/icon-192.png",
-    badge: "/static/users/icons/icon-192.png",
+    icon: data.icon || defaultIcon,
+    badge: data.badge || data.icon || defaultIcon,
     data: { url: data.url || "/" },
   };
   event.waitUntil(self.registration.showNotification(title, options));

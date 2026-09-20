@@ -3,16 +3,22 @@ from __future__ import annotations
 import logging
 import re
 import secrets
+import time
 from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.db import OperationalError, ProgrammingError
 from django.core import signing
+from django.utils import timezone
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
 
 logger = logging.getLogger(__name__)
+
+# Mise à jour last_seen_at au plus une fois par heure (évite un UPDATE par hit).
+LAST_SEEN_SESSION_KEY = "_joy_last_seen_touch"
+LAST_SEEN_THROTTLE_SECONDS = 3600
 
 # Préfixes privés → nom d’événement (premier match gagne).
 PATH_EVENT_RULES: tuple[tuple[str, str], ...] = (
@@ -82,21 +88,72 @@ def _is_trackable_html(request: HttpRequest, response) -> bool:
     return True
 
 
+def touch_last_seen(*, request: HttpRequest | None = None, user=None, force: bool = False) -> None:
+    """Met à jour User.last_seen_at (activité réelle, pas seulement le login formulaire)."""
+    if user is None and request is not None:
+        user = getattr(request, "user", None)
+    if not user or not getattr(user, "is_authenticated", False):
+        return
+    if getattr(user, "is_anonymous", False):
+        return
+
+    now_ts = time.time()
+    if not force and request is not None and hasattr(request, "session"):
+        try:
+            prev = float(request.session.get(LAST_SEEN_SESSION_KEY) or 0)
+        except (TypeError, ValueError):
+            prev = 0.0
+        if prev and (now_ts - prev) < LAST_SEEN_THROTTLE_SECONDS:
+            return
+
+    now = timezone.now()
+    from datetime import timedelta
+
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    User = get_user_model()
+    qs = User.objects.filter(pk=user.pk)
+    if not force:
+        cutoff = now - timedelta(seconds=LAST_SEEN_THROTTLE_SECONDS)
+        qs = qs.filter(Q(last_seen_at__isnull=True) | Q(last_seen_at__lt=cutoff))
+    try:
+        updated = qs.update(last_seen_at=now)
+    except (ProgrammingError, OperationalError) as exc:
+        logger.warning("last_seen_at ignoré: %s", exc)
+        return
+
+    if updated:
+        try:
+            user.last_seen_at = now
+        except Exception:
+            pass
+    if request is not None and hasattr(request, "session"):
+        try:
+            request.session[LAST_SEEN_SESSION_KEY] = str(now_ts)
+        except Exception:
+            pass
+
+
 def record_usage(
     *,
     name: str,
     user=None,
     path: str = "",
+    request: HttpRequest | None = None,
 ) -> None:
     """Enregistre un UsageEvent ; ignore si le schéma n’est pas encore migré."""
     try:
         from stats.models import UsageEvent
 
+        auth_user = user if getattr(user, "is_authenticated", False) else None
         UsageEvent.objects.create(
-            user=user if getattr(user, "is_authenticated", False) else None,
+            user=auth_user,
             name=name[:64],
             path=(path or "")[:300],
         )
+        if auth_user is not None:
+            touch_last_seen(request=request, user=auth_user)
     except (ProgrammingError, OperationalError) as exc:
         logger.warning("UsageEvent ignoré (%s): %s", name, exc)
     except Exception:
@@ -187,7 +244,9 @@ def record_request_usage(request: HttpRequest, response=None) -> None:
     # Outils authentifiés uniquement.
     if not user or not user.is_authenticated:
         return
+    # Toujours noter l’activité session (même hors features nommées).
+    touch_last_seen(request=request, user=user)
     name = feature_name_for_path(path)
     if not name:
         return
-    record_usage(name=name, user=user, path=path)
+    record_usage(name=name, user=user, path=path, request=request)

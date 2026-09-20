@@ -289,7 +289,7 @@ def account_home(request: HttpRequest) -> HttpResponse:
         from users.models import UserNotification
 
         unread_notifications = UserNotification.objects.filter(
-            user=request.user, read_at__isnull=True
+            user=request.user, read_at__isnull=True, archived_at__isnull=True
         ).count()
     except Exception:
         unread_notifications = 0
@@ -470,12 +470,28 @@ def member_area(request: HttpRequest) -> HttpResponse:
 @login_required
 def account_notifications(request: HttpRequest) -> HttpResponse:
     """Inbox des notifications de l’utilisateur connecté."""
+    from django.db.models import Q
+
     from users.models import UserNotification
     from users.notify import is_staff_destined_notification
 
-    qs = UserNotification.objects.filter(user=request.user)
-    unread = qs.filter(read_at__isnull=True)
-    unanswered = qs.filter(requires_response=True, responded_at__isnull=True)
+    show_archives = request.GET.get("vue") == "archives"
+    base = UserNotification.objects.filter(user=request.user)
+    if show_archives:
+        qs = base.filter(archived_at__isnull=False)
+    else:
+        # Salon : actives seulement (non archivées, encore utiles).
+        qs = base.filter(archived_at__isnull=True).filter(
+            Q(read_at__isnull=True)
+            | Q(requires_response=True, responded_at__isnull=True)
+        )
+    unread = base.filter(read_at__isnull=True, archived_at__isnull=True)
+    unanswered = base.filter(
+        requires_response=True,
+        responded_at__isnull=True,
+        archived_at__isnull=True,
+    )
+    archived_count = base.filter(archived_at__isnull=False).count()
     notifications = list(qs[:100])
     for item in notifications:
         item.is_staff_destined = is_staff_destined_notification(item)
@@ -486,6 +502,8 @@ def account_notifications(request: HttpRequest) -> HttpResponse:
             "notifications": notifications,
             "unread_count": unread.count(),
             "unanswered_count": unanswered.count(),
+            "archived_count": archived_count,
+            "show_archives": show_archives,
             "can_planning": user_can_access_planning(request.user),
         },
     )
@@ -496,7 +514,31 @@ def _notifications_redirect(request: HttpRequest) -> str:
     nxt = request.POST.get("next") or request.GET.get("next") or ""
     if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
+    if request.POST.get("vue") == "archives" or request.GET.get("vue") == "archives":
+        return reverse("account_notifications") + "?vue=archives"
     return reverse("account_notifications")
+
+
+def _wants_json(request: HttpRequest) -> bool:
+    accept = request.headers.get("Accept", "")
+    return (
+        "application/json" in accept
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
+
+def _notif_action_response(
+    request: HttpRequest, *, ok: bool, action: str, message: str
+) -> HttpResponse:
+    from django.http import JsonResponse
+
+    if _wants_json(request):
+        return JsonResponse({"ok": ok, "action": action, "message": message})
+    if ok:
+        messages.success(request, message)
+    else:
+        messages.info(request, message)
+    return redirect(_notifications_redirect(request))
 
 
 @login_required
@@ -506,8 +548,48 @@ def account_notification_mark_read(request: HttpRequest, pk: int) -> HttpRespons
 
     notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
     notif.mark_read()
-    messages.success(request, "Notification marquée comme lue.")
-    return redirect(_notifications_redirect(request))
+    return _notif_action_response(
+        request,
+        ok=True,
+        action="mark_read",
+        message="Notification marquée comme lue.",
+    )
+
+
+@login_required
+@require_POST
+def account_notification_archive(request: HttpRequest, pk: int) -> HttpResponse:
+    from users.models import UserNotification
+
+    notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    notif.archive()
+    return _notif_action_response(
+        request,
+        ok=True,
+        action="archive",
+        message="Notification archivée.",
+    )
+
+
+@login_required
+@require_POST
+def account_notification_unarchive(request: HttpRequest, pk: int) -> HttpResponse:
+    from users.models import UserNotification
+
+    notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
+    if notif.unarchive():
+        return _notif_action_response(
+            request,
+            ok=True,
+            action="unarchive",
+            message="Notification remise dans le salon.",
+        )
+    return _notif_action_response(
+        request,
+        ok=False,
+        action="unarchive",
+        message="Cette notification n’était pas archivée.",
+    )
 
 
 @login_required
@@ -517,10 +599,18 @@ def account_notification_mark_responded(request: HttpRequest, pk: int) -> HttpRe
 
     notif = get_object_or_404(UserNotification, pk=pk, user=request.user)
     if notif.mark_responded():
-        messages.success(request, "Notification marquée comme répondue.")
-    else:
-        messages.info(request, "Cette notification n’attend pas de réponse.")
-    return redirect(_notifications_redirect(request))
+        return _notif_action_response(
+            request,
+            ok=True,
+            action="mark_responded",
+            message="Notification marquée comme répondue.",
+        )
+    return _notif_action_response(
+        request,
+        ok=False,
+        action="mark_responded",
+        message="Cette notification n’attend pas de réponse.",
+    )
 
 
 @login_required
@@ -531,19 +621,25 @@ def account_notifications_mark_all_read(request: HttpRequest) -> HttpResponse:
     from users.models import UserNotification
 
     n = UserNotification.objects.filter(
-        user=request.user, read_at__isnull=True
+        user=request.user, read_at__isnull=True, archived_at__isnull=True
     ).update(read_at=timezone.now())
     if n:
         from users.notify import invalidate_nav_banner
 
         invalidate_nav_banner(request.user)
-        messages.success(
-            request,
-            f"{n} notification{'s' if n != 1 else ''} marquée{'s' if n != 1 else ''} comme lue{'s' if n != 1 else ''}.",
+        msg = (
+            f"{n} notification{'s' if n != 1 else ''} "
+            f"marquée{'s' if n != 1 else ''} comme lue{'s' if n != 1 else ''}."
         )
-    else:
-        messages.info(request, "Aucune notification non lue.")
-    return redirect(_notifications_redirect(request))
+        return _notif_action_response(
+            request, ok=True, action="mark_all_read", message=msg
+        )
+    return _notif_action_response(
+        request,
+        ok=False,
+        action="mark_all_read",
+        message="Aucune notification non lue.",
+    )
 
 
 @login_required

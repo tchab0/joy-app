@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load static %}
+{% load notif_format %}
 {% block title %}Mes notifications — JOY{% endblock %}
 {% block extra_css %}
 <style>
@@ -9,10 +11,92 @@
   }
   .notif-toolbar .btn { min-height:44px; }
   .notif-counts { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .notif-hint {
+    margin: 0 0 1rem;
+    color: var(--muted);
+    font-size: .88rem;
+    line-height: 1.4;
+  }
   .notif-list { display:flex; flex-direction:column; gap:.85rem; }
+  .notif-swipe {
+    position: relative;
+    border-radius: var(--r);
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  .notif-swipe [data-notif-card] {
+    touch-action: pan-y;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .notif-swipe.is-dragging [data-notif-card] {
+    cursor: grabbing;
+  }
+  .notif-swipe .notif-item__tap,
+  .notif-swipe .notif-item__body,
+  .notif-swipe h2 {
+    -webkit-user-drag: none;
+  }
+  .notif-swipe__bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: stretch;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .notif-swipe__side {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+  .notif-swipe__side--read {
+    justify-content: flex-start;
+    background: color-mix(in srgb, var(--ok) 22%, var(--surface));
+    color: var(--ok);
+  }
+  .notif-swipe__side--archive {
+    justify-content: flex-end;
+    background: color-mix(in srgb, var(--muted) 28%, var(--surface));
+    color: var(--text);
+  }
+  .notif-swipe.is-swiping-right .notif-swipe__side--read,
+  .notif-swipe.is-swiping-left .notif-swipe__side--archive {
+    opacity: 1;
+  }
   .notif-item {
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
-    padding:1rem 1.1rem; color:var(--text);
+    position: relative;
+    z-index: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 1rem 1.1rem;
+    color: var(--text);
+    will-change: transform;
+    transition: transform .18s ease, opacity .18s ease, max-height .22s ease, margin .22s ease, padding .22s ease, border-width .22s ease;
+  }
+  .notif-swipe.is-dragging .notif-item {
+    transition: none;
+  }
+  .notif-swipe.is-leaving-right .notif-item,
+  .notif-swipe.is-leaving-left .notif-item {
+    opacity: 0;
+  }
+  .notif-swipe.is-leaving-right .notif-item { transform: translateX(110%) !important; }
+  .notif-swipe.is-leaving-left .notif-item { transform: translateX(-110%) !important; }
+  .notif-swipe.is-gone {
+    max-height: 0 !important;
+    margin: 0 !important;
+    opacity: 0;
+    pointer-events: none;
   }
   .notif-item.is-unread {
     border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
@@ -48,13 +132,29 @@
   .notif-item h2 {
     font-family:var(--font-d); font-size:1.1rem; margin:0 0 .35rem; color:var(--text);
   }
-  .notif-item__body { margin:0; white-space:pre-wrap; font-size:.95rem; }
+  .notif-item__body { margin:0; font-size:.95rem; }
+  .notif-item__body p { margin:0 0 .55rem; }
+  .notif-item__body p:last-child { margin-bottom:0; }
+  .notif-item__body ul {
+    margin:.35rem 0 .55rem;
+    padding-left:1.15rem;
+  }
+  .notif-item__body li { margin:.15rem 0; }
+  .notif-item__body a {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .notif-item__tap {
     display:block; color:inherit; text-decoration:none;
-    margin:0 0 .35rem;
+    margin:0 0 .35rem; cursor: pointer;
   }
   .notif-item__tap:hover h2,
   .notif-item__tap:focus-visible h2 { color:var(--accent); }
+  .notif-item[data-href],
+  .notif-item { cursor: grab; }
+  .notif-swipe.is-dragging .notif-item { cursor: grabbing; }
   .notif-item__cta {
     display:inline-block; margin-top:.45rem;
     color:var(--accent); font-weight:600; font-size:.9rem;
@@ -72,19 +172,35 @@
     border-radius:var(--r); background:var(--bg); border:1px solid var(--border);
     color:var(--text); font-size:.9rem;
   }
+  .badge-stat.is-active {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    color: var(--accent);
+    font-weight: 600;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notif-item,
+    .notif-swipe__side { transition: none; }
+  }
 </style>
 {% endblock %}
 {% block content %}
 <section class="section">
-  <div class="container notif-page">
-    <h1 class="section-title">Mes notifications</h1>
+  <div class="container notif-page"
+       data-notif-page
+       data-csrf="{{ csrf_token }}">
+    <h1 class="section-title">{% if show_archives %}Archives{% else %}Mes notifications{% endif %}</h1>
     <div class="notif-toolbar">
       <div class="notif-counts">
-        <span class="badge-stat">{{ unread_count }} non lue{{ unread_count|pluralize }}</span>
+        <a class="badge-stat{% if not show_archives %} is-active{% endif %}" href="{% url 'account_notifications' %}">
+          Salon · {{ unread_count }} non lue{{ unread_count|pluralize }}
+        </a>
         <span class="badge-stat">{{ unanswered_count }} non répondue{{ unanswered_count|pluralize }}</span>
+        <a class="badge-stat{% if show_archives %} is-active{% endif %}" href="{% url 'account_notifications' %}?vue=archives">
+          Archives{% if archived_count %} · {{ archived_count }}{% endif %}
+        </a>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:.5rem">
-        {% if unread_count %}
+        {% if unread_count and not show_archives %}
         <form method="post" action="{% url 'account_notifications_mark_all_read' %}">
           {% csrf_token %}
           <button type="submit" class="btn btn-outline">Tout marquer lu</button>
@@ -97,50 +213,95 @@
       </div>
     </div>
 
+    {% if not show_archives %}
+    <p class="notif-hint">Glisser à droite pour marquer lue · à gauche pour archiver.</p>
+    {% else %}
+    <p class="notif-hint">Notifications archivées — absentes du salon jusqu’à désarchivage.</p>
+    {% endif %}
+
     {% if notifications %}
-      <div class="notif-list">
+      <div class="notif-list" data-notif-list>
         {% for item in notifications %}
-          <article class="notif-item {% if item.is_unread %}is-unread{% elif item.is_unanswered %}is-unanswered{% endif %}{% if item.is_staff_destined %} notif-item--staff{% endif %}">
-            <p class="notif-item__meta">
-              {{ item.created_at|date:"d/m/Y H:i" }}
-              · {% if item.is_unread %}Non lue{% else %}Lue{% endif %}
-              {% if item.requires_response %}
-                · {% if item.is_unanswered %}Non répondue{% else %}Répondue{% endif %}
-              {% endif %}
-            </p>
-            {% if item.is_unanswered %}
-              <span class="notif-item__action-label">À répondre</span>
-            {% endif %}
-            {% if item.url %}
-              <a class="notif-item__tap" href="{% url 'account_notification_open' item.pk %}">
-                <h2>{{ item.title }}</h2>
-                <p class="notif-item__body">{{ item.body }}</p>
-                <span class="notif-item__cta">{% if item.is_unanswered %}Répondre maintenant →{% else %}Voir le contenu →{% endif %}</span>
-              </a>
-            {% else %}
-              <h2>{{ item.title }}</h2>
-              <p class="notif-item__body">{{ item.body }}</p>
-            {% endif %}
-            <div class="notif-item__actions">
-              {% if item.is_unread %}
-              <form method="post" action="{% url 'account_notification_mark_read' item.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline">Marquer lue</button>
-              </form>
-              {% endif %}
-              {% if item.is_unanswered %}
-              <form method="post" action="{% url 'account_notification_mark_responded' item.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline">Marquer répondue</button>
-              </form>
-              {% endif %}
+          <div class="notif-swipe"
+               data-notif-swipe
+               data-notif-id="{{ item.pk }}"
+               data-mark-read-url="{% url 'account_notification_mark_read' item.pk %}"
+               data-archive-url="{% url 'account_notification_archive' item.pk %}"
+               data-unarchive-url="{% url 'account_notification_unarchive' item.pk %}"
+               data-archived="{% if show_archives %}1{% else %}0{% endif %}">
+            {% if not show_archives %}
+            <div class="notif-swipe__bg" aria-hidden="true">
+              <span class="notif-swipe__side notif-swipe__side--read">Lue</span>
+              <span class="notif-swipe__side notif-swipe__side--archive">Archiver</span>
             </div>
-          </article>
+            {% endif %}
+            <article class="notif-item {% if item.is_unread %}is-unread{% elif item.is_unanswered %}is-unanswered{% endif %}{% if item.is_staff_destined %} notif-item--staff{% endif %}"
+                     data-notif-card
+                     {% if item.url and not show_archives %}data-href="{% url 'account_notification_open' item.pk %}"{% endif %}>
+              <p class="notif-item__meta">
+                {{ item.created_at|date:"d/m/Y H:i" }}
+                · {% if item.is_unread %}Non lue{% else %}Lue{% endif %}
+                {% if item.requires_response %}
+                  · {% if item.is_unanswered %}Non répondue{% else %}Répondue{% endif %}
+                {% endif %}
+                {% if show_archives %} · Archivée{% endif %}
+              </p>
+              {% if item.is_unanswered and not show_archives %}
+                <span class="notif-item__action-label">À répondre</span>
+              {% endif %}
+              {% if item.url %}
+                <div class="notif-item__tap"
+                     data-href="{% url 'account_notification_open' item.pk %}">
+                  <h2>{{ item.title }}</h2>
+                  <div class="notif-item__body">{{ item.body|notif_body_html }}</div>
+                  <span class="notif-item__cta">{% if item.is_unanswered %}Répondre maintenant →{% else %}Voir le contenu →{% endif %}</span>
+                </div>
+              {% else %}
+                <h2>{{ item.title }}</h2>
+                <div class="notif-item__body">{{ item.body|notif_body_html }}</div>
+              {% endif %}
+              <div class="notif-item__actions">
+                {% if show_archives %}
+                <form method="post" action="{% url 'account_notification_unarchive' item.pk %}" data-notif-form="unarchive">
+                  {% csrf_token %}
+                  <input type="hidden" name="vue" value="archives">
+                  <button type="submit" class="btn btn-outline">Remettre au salon</button>
+                </form>
+                {% else %}
+                  {% if item.is_unread %}
+                  <form method="post" action="{% url 'account_notification_mark_read' item.pk %}" data-notif-form="mark_read">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline">Marquer lue</button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="{% url 'account_notification_archive' item.pk %}" data-notif-form="archive">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline">Archiver</button>
+                  </form>
+                  {% if item.is_unanswered %}
+                  <form method="post" action="{% url 'account_notification_mark_responded' item.pk %}" data-notif-form="mark_responded">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline">Marquer répondue</button>
+                  </form>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </article>
+          </div>
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state">Aucune notification pour le moment.</div>
+      <div class="empty-state">
+        {% if show_archives %}
+          Aucune notification archivée.
+        {% else %}
+          Aucune notification pour le moment.
+        {% endif %}
+      </div>
     {% endif %}
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'users/notifications.js' %}?v=3" defer></script>
 {% endblock %}

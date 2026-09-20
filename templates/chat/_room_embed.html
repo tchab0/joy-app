@@ -21,11 +21,16 @@ embedded (True), show_chat_chrome (False on poll), compact (False), show_staff_p
        apiDeleteUrl: '{{ api_delete_url|escapejs }}',
        apiMembersUrl: '{{ api_members_url|escapejs }}',
        apiReadUrl: '{{ api_read_url|escapejs }}',
+       apiArchiveUrl: '{{ api_archive_url|default:""|escapejs }}',
+       archiveEnabled: {{ archive_enabled|default:False|yesno:'true,false' }},
+       archiveFocusId: {% if archive_focus_id %}{{ archive_focus_id }}{% else %}null{% endif %},
        csrfToken: '{{ csrf_token }}',
        initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
        embedded: {{ embedded|yesno:'true,false' }},
        roomId: {{ room.pk }},
        isRehearsalRoom: {{ is_rehearsal_room|yesno:'true,false' }},
+       threadsMode: {{ threads_mode|default:False|yesno:'true,false' }},
+       activeThreadEventId: {% if active_thread_event_id %}{{ active_thread_event_id }}{% else %}null{% endif %},
        composerPlaceholder: '{{ composer_placeholder|default:"Message… — @ pour mentionner"|escapejs }}'
      })"
      x-init="init()"

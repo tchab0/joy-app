@@ -1,0 +1,19 @@
+{# En-tête d’un fil répétition ouvert. #}
+{% if active_thread %}
+<header class="chat-thread-bar" aria-label="Fil de la répétition">
+  <div class="chat-thread-bar__text">
+    <p class="chat-thread-bar__when">{{ active_thread.when_label }}</p>
+    <p class="chat-thread-bar__title">{{ active_thread.title }}</p>
+    <p class="chat-thread-bar__meta">
+      {% if active_thread.n_setlist %}
+      Setlist · {{ active_thread.n_setlist }} morceau{{ active_thread.n_setlist|pluralize:"x" }}
+      {% else %}
+      Setlist · pas encore de morceaux
+      {% endif %}
+    </p>
+  </div>
+  <a class="chat-thread-bar__link" href="{{ active_thread.detail_url }}">
+    Voir la fiche →
+  </a>
+</header>
+{% endif %}

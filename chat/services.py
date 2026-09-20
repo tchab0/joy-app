@@ -579,6 +579,99 @@ def ensure_event_room(event) -> ChatRoom:
     return room
 
 
+def post_event_notification_to_room(
+    event,
+    *,
+    title: str,
+    body: str,
+    created_at=None,
+    skip_digest: bool = True,
+    idempotent: bool = True,
+) -> ChatMessage | None:
+    """
+    Publie une notification événement dans le salon concert correspondant,
+    pour que les musiciens puissent y répondre.
+
+    - Message système (auteur « Système »), sans push chat dédié.
+    - ``skip_digest`` : avance ``last_digested_message_id`` (évite un 2ᵉ digest
+      salon alors que la notif push/e-mail a déjà été envoyée).
+    - ``idempotent`` : ne republie pas si le même titre est déjà dans le salon.
+    - ``created_at`` : horodatage forcé (ex. rattrapage d’une notif déjà partie).
+    """
+    if getattr(event, "is_rehearsal", False):
+        return None
+
+    title = (title or "").strip()
+    body = (body or "").strip()
+    if not title and not body:
+        return None
+
+    try:
+        room = ensure_event_room(event)
+    except Exception:
+        logger.exception(
+            "post_event_notification_to_room: salon indisponible event_id=%s",
+            getattr(event, "pk", None),
+        )
+        return None
+
+    # Titre en heading markdown pour le salon (gras / hiérarchie visuelle).
+    if title and body:
+        chat_body = f"## {title}\n\n{body}".strip()
+    else:
+        chat_body = (f"## {title}" if title else body).strip()
+
+    if idempotent and title:
+        from django.db.models import Q
+
+        prefixes = [title, f"## {title}"]
+        # Anciens titres sans emoji trompette (avant formatage enrichi).
+        if title.startswith("🎺"):
+            bare = title[1:].lstrip()
+            if bare:
+                prefixes.extend([bare, f"## {bare}"])
+        prefix_q = Q()
+        for prefix in prefixes:
+            prefix_q |= Q(body__startswith=prefix)
+
+        existing = (
+            ChatMessage.objects.filter(
+                room=room,
+                kind=ChatMessage.Kind.SYSTEM,
+                deleted_at__isnull=True,
+            )
+            .filter(prefix_q)
+            .order_by("pk")
+            .first()
+        )
+        if existing is not None:
+            return existing
+
+    try:
+        message = post_message(
+            room=room,
+            author=None,
+            body=chat_body,
+            kind=ChatMessage.Kind.SYSTEM,
+            require_thread=False,
+        )
+    except Exception:
+        logger.exception(
+            "post_event_notification_to_room: échec post event_id=%s",
+            getattr(event, "pk", None),
+        )
+        return None
+
+    if created_at is not None and message is not None:
+        ChatMessage.objects.filter(pk=message.pk).update(created_at=created_at)
+        message.created_at = created_at
+
+    if skip_digest and message is not None:
+        _mark_digested_through(room, message.pk)
+
+    return message
+
+
 def is_thematic_room(room: ChatRoom) -> bool:
     """Salon thématique créé par le staff (kind=thematic)."""
     return room.kind == ChatRoom.Kind.THEMATIC

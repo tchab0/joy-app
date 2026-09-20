@@ -9,14 +9,14 @@
 
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="repes" %}
+
   <header class="pl-head">
     <h1>Répétitions</h1>
     {% page_lead "repetitions.staff_list" class="page-lead--in-head" %}
       Planifier les répé, setlist et présences.
     {% endpage_lead %}
   </header>
-
-  {% include "planning/_module_nav.html" with active="repes" %}
 
   <div style="margin-bottom:1.25rem">
     <a class="pl-btn pl-btn--primary" href="{% url 'repetitions:staff_create' %}">+ Nouvelle répétition</a>

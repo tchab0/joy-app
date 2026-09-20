@@ -7,11 +7,12 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import PushSubscription
+from .pwa_icons import icon_192_path, icon_512_path, inject_sw_icon_version
 from .webpush import vapid_configured, vapid_public_key
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,9 @@ def service_worker(request: HttpRequest) -> HttpResponse:
     """Service worker à la racine pour un scope « / »."""
     if not _SW_PATH.is_file():
         return HttpResponse("// missing sw.js", status=404, content_type="application/javascript")
-    resp = FileResponse(_SW_PATH.open("rb"), content_type="application/javascript")
+    source = _SW_PATH.read_text(encoding="utf-8")
+    body = inject_sw_icon_version(source)
+    resp = HttpResponse(body, content_type="application/javascript")
     resp["Service-Worker-Allowed"] = "/"
     resp["Cache-Control"] = "no-cache"
     return resp
@@ -44,13 +47,13 @@ def web_manifest(request: HttpRequest) -> HttpResponse:
         "lang": "fr",
         "icons": [
             {
-                "src": "/static/users/icons/icon-192.png",
+                "src": icon_192_path(),
                 "sizes": "192x192",
                 "type": "image/png",
                 "purpose": "any",
             },
             {
-                "src": "/static/users/icons/icon-512.png",
+                "src": icon_512_path(),
                 "sizes": "512x512",
                 "type": "image/png",
                 "purpose": "any maskable",

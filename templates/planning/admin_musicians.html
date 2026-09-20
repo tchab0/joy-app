@@ -30,6 +30,8 @@
 {% endblock %}
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="musiciens" %}
+
   <header class="pl-head" data-tour="staff-musiciens">
     <div class="pl-head__row">
       <div>
@@ -41,8 +43,6 @@
       <a href="{% url 'planning:admin_musician_add' %}" class="btn btn-primary">+ Ajouter</a>
     </div>
   </header>
-
-  {% include "planning/_module_nav.html" with active="musiciens" %}
 
   {% if profiles %}
   <table class="admin-table">

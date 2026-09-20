@@ -1,4 +1,5 @@
 from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.signals import user_logged_in
 from django.core.cache import cache
 from django.db.models.signals import post_delete, post_migrate, post_save
 from django.dispatch import receiver
@@ -25,6 +26,14 @@ def user_sync_groups(sender, instance: User, created, update_fields=None, **kwar
         return
     if update_fields is None or _ROLE_FIELDS.intersection(update_fields):
         sync_user_groups(instance)
+
+
+@receiver(user_logged_in)
+def user_touch_last_seen_on_login(sender, request, user, **kwargs):
+    """Align last_seen_at sur le login formulaire (force, hors throttle session)."""
+    from stats.tracking import touch_last_seen
+
+    touch_last_seen(request=request, user=user, force=True)
 
 
 @receiver(post_migrate)

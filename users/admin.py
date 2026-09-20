@@ -88,12 +88,19 @@ class UserNotificationAdmin(admin.ModelAdmin):
         "user",
         "created_at",
         "read_at",
+        "archived_at",
         "requires_response",
         "responded_at",
         "is_unread_display",
         "is_unanswered_display",
     )
-    list_filter = ("requires_response", "created_at", "read_at", "responded_at")
+    list_filter = (
+        "requires_response",
+        "created_at",
+        "read_at",
+        "archived_at",
+        "responded_at",
+    )
     search_fields = ("title", "body", "user__username", "user__email")
     raw_id_fields = ("user",)
     readonly_fields = ("created_at",)

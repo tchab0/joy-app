@@ -44,6 +44,16 @@ urlpatterns = [
         name="account_notification_mark_read",
     ),
     path(
+        "notifications/<int:pk>/archiver/",
+        views.account_notification_archive,
+        name="account_notification_archive",
+    ),
+    path(
+        "notifications/<int:pk>/desarchiver/",
+        views.account_notification_unarchive,
+        name="account_notification_unarchive",
+    ),
+    path(
         "notifications/<int:pk>/repondu/",
         views.account_notification_mark_responded,
         name="account_notification_mark_responded",

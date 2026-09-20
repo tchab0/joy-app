@@ -51,7 +51,15 @@
     if (!("serviceWorker" in navigator)) {
       throw new Error("sw_unsupported");
     }
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const reg = await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    });
+    try {
+      await reg.update();
+    } catch (_) {
+      /* ignore */
+    }
     await navigator.serviceWorker.ready;
     return reg;
   }

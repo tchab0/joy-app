@@ -230,6 +230,81 @@ class StaffUnreadNotificationsTests(TestCase):
         notif.refresh_from_db()
         self.assertIsNotNone(notif.read_at)
 
+    def test_musician_can_archive_and_hide_from_salon(self):
+        notify_users(
+            [self.musician], title="À ranger", body="Plus tard", url="/planning/"
+        )
+        notif = UserNotification.objects.get(user=self.musician)
+        self.client.force_login(self.musician)
+
+        r = self.client.post(
+            reverse("account_notification_archive", args=[notif.pk]),
+        )
+        self.assertRedirects(r, reverse("account_notifications"))
+        notif.refresh_from_db()
+        self.assertIsNotNone(notif.archived_at)
+        self.assertIsNotNone(notif.read_at)
+
+        salon = self.client.get(reverse("account_notifications"))
+        self.assertEqual(salon.status_code, 200)
+        self.assertNotContains(salon, "À ranger")
+        self.assertEqual(salon.context["unread_count"], 0)
+
+        archives = self.client.get(
+            reverse("account_notifications") + "?vue=archives"
+        )
+        self.assertEqual(archives.status_code, 200)
+        self.assertContains(archives, "À ranger")
+        self.assertTrue(archives.context["show_archives"])
+
+        r2 = self.client.post(
+            reverse("account_notification_unarchive", args=[notif.pk]),
+            {"vue": "archives"},
+        )
+        self.assertRedirects(
+            r2, reverse("account_notifications") + "?vue=archives"
+        )
+        notif.refresh_from_db()
+        self.assertIsNone(notif.archived_at)
+        self.assertIsNone(notif.read_at)
+        salon2 = self.client.get(reverse("account_notifications"))
+        self.assertContains(salon2, "À ranger")
+        self.assertEqual(salon2.context["unread_count"], 1)
+
+    def test_archive_json_and_excludes_from_unread_banner(self):
+        notify_users(
+            [self.musician],
+            title="Swipe archive",
+            body="body",
+            url="/planning/",
+        )
+        notif = UserNotification.objects.get(user=self.musician)
+        self.client.force_login(self.musician)
+        r = self.client.post(
+            reverse("account_notification_archive", args=[notif.pk]),
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        dash = self.client.get(reverse("planning:dashboard"))
+        self.assertFalse(dash.context["show_coulisses_unread_banner"])
+        self.assertEqual(dash.context["unread_inbox_count"], 0)
+
+    def test_mark_read_json_hides_from_salon(self):
+        notify_users(
+            [self.musician], title="Info lue", body="ok", url="/planning/"
+        )
+        notif = UserNotification.objects.get(user=self.musician)
+        self.client.force_login(self.musician)
+        r = self.client.post(
+            reverse("account_notification_mark_read", args=[notif.pk]),
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["action"], "mark_read")
+        salon = self.client.get(reverse("account_notifications"))
+        self.assertNotContains(salon, "Info lue")
+
     def test_coulisses_planning_shows_unread_before_calendar(self):
         notify_users(
             [self.musician],
@@ -244,10 +319,10 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertEqual(r.context["unread_inbox_count"], 1)
         self.assertContains(r, "Invite Coulisses")
         self.assertContains(r, "notification non lue")
-        # Bannière avant le titre Planning du calendrier.
+        # Bannière avant la nav / contenu Planning.
         self.assertLess(
             r.content.find(b"Invite Coulisses"),
-            r.content.find(b"<h1>Planning</h1>"),
+            r.content.find(b'pl-nav__label">Planning'),
         )
 
     def test_coulisses_chat_unread_grouped_as_messages(self):
@@ -281,17 +356,20 @@ class StaffUnreadNotificationsTests(TestCase):
         banner = r.context["unread_inbox_banner"]
         self.assertEqual(banner["chat_total"], 3)
         self.assertEqual(len(banner["chat_groups"]), 2)
-        self.assertContains(r, "messages non lus")
+        self.assertContains(r, "3 notifications non lues")
+        self.assertContains(r, "Tout marquer lu")
+        self.assertNotContains(r, ">Toutes</a>")
+        self.assertNotContains(r, "messages non lus")
         self.assertContains(r, "Salon orchestre")
         self.assertContains(r, "Répétition")
         self.assertContains(r, "Bob vous a cité dans Salon orchestre")
         self.assertNotContains(r, "Alice vous a cité dans Salon orchestre : hello")
 
     def test_coulisses_action_notifications_shown_before_chat(self):
-        """Sondage / événement à répondre : bloc action bien visible, avant le chat."""
+        """Sondage / événement à répondre : listés avant le chat, avec point."""
         notify_users(
             [self.musician],
-            title="JOY — À répondre · Événement confirmé",
+            title="JOY — Événement confirmé",
             body="Événement confirmé : « Concert » (01/10/2026 20:00).",
             url="/planning/1/",
             requires_response=True,
@@ -312,13 +390,71 @@ class StaffUnreadNotificationsTests(TestCase):
         banner = r.context["unread_inbox_banner"]
         self.assertEqual(len(banner["action"]), 1)
         self.assertEqual(banner["chat_total"], 1)
-        self.assertContains(r, "À répondre")
+        self.assertContains(r, "pl-notif-banner__dot--action")
         self.assertContains(r, "Événement confirmé")
+        self.assertNotContains(r, "pl-notif-banner__action-label")
         body = r.content.decode()
         self.assertLess(
             body.find("Événement confirmé"),
             body.find("Salon orchestre"),
         )
+
+    def test_coulisses_chat_groups_expose_room_kind(self):
+        from chat.models import ChatRoom
+        from chat.services import (
+            ensure_orchestra_room,
+            ensure_rehearsals_room,
+            ensure_staff_room,
+        )
+        from users.notify import (
+            group_unread_inbox_for_banner,
+            unread_notifications_for_user,
+        )
+
+        orch = ensure_orchestra_room()
+        rehearse = ensure_rehearsals_room()
+        private = ChatRoom.objects.create(
+            kind=ChatRoom.Kind.EVENT, title="Privé · Alice"
+        )
+        piece = ChatRoom.objects.create(
+            kind=ChatRoom.Kind.PIECE, title="Morceau · Take Five"
+        )
+        staff_room = ensure_staff_room()
+
+        for room, body in (
+            (orch, "msg orchestre"),
+            (rehearse, "msg répé"),
+            (private, "msg privé"),
+            (piece, "msg morceau"),
+            (staff_room, "msg staff"),
+        ):
+            notify_users(
+                [self.musician],
+                title=f"JOY — {room.title}",
+                body=body,
+                url=f"/chat/{room.pk}/",
+                related_type="chat_msg",
+                related_id=room.pk,
+            )
+
+        unread, _ = unread_notifications_for_user(self.musician)
+        banner = group_unread_inbox_for_banner(unread)
+        by_label = {g["label"]: g for g in banner["chat_groups"]}
+        self.assertEqual(by_label[orch.title]["kind"], "orchestra")
+        self.assertEqual(by_label[rehearse.title]["kind"], "rehearsals")
+        self.assertEqual(by_label["Privé · Alice"]["kind"], "private")
+        self.assertEqual(by_label["Morceau · Take Five"]["kind"], "piece")
+        self.assertEqual(by_label[staff_room.title]["kind"], "staff")
+        self.assertTrue(by_label[staff_room.title]["is_staff"])
+
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("planning:dashboard"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "pl-notif-banner__dot--chat-orchestra")
+        self.assertContains(r, "pl-notif-banner__dot--chat-rehearsals")
+        self.assertContains(r, "pl-notif-banner__dot--chat-private")
+        self.assertContains(r, "pl-notif-banner__dot--chat-piece")
+        self.assertContains(r, "pl-notif-banner__dot--chat-staff")
 
     def test_home_hides_coulisses_unread_banner(self):
         notify_users(

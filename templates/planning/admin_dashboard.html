@@ -9,14 +9,14 @@
 
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="admin" %}
+
   <header class="pl-head" data-tour="staff-admin">
     <h1>Admin planning</h1>
     {% page_lead "planning.admin_dashboard" class="page-lead--in-head" %}
       Effectifs, sondages et matériel.
     {% endpage_lead %}
   </header>
-
-  {% include "planning/_module_nav.html" with active="admin" %}
 
   <section class="pl-section">
     <h2>Nouveau sondage de dates</h2>

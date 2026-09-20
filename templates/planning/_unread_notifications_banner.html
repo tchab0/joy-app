@@ -1,10 +1,11 @@
-{# Bannière Coulisses : actions (sondage / événement) d’abord, puis chat, puis le reste. #}
+{# Bannière Coulisses : compteur + tout marquer lu, puis liste à points (swipe). #}
+{% load static %}
 {% if show_coulisses_unread_banner and unread_inbox %}
 <style>
   .pl-notif-banner {
     margin: 0 auto;
     max-width: 100%;
-    padding: .75rem 1rem .85rem;
+    padding: .65rem 1rem .75rem;
     border-bottom: 1px solid rgba(var(--accent-rgb), .14);
     background: rgba(var(--accent-rgb), .05);
     color: var(--text);
@@ -16,162 +17,249 @@
   }
   .pl-notif-banner__head {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: .5rem .75rem;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: .65rem;
+    margin: 0 0 .45rem;
   }
   .pl-notif-banner__title {
     font-family: var(--font-d);
-    font-size: 1.05rem;
+    font-size: .98rem;
     margin: 0;
     color: var(--text);
+    flex: 1;
+    min-width: 0;
   }
-  .pl-notif-banner__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .4rem;
+  .pl-notif-banner__mark {
+    flex-shrink: 0;
+    margin: 0;
   }
-  .pl-notif-banner__actions .btn {
-    min-height: 44px;
-    padding: .45rem .85rem;
-    font-size: .85rem;
-  }
-  .pl-notif-banner__body {
-    margin: .55rem 0 0;
-    font-size: .92rem;
-    line-height: 1.45;
-    color: var(--text);
-  }
-  .pl-notif-banner__body a {
-    color: var(--accent);
+  .pl-notif-banner__mark .btn {
+    min-height: 0;
+    padding: .2rem .55rem;
+    font-size: .75rem;
     font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    line-height: 1.2;
   }
-  .pl-notif-banner__body a:hover,
-  .pl-notif-banner__body a:focus-visible {
-    color: var(--accent-h);
-  }
-  .pl-notif-banner__sep {
+  .pl-notif-banner__hint {
+    margin: 0 0 .45rem;
     color: var(--muted);
-    font-weight: 400;
+    font-size: .78rem;
+    line-height: 1.35;
   }
-  .pl-notif-banner__action {
-    margin: .65rem 0 0;
-    padding: .7rem .85rem;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: .55rem;
-    border: 2px solid color-mix(in srgb, var(--accent) 55%, var(--border));
-    border-radius: var(--r);
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  }
-  .pl-notif-banner__action li {
-    font-size: .95rem;
-    line-height: 1.4;
-    color: var(--text);
-  }
-  .pl-notif-banner__action-label {
-    display: inline-block;
-    margin: 0 0 .2rem;
-    font-size: .72rem;
-    font-weight: 700;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  .pl-notif-banner__action a {
-    color: var(--accent);
-    font-weight: 700;
-    font-size: 1.02rem;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .pl-notif-banner__action a:hover,
-  .pl-notif-banner__action a:focus-visible {
-    color: var(--accent-h);
-  }
-  .pl-notif-banner__action a.is-staff {
-    color: var(--staff);
-  }
-  .pl-notif-banner__action a.is-staff:hover,
-  .pl-notif-banner__action a.is-staff:focus-visible {
-    color: var(--staff-h);
-  }
-  .pl-notif-banner__chat {
-    margin: .55rem 0 0;
+  .pl-notif-banner__list {
+    margin: 0;
     padding: 0;
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: .4rem;
+    gap: .45rem;
   }
-  .pl-notif-banner__chat li {
-    font-size: .9rem;
-    line-height: 1.4;
+  .pl-notif-swipe {
+    position: relative;
+    border-radius: var(--r);
+    overflow: hidden;
+    touch-action: pan-y;
+    background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  }
+  .pl-notif-swipe__bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: stretch;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .pl-notif-swipe__side {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 .85rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+  .pl-notif-swipe__side--read {
+    justify-content: flex-start;
+    background: color-mix(in srgb, var(--ok) 22%, var(--surface));
+    color: var(--ok);
+  }
+  .pl-notif-swipe__side--archive {
+    justify-content: flex-end;
+    background: color-mix(in srgb, var(--muted) 28%, var(--surface));
     color: var(--text);
   }
-  .pl-notif-banner__chat a {
+  .pl-notif-swipe.is-swiping-right .pl-notif-swipe__side--read,
+  .pl-notif-swipe.is-swiping-left .pl-notif-swipe__side--archive {
+    opacity: 1;
+  }
+  .pl-notif-swipe.is-leaving-right [data-notif-card],
+  .pl-notif-swipe.is-leaving-left [data-notif-card] {
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .pl-notif-swipe.is-gone {
+    max-height: 0 !important;
+    margin: 0 !important;
+    border-width: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .pl-notif-banner__row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    padding: .55rem .7rem;
+    background: var(--surface);
+    color: var(--text);
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
+    will-change: transform;
+  }
+  .pl-notif-swipe.is-dragging .pl-notif-banner__row {
+    cursor: grabbing;
+    transition: none;
+  }
+  .pl-notif-banner__row-body {
+    min-width: 0;
+    flex: 1;
+  }
+  .pl-notif-banner__title-link {
     color: var(--accent);
     font-weight: 600;
+    font-size: .9rem;
+    line-height: 1.4;
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .pl-notif-banner__chat a:hover,
-  .pl-notif-banner__chat a:focus-visible {
-    color: var(--accent-h);
-  }
-  .pl-notif-banner__chat a.is-staff,
-  .pl-notif-banner__other a.is-staff {
+  .pl-notif-banner__title-link.is-staff {
     color: var(--staff);
-  }
-  .pl-notif-banner__chat a.is-staff:hover,
-  .pl-notif-banner__chat a.is-staff:focus-visible,
-  .pl-notif-banner__other a.is-staff:hover,
-  .pl-notif-banner__other a.is-staff:focus-visible {
-    color: var(--staff-h);
   }
   .pl-notif-banner__preview {
     display: block;
-    margin-top: .15rem;
-    color: var(--muted);
-    font-size: .85rem;
-    font-weight: 400;
-  }
-  .pl-notif-banner__action .pl-notif-banner__preview {
-    color: var(--text);
-    opacity: .85;
-    font-size: .9rem;
-  }
-  .pl-notif-banner__other {
-    margin: .55rem 0 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: .35rem;
-  }
-  .pl-notif-banner__other li {
-    font-size: .9rem;
-    line-height: 1.4;
-    color: var(--text);
-  }
-  .pl-notif-banner__other a {
-    color: var(--accent);
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .pl-notif-banner__other-meta {
+    margin-top: .1rem;
     color: var(--muted);
     font-size: .82rem;
+    font-weight: 400;
+  }
+  .pl-notif-banner__dot {
+    display: inline-block;
+    width: .55rem;
+    height: .55rem;
+    margin-top: .4rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .4);
+    animation: pl-notif-dot-pulse 2.4s ease-in-out infinite;
+  }
+  .pl-notif-banner__dot--action {
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .4);
+  }
+  .pl-notif-banner__dot--chat {
+    background: var(--gold);
+    box-shadow: 0 0 0 0 rgba(200, 149, 77, .4);
+    animation-name: pl-notif-dot-pulse-gold;
+  }
+  .pl-notif-banner__dot--chat-orchestra {
+    background: var(--ok);
+    box-shadow: 0 0 0 0 rgba(42, 107, 60, .35);
+    animation-name: pl-notif-dot-pulse-ok;
+  }
+  .pl-notif-banner__dot--chat-rehearsals {
+    background: var(--gold-text);
+    box-shadow: 0 0 0 0 rgba(141, 95, 22, .35);
+    animation-name: pl-notif-dot-pulse-rehearsal;
+  }
+  .pl-notif-banner__dot--chat-piece {
+    background: var(--gold);
+    box-shadow: 0 0 0 0 rgba(200, 149, 77, .4);
+    animation-name: pl-notif-dot-pulse-gold;
+  }
+  .pl-notif-banner__dot--chat-event {
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .4);
+    animation-name: pl-notif-dot-pulse;
+  }
+  .pl-notif-banner__dot--chat-private {
+    background: var(--muted);
+    box-shadow: 0 0 0 0 rgba(107, 101, 96, .4);
+    animation-name: pl-notif-dot-pulse-muted;
+  }
+  .pl-notif-banner__dot--chat-thematic {
+    background: color-mix(in srgb, var(--accent) 55%, var(--gold));
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .35);
+    animation-name: pl-notif-dot-pulse;
+  }
+  .pl-notif-banner__dot--chat-section {
+    background: color-mix(in srgb, var(--staff) 45%, var(--accent));
+    box-shadow: 0 0 0 0 rgba(var(--staff-rgb), .35);
+    animation-name: pl-notif-dot-pulse-staff;
+  }
+  .pl-notif-banner__dot--chat-staff,
+  .pl-notif-banner__dot--staff {
+    background: var(--staff);
+    box-shadow: 0 0 0 0 rgba(var(--staff-rgb), .4);
+    animation-name: pl-notif-dot-pulse-staff;
+  }
+  .pl-notif-banner__dot--event {
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .35);
+  }
+  .pl-notif-banner__dot--rehearsal {
+    background: var(--gold-text);
+    box-shadow: 0 0 0 0 rgba(141, 95, 22, .35);
+    animation-name: pl-notif-dot-pulse-rehearsal;
+  }
+  .pl-notif-banner__dot--info {
+    background: var(--ok);
+    box-shadow: 0 0 0 0 rgba(42, 107, 60, .35);
+    animation-name: pl-notif-dot-pulse-ok;
+  }
+  @keyframes pl-notif-dot-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .4); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(var(--accent-rgb), 0); }
+  }
+  @keyframes pl-notif-dot-pulse-gold {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(200, 149, 77, .4); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(200, 149, 77, 0); }
+  }
+  @keyframes pl-notif-dot-pulse-staff {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--staff-rgb), .4); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(var(--staff-rgb), 0); }
+  }
+  @keyframes pl-notif-dot-pulse-rehearsal {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(141, 95, 22, .35); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(141, 95, 22, 0); }
+  }
+  @keyframes pl-notif-dot-pulse-ok {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(42, 107, 60, .35); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(42, 107, 60, 0); }
+  }
+  @keyframes pl-notif-dot-pulse-muted {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(107, 101, 96, .4); }
+    50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(107, 101, 96, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pl-notif-banner__dot {
+      animation: none;
+      opacity: 1;
+    }
   }
 </style>
 <aside class="pl-notif-banner"
        role="region"
-       aria-label="Notifications non lues">
+       aria-label="Notifications non lues"
+       data-notif-banner
+       data-csrf="{{ csrf_token }}">
   <div class="pl-notif-banner__head">
     <h2 class="pl-notif-banner__title">
       {% if unread_inbox_count == 1 %}
@@ -180,59 +268,96 @@
         {{ unread_inbox_count }} notifications non lues
       {% endif %}
     </h2>
-    <div class="pl-notif-banner__actions">
-      <form method="post" action="{% url 'account_notifications_mark_all_read' %}">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <button type="submit" class="btn btn-outline">Tout marquer lu</button>
-      </form>
-      <a class="btn btn-outline" href="{% url 'account_notifications' %}">Toutes</a>
-    </div>
+    <form class="pl-notif-banner__mark" method="post" action="{% url 'account_notifications_mark_all_read' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <button type="submit" class="btn btn-outline">Tout marquer lu</button>
+    </form>
   </div>
+  <p class="pl-notif-banner__hint">Glisser à droite = lue · à gauche = archiver</p>
 
-  {% if unread_inbox_banner.action %}
-  <ul class="pl-notif-banner__action">
+  <ul class="pl-notif-banner__list">
     {% for item in unread_inbox_banner.action %}
-    <li>
-      <span class="pl-notif-banner__action-label">À répondre</span>
-      {% if item.url %}
-        <a href="{% url 'account_notification_open' item.pk %}"{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} class="is-staff"{% endif %}>{{ item.title }}</a>
-      {% else %}
-        {{ item.title }}
-      {% endif %}
-      {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:160 }}</span>{% endif %}
+    <li class="pl-notif-swipe"
+        data-notif-swipe
+        data-mark-read-url="{% url 'account_notification_mark_read' item.pk %}"
+        data-archive-url="{% url 'account_notification_archive' item.pk %}">
+      <div class="pl-notif-swipe__bg" aria-hidden="true">
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--read">Lue</span>
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--archive">Archiver</span>
+      </div>
+      <div class="pl-notif-banner__row"
+           data-notif-card
+           {% if item.url %}data-href="{% url 'account_notification_open' item.pk %}"{% endif %}
+           role="{% if item.url %}link{% else %}group{% endif %}"
+           {% if item.url %}tabindex="0"{% endif %}>
+        <span class="pl-notif-banner__dot {% if item.related_type == 'staff_alert' or item.related_type == 'contact' %}pl-notif-banner__dot--staff{% else %}pl-notif-banner__dot--action{% endif %}" aria-hidden="true"></span>
+        <div class="pl-notif-banner__row-body">
+          <span class="pl-notif-banner__title-link{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} is-staff{% endif %}">{{ item.title }}</span>
+          {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:160 }}</span>{% endif %}
+        </div>
+      </div>
     </li>
     {% endfor %}
-  </ul>
-  {% endif %}
 
-  {% if unread_inbox_banner.chat_total %}
-  <p class="pl-notif-banner__body">
-    {% if unread_inbox_banner.chat_total == 1 %}1 message non lu{% else %}{{ unread_inbox_banner.chat_total }} messages non lus{% endif %}{% if unread_inbox_banner.chat_groups %} · {% for g in unread_inbox_banner.chat_groups %}{{ g.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
-  </p>
-  <ul class="pl-notif-banner__chat">
     {% for g in unread_inbox_banner.chat_groups %}
-    <li>
-      <a href="{% url 'account_notification_open' g.open_pk %}"{% if g.is_staff %} class="is-staff"{% endif %}>{{ g.label }}{% if g.count > 1 %} ({{ g.count }}){% endif %}</a>
-      {% if g.preview %}<span class="pl-notif-banner__preview">{{ g.preview }}</span>{% endif %}
+    <li class="pl-notif-swipe"
+        data-notif-swipe
+        data-mark-read-urls="{% for pk in g.pks %}{% url 'account_notification_mark_read' pk %}{% if not forloop.last %} {% endif %}{% endfor %}"
+        data-archive-urls="{% for pk in g.pks %}{% url 'account_notification_archive' pk %}{% if not forloop.last %} {% endif %}{% endfor %}">
+      <div class="pl-notif-swipe__bg" aria-hidden="true">
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--read">Lue</span>
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--archive">Archiver</span>
+      </div>
+      <div class="pl-notif-banner__row"
+           data-notif-card
+           data-href="{% url 'account_notification_open' g.open_pk %}"
+           role="link"
+           tabindex="0">
+        <span class="pl-notif-banner__dot {% if g.kind and g.kind != 'chat' %}pl-notif-banner__dot--chat-{{ g.kind }}{% else %}pl-notif-banner__dot--chat{% endif %}" aria-hidden="true"></span>
+        <div class="pl-notif-banner__row-body">
+          <span class="pl-notif-banner__title-link{% if g.is_staff %} is-staff{% endif %}">{{ g.label }}{% if g.count > 1 %} ({{ g.count }}){% endif %}</span>
+          {% if g.preview %}<span class="pl-notif-banner__preview">{{ g.preview }}</span>{% endif %}
+        </div>
+      </div>
     </li>
     {% endfor %}
-  </ul>
-  {% endif %}
 
-  {% if unread_inbox_banner.other %}
-  <ul class="pl-notif-banner__other">
     {% for item in unread_inbox_banner.other %}
-    <li>
-      {% if item.url %}
-        <a href="{% url 'account_notification_open' item.pk %}"{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} class="is-staff"{% endif %}>{{ item.title }}</a>
-      {% else %}
-        {{ item.title }}
-      {% endif %}
-      {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:140 }}</span>{% endif %}
+    <li class="pl-notif-swipe"
+        data-notif-swipe
+        data-mark-read-url="{% url 'account_notification_mark_read' item.pk %}"
+        data-archive-url="{% url 'account_notification_archive' item.pk %}">
+      <div class="pl-notif-swipe__bg" aria-hidden="true">
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--read">Lue</span>
+        <span class="pl-notif-swipe__side pl-notif-swipe__side--archive">Archiver</span>
+      </div>
+      <div class="pl-notif-banner__row"
+           data-notif-card
+           {% if item.url %}data-href="{% url 'account_notification_open' item.pk %}"{% endif %}
+           role="{% if item.url %}link{% else %}group{% endif %}"
+           {% if item.url %}tabindex="0"{% endif %}>
+        {% if item.related_type == 'staff_alert' or item.related_type == 'contact' or item.related_type == 'feedback' %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--staff" aria-hidden="true"></span>
+        {% elif item.related_type == 'rehearsal' %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--rehearsal" aria-hidden="true"></span>
+        {% elif item.related_type == 'event' or item.related_type == 'participation' %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--event" aria-hidden="true"></span>
+        {% elif item.related_type == 'event_roadmap' or item.related_type == 'photos' %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--info" aria-hidden="true"></span>
+        {% elif item.related_type == 'proposal' %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--action" aria-hidden="true"></span>
+        {% else %}
+          <span class="pl-notif-banner__dot pl-notif-banner__dot--chat" aria-hidden="true"></span>
+        {% endif %}
+        <div class="pl-notif-banner__row-body">
+          <span class="pl-notif-banner__title-link{% if item.related_type == 'staff_alert' or item.related_type == 'contact' %} is-staff{% endif %}">{{ item.title }}</span>
+          {% if item.body %}<span class="pl-notif-banner__preview">{{ item.body|truncatechars:140 }}</span>{% endif %}
+        </div>
+      </div>
     </li>
     {% endfor %}
   </ul>
-  {% endif %}
 </aside>
+<script src="{% static 'users/notifications.js' %}?v=3" defer></script>
 {% endif %}

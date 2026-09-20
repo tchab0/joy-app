@@ -124,6 +124,17 @@ class User(AbstractUser):
         blank=True,
     )
 
+    last_seen_at = models.DateTimeField(
+        "Dernière activité",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Dernière visite authentifiée (session), distincte de last_login "
+            "qui ne se met à jour qu’au formulaire de connexion."
+        ),
+    )
+
     tour_musician_version = models.PositiveSmallIntegerField(
         "Version guide musicien terminée",
         default=0,
@@ -287,6 +298,13 @@ class UserNotification(models.Model):
     )
     created_at = models.DateTimeField("Créée le", auto_now_add=True, db_index=True)
     read_at = models.DateTimeField("Lue le", null=True, blank=True, db_index=True)
+    archived_at = models.DateTimeField(
+        "Archivée le",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Masquée du salon tant que non consultée via la vue Archives.",
+    )
     requires_response = models.BooleanField(
         "Attend une réponse",
         default=False,
@@ -318,6 +336,7 @@ class UserNotification(models.Model):
         verbose_name_plural = "notifications"
         indexes = [
             models.Index(fields=["user", "read_at", "-created_at"]),
+            models.Index(fields=["user", "archived_at", "-created_at"]),
             models.Index(
                 fields=["requires_response", "responded_at", "-created_at"]
             ),
@@ -332,6 +351,10 @@ class UserNotification(models.Model):
         return self.read_at is None
 
     @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
+
+    @property
     def is_unanswered(self) -> bool:
         return self.requires_response and self.responded_at is None
 
@@ -341,6 +364,34 @@ class UserNotification(models.Model):
             return False
         self.read_at = timezone.now()
         self.save(update_fields=["read_at"])
+        from users.notify import invalidate_nav_banner
+
+        invalidate_nav_banner(self.user)
+        return True
+
+    def archive(self) -> bool:
+        """Archive la notification (hors salon). Retourne True si changement."""
+        if self.archived_at is not None:
+            return False
+        now = timezone.now()
+        fields = ["archived_at"]
+        self.archived_at = now
+        if self.read_at is None:
+            self.read_at = now
+            fields.append("read_at")
+        self.save(update_fields=fields)
+        from users.notify import invalidate_nav_banner
+
+        invalidate_nav_banner(self.user)
+        return True
+
+    def unarchive(self) -> bool:
+        """Remet la notification dans le salon (non lue). Retourne True si changement."""
+        if self.archived_at is None:
+            return False
+        self.archived_at = None
+        self.read_at = None
+        self.save(update_fields=["archived_at", "read_at"])
         from users.notify import invalidate_nav_banner
 
         invalidate_nav_banner(self.user)

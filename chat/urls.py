@@ -31,4 +31,5 @@ urlpatterns = [
     path("<int:room_id>/api/members/", views.api_members, name="api_members"),
     path("<int:room_id>/api/react/", views.api_react, name="api_react"),
     path("<int:room_id>/api/read/", views.api_read, name="api_read"),
+    path("<int:room_id>/api/archive/", views.api_archive, name="api_archive"),
 ]

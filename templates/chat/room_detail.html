@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ room.title }} — Chat JOY{% endblock %}
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=15"></script>
+<script defer src="{% static 'chat/room.js' %}?v=21"></script>
 {% endblock %}
 {% block extra_css %}
 {% include "planning/_styles.html" %}
@@ -32,11 +32,16 @@
        apiDeleteUrl: '{{ api_delete_url|escapejs }}',
        apiMembersUrl: '{{ api_members_url|escapejs }}',
        apiReadUrl: '{{ api_read_url|escapejs }}',
+       apiArchiveUrl: '{{ api_archive_url|default:""|escapejs }}',
+       archiveEnabled: {{ archive_enabled|default:False|yesno:'true,false' }},
+       archiveFocusId: {% if archive_focus_id %}{{ archive_focus_id }}{% else %}null{% endif %},
        csrfToken: '{{ csrf_token }}',
        initialLastReadAt: {% if initial_last_read_at %}'{{ initial_last_read_at|escapejs }}'{% else %}null{% endif %},
        embedded: false,
        roomId: {{ room.pk }},
        isRehearsalRoom: {{ is_rehearsal_room|yesno:'true,false' }},
+       threadsMode: {{ threads_mode|default:False|yesno:'true,false' }},
+       activeThreadEventId: {% if active_thread_event_id %}{{ active_thread_event_id }}{% else %}null{% endif %},
        composerPlaceholder: '{{ composer_placeholder|escapejs }}'
      })"
      x-init="init()"
@@ -60,6 +65,11 @@
   </div>
   {% endif %}
 
+  {% if threads_mode %}
+  {% include "chat/_rehearsal_threads.html" %}
+  {% else %}
+  {% include "chat/_rehearsal_thread_bar.html" %}
+
   <div class="chat-setlist-tip" x-show="setlistTipVisible" x-cloak x-transition.opacity.duration.200ms>
     <div class="chat-setlist-tip__text">
       <strong>Setlist de la répé</strong>
@@ -72,5 +82,6 @@
   </div>
 
   {% include "chat/_room_thread_composer.html" %}
+  {% endif %}
 </div>
 {% endblock %}

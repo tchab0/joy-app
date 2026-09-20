@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 
 from django.conf import settings
@@ -15,6 +16,8 @@ from django.utils import timezone
 from users.webpush import send_web_push, vapid_configured
 
 logger = logging.getLogger(__name__)
+
+_CHAT_ROOM_URL_RE = re.compile(r"^/chat/(\d+)/")
 
 
 def notify_users(
@@ -128,7 +131,9 @@ def unread_notifications_for_user(
     try:
         from users.models import UserNotification
 
-        qs = UserNotification.objects.filter(user=user, read_at__isnull=True)
+        qs = UserNotification.objects.filter(
+            user=user, read_at__isnull=True, archived_at__isnull=True
+        )
         if total is None:
             total = qs.count()
         return list(qs[:limit]), total
@@ -147,7 +152,9 @@ def unread_notification_count_for_user(user) -> int:
     try:
         from users.models import UserNotification
 
-        return UserNotification.objects.filter(user=user, read_at__isnull=True).count()
+        return UserNotification.objects.filter(
+            user=user, read_at__isnull=True, archived_at__isnull=True
+        ).count()
     except (ProgrammingError, OperationalError):
         logger.warning(
             "unread_notification_count_for_user indisponible (migration ?) user_id=%s",
@@ -165,7 +172,7 @@ def invalidate_nav_banner(user) -> None:
 
 def _is_chat_notification(item) -> bool:
     related = (getattr(item, "related_type", None) or "").strip()
-    if related in {"chat_msg", "chat", "chat_reply"}:
+    if related in {"chat_msg", "chat", "chat_reply", "chat_mention"}:
         return True
     url = (getattr(item, "url", None) or "").strip()
     return url.startswith("/chat/")
@@ -210,18 +217,72 @@ def _chat_room_label(item) -> str:
     return "Salon chat"
 
 
+def _chat_room_id_from_url(url: str) -> int | None:
+    """Extrait l’id salon depuis ``/chat/<id>/…`` (query string OK)."""
+    match = _CHAT_ROOM_URL_RE.match((url or "").strip())
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _chat_banner_kind_for_room(room) -> str:
+    """
+    Clé de teinte pour le point bannière (alignée sur les libellés liste chat).
+
+    ``event`` sans événement lié = salon « Privé ».
+    """
+    kind = getattr(room, "kind", "") or ""
+    if kind == "event" and not getattr(room, "event_id", None):
+        return "private"
+    if kind in {
+        "orchestra",
+        "rehearsals",
+        "event",
+        "thematic",
+        "piece",
+        "staff",
+        "section",
+    }:
+        return kind
+    return "chat"
+
+
+def _chat_rooms_by_id(room_ids: set[int]) -> dict[int, object]:
+    if not room_ids:
+        return {}
+    try:
+        from chat.models import ChatRoom
+
+        return {
+            room.pk: room
+            for room in ChatRoom.objects.filter(pk__in=room_ids).only(
+                "pk", "kind", "event_id"
+            )
+        }
+    except (ProgrammingError, OperationalError):
+        logger.warning("Résolution kind salon chat indisponible (migration ?)")
+        return {}
+    except Exception:
+        logger.exception("Échec résolution kind salon chat")
+        return {}
+
+
 def group_unread_inbox_for_banner(notifications: list) -> dict:
     """
     Compacte l’inbox pour la bannière Coulisses.
 
     Actions (sondage / invitation / événement confirmé à répondre) d’abord,
-    puis chat groupé, puis le reste.
+    puis chat groupé (avec ``kind`` pour la teinte du point), puis le reste.
     """
     chat_by_url: dict[str, dict] = {}
     chat_order: list[str] = []
     action: list = []
     other: list = []
     chat_total = 0
+    room_ids: set[int] = set()
 
     for item in notifications:
         if _is_chat_notification(item):
@@ -232,21 +293,38 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                 preview = (item.body or "").strip()
                 if len(preview) > 120:
                     preview = preview[:117].rstrip() + "…"
+                room_id = _chat_room_id_from_url(url)
+                if room_id is not None:
+                    room_ids.add(room_id)
                 group = {
                     "url": url,
                     "label": _chat_room_label(item),
                     "count": 0,
                     "open_pk": item.pk,
+                    "pks": [],
                     "preview": preview,
                     "is_staff": is_staff_destined_notification(item),
+                    "room_id": room_id,
+                    "kind": "chat",
                 }
                 chat_by_url[url] = group
                 chat_order.append(url)
             group["count"] += 1
+            group["pks"].append(item.pk)
         elif getattr(item, "is_unanswered", False):
             action.append(item)
         else:
             other.append(item)
+
+    rooms = _chat_rooms_by_id(room_ids)
+    for group in chat_by_url.values():
+        room = rooms.get(group.get("room_id")) if group.get("room_id") else None
+        if room is None:
+            continue
+        kind = _chat_banner_kind_for_room(room)
+        group["kind"] = kind
+        if kind == "staff":
+            group["is_staff"] = True
 
     return {
         "action": action,
@@ -355,13 +433,29 @@ def _relative_push_url(url: str) -> str:
     return target
 
 
+def _plain_body_for_push(body: str) -> str:
+    """Markdown léger → texte brut (lisibilité push / e-mail texte)."""
+    import re
+
+    text = body or ""
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"\+\+([^+]+)\+\+", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_([^_]+)_(?!_)", r"\1", text)
+    text = re.sub(r"^#{1,3}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^[-*•]\s+", "• ", text, flags=re.MULTILINE)
+    return text.strip()
+
+
 def _notify_one(
     user, *, title: str, body: str, url: str, push_url: str = ""
 ) -> bool:
     rel_push = _relative_push_url(push_url or url)
-    if _try_push(user, title=title, body=body, url=rel_push):
+    plain = _plain_body_for_push(body)
+    if _try_push(user, title=title, body=plain, url=rel_push):
         return True
-    return _try_email(user, title=title, body=body, url=url)
+    return _try_email(user, title=title, body=plain, url=url)
 
 
 def _try_push(user, *, title: str, body: str, url: str) -> bool:

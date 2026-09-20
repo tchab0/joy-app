@@ -37,7 +37,10 @@
   <a class="pl-day-events__salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
     <span>Salon « {{ event.titre }} »</span>
     {% if chat_link.unread %}
-    <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
+    <span class="pl-day-events__salon-unread">
+      <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
+      <span>non lu{{ chat_link.unread|pluralize }}</span>
+    </span>
     {% endif %}
   </a>
   {% endif %}

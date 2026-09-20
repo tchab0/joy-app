@@ -89,6 +89,26 @@ def _is_concert(event) -> bool:
     return "concert" in nom
 
 
+def format_weather_line(weather: dict[str, Any] | None) -> str:
+    """Phrase courte pour notif / e-mail (vide si pas de prévision)."""
+    if not weather:
+        return ""
+    parts = [f"{weather.get('temp_c')} °C"]
+    label = (weather.get("label") or "").strip()
+    if label:
+        parts.append(label.lower())
+    hour = (weather.get("at_hour") or "").strip()
+    head = ", ".join(str(p) for p in parts if p is not None)
+    if hour:
+        head = f"vers {hour} · {head}"
+    precip = weather.get("precip_prob")
+    if precip is not None:
+        head = f"{head} ({precip} % de pluie)"
+    if weather.get("unreliable"):
+        head = f"{head} (indicatif)"
+    return head
+
+
 def attach_weather(events, *, concerts_only: bool = False) -> None:
     """Attache ``event.weather`` (dict ou None) sur chaque événement."""
     for event in events:

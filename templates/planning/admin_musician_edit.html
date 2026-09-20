@@ -23,11 +23,12 @@
 {% endblock %}
 {% block content %}
 <div class="pl">
+  {% include "planning/_module_nav.html" with active="musiciens" %}
+
   <header class="pl-head">
     <h1>{% if profile %}Modifier « {{ profile.user }} »{% else %}Ajouter un musicien{% endif %}</h1>
   </header>
 
-  {% include "planning/_module_nav.html" with active="musiciens" %}
   <div class="pl-nav-context pl-nav-context--staff">
     <a href="{% url 'planning:admin_musicians' %}">← Liste des musiciens</a>
   </div>

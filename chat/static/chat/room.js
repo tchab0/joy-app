@@ -36,11 +36,16 @@ function chatRoom(cfg) {
     apiDeleteUrl: cfg.apiDeleteUrl || '',
     apiMembersUrl: cfg.apiMembersUrl || '',
     apiReadUrl: cfg.apiReadUrl || '',
+    apiArchiveUrl: cfg.apiArchiveUrl || '',
+    archiveEnabled: !!cfg.archiveEnabled,
+    archiveFocusId: cfg.archiveFocusId != null ? cfg.archiveFocusId : null,
     csrfToken: cfg.csrfToken || '',
     embedded: !!cfg.embedded,
     initialLastReadAt: cfg.initialLastReadAt || null,
     composerPlaceholder: cfg.composerPlaceholder || 'Message… — @ pour mentionner',
     isRehearsalRoom: !!cfg.isRehearsalRoom,
+    threadsMode: !!cfg.threadsMode,
+    activeThreadEventId: cfg.activeThreadEventId != null ? cfg.activeThreadEventId : null,
     roomId: cfg.roomId || null,
     setlistTipVisible: false,
     membersLoaded: false,
@@ -73,6 +78,7 @@ function chatRoom(cfg) {
     editPreview: '',
     composerToolsOpen: false,
     _composerBlurTimer: null,
+    _enterHandled: false,
     mentionOpen: false,
     mentionQuery: '',
     mentionStart: -1,
@@ -80,6 +86,12 @@ function chatRoom(cfg) {
     mentionSuggestions: [],
     readDetailsId: null,
     showJumpBottom: false,
+    archiveOpen: false,
+    archiveMessages: [],
+    archiveHasMore: false,
+    archiveBusy: false,
+    archiveError: '',
+    _archiveEscHandler: null,
     ws: null,
     _wsReconnectTimer: null,
     _wsStatusTimer: null,
@@ -99,6 +111,9 @@ function chatRoom(cfg) {
       '👀','🙏','💯','🍀','☕','🍻','🎂','🎵','🎶','🎷',
       '🎺','🥁','🎹','🎸','🎤','🎻','🎼','🎧','📢','💬'
     ],
+    get threadList() {
+      return this.archiveOpen ? this.archiveMessages : this.messages;
+    },
     get statusLabel() {
       // Affichage sticky (displayStatus) : « En direct » reste visible pendant
       // les micro-coupures ; « Hors ligne… » seulement après stabilisation.
@@ -128,6 +143,20 @@ function chatRoom(cfg) {
       } catch (_) {
         return false;
       }
+    },
+    _isDesktopKeyboard() {
+      try {
+        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      } catch (_) {
+        return false;
+      }
+    },
+    _enterSendsMessage(ev) {
+      // Mobile / tactile : Entrée envoie (le bouton n’est pas toujours visible).
+      // Ordi : Entrée = nouvelle ligne ; Ctrl/Cmd+Entrée = envoyer.
+      if (ev && (ev.ctrlKey || ev.metaKey)) return true;
+      if (ev && ev.shiftKey) return false;
+      return !this._isDesktopKeyboard();
     },
     setStatus(next) {
       if (!next) return;
@@ -236,6 +265,9 @@ function chatRoom(cfg) {
         return out;
       }
 
+      // Titres ## / ### (ligne entière)
+      s = this.applyHeadingBlocks(s);
+
       // Citations : lignes « > texte » → encadré (comme l’éditeur)
       s = (function applyQuotes(escaped) {
         const lines = escaped.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -256,6 +288,12 @@ function chatRoom(cfg) {
         }
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
+          if (/^<(?:h[23]|blockquote|ul)\b/i.test(line)) {
+            flushQuote();
+            flushPlain();
+            chunks.push(line);
+            continue;
+          }
           const m = /^(?:&gt;|＞)\s?(.*)$/.exec(line);
           if (m) {
             flushPlain();
@@ -298,9 +336,10 @@ function chatRoom(cfg) {
         });
       });
 
-      // Gras **texte** ou *texte* ; italique _texte_
+      // Gras **texte** ou *texte* ; souligné ++texte++ ; italique _texte_
       s = mapPlain(s, function (text) {
         text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/\+\+([^\+\n]+)\+\+/g, '<u class="chat-msg__u">$1</u>');
         text = text.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
         text = text.replace(
           /(^|[^a-zA-Z0-9_])_([^_\n]+)_(?![a-zA-Z0-9_])/g,
@@ -367,6 +406,25 @@ function chatRoom(cfg) {
 
       return s;
     },
+    applyHeadingBlocks(escaped) {
+      const lines = String(escaped || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        let m = /^###\s+(.+)$/.exec(line);
+        if (m) {
+          out.push('<h3 class="chat-msg__heading chat-msg__heading--3">' + m[1] + '</h3>');
+          continue;
+        }
+        m = /^##\s+(.+)$/.exec(line);
+        if (m) {
+          out.push('<h2 class="chat-msg__heading chat-msg__heading--2">' + m[1] + '</h2>');
+          continue;
+        }
+        out.push(line);
+      }
+      return out.join('\n');
+    },
     /* —— Éditeur WYSIWYG (contenteditable) —— */
     safeHttpUrl(url) {
       const u = String(url || '').trim();
@@ -401,6 +459,7 @@ function chatRoom(cfg) {
         return out;
       }
       // Citations avant le reste (texte déjà échappé → &gt;)
+      s = self.applyHeadingBlocks(s);
       s = (function applyQuotes(escaped) {
         const lines = escaped.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
         const chunks = [];
@@ -418,6 +477,12 @@ function chatRoom(cfg) {
         }
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
+          if (/^<(?:h[23]|blockquote|ul)\b/i.test(line)) {
+            flushQuote();
+            flushPlain();
+            chunks.push(line);
+            continue;
+          }
           const m = /^(?:&gt;|＞)\s?(.*)$/.exec(line);
           if (m) {
             flushPlain();
@@ -442,6 +507,7 @@ function chatRoom(cfg) {
       );
       s = mapPlain(s, function (text) {
         text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/\+\+([^\+\n]+)\+\+/g, '<u class="chat-msg__u">$1</u>');
         text = text.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
         text = text.replace(
           /(^|[^a-zA-Z0-9_])_([^_\n]+)_(?![a-zA-Z0-9_])/g,
@@ -472,7 +538,7 @@ function chatRoom(cfg) {
       }
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (/^<(?:blockquote|ul)\b/i.test(line)) {
+        if (/^<(?:h[23]|blockquote|ul)\b/i.test(line)) {
           flushList();
           flushPlain();
           chunks.push(line);
@@ -518,6 +584,19 @@ function chatRoom(cfg) {
           const t = inner.trim();
           if (!t) return inner;
           return '_' + inner.replace(/_/g, '') + '_';
+        }
+        if (tag === 'u') {
+          const t = inner.trim();
+          if (!t) return inner;
+          return '++' + inner.replace(/\+/g, '') + '++';
+        }
+        if (tag === 'h2') {
+          const cleaned = inner.replace(/^\n+|\n+$/g, '');
+          return '## ' + cleaned + '\n';
+        }
+        if (tag === 'h3') {
+          const cleaned = inner.replace(/^\n+|\n+$/g, '');
+          return '### ' + cleaned + '\n';
         }
         if (tag === 'a') {
           const href = self.safeHttpUrl(node.getAttribute('href') || '');
@@ -758,16 +837,18 @@ function chatRoom(cfg) {
       });
     },
     isLeadingHidden(index) {
+      const list = this.threadList || [];
       for (let i = 0; i < index; i++) {
-        const m = this.messages[i];
+        const m = list[i];
         if (!m.hidden || m.deleted) return false;
       }
       return true;
     },
     followingHidden(index) {
+      const list = this.threadList || [];
       const out = [];
-      for (let i = index + 1; i < this.messages.length; i++) {
-        const m = this.messages[i];
+      for (let i = index + 1; i < list.length; i++) {
+        const m = list[i];
         if (m.hidden && !m.deleted) out.push(m);
         else break;
       }
@@ -869,6 +950,7 @@ function chatRoom(cfg) {
       if (!msg || msg.deleted) return;
       this.cancelEdit();
       this.replyTo = msg;
+      if (this.archiveOpen) this.closeArchive();
       this.composerToolsOpen = true;
       this.emojiOpen = false;
       this.closeMention();
@@ -896,6 +978,8 @@ function chatRoom(cfg) {
     },
     startEdit(msg) {
       if (!msg || msg.deleted || msg.author_id !== this.currentUserId || msg.highlight) return;
+      this.clearReply();
+      if (this.archiveOpen) this.closeArchive();
       this.replyTo = null;
       this.composerToolsOpen = true;
       this.emojiOpen = false;
@@ -962,16 +1046,20 @@ function chatRoom(cfg) {
     removeDeletedMessage(message) {
       if (!message || !message.id) return;
       const id = message.id;
-      const idx = this.messages.findIndex(m => m.id === id);
-      if (idx >= 0) this.messages.splice(idx, 1);
-      for (let i = 0; i < this.messages.length; i++) {
-        const m = this.messages[i];
-        if (!m || !m.reply_to || m.reply_to.id !== id) continue;
-        m.reply_to = Object.assign({}, m.reply_to, {
-          deleted: true,
-          body_preview: '…',
-        });
-      }
+      const strip = (list) => {
+        const idx = list.findIndex(m => m.id === id);
+        if (idx >= 0) list.splice(idx, 1);
+        for (let i = 0; i < list.length; i++) {
+          const m = list[i];
+          if (!m || !m.reply_to || m.reply_to.id !== id) continue;
+          m.reply_to = Object.assign({}, m.reply_to, {
+            deleted: true,
+            body_preview: '…',
+          });
+        }
+      };
+      strip(this.messages);
+      strip(this.archiveMessages);
       if (this.editingId === id) this.cancelEdit();
       if (this.replyTo && this.replyTo.id === id) this.clearReply();
     },
@@ -1376,8 +1464,13 @@ function chatRoom(cfg) {
         return;
       }
       ev.preventDefault();
-      this.syncBodyFromEditor();
-      this.send();
+      if (this._enterHandled) return;
+      if (this._enterSendsMessage(ev)) {
+        this.syncBodyFromEditor();
+        this.send();
+        return;
+      }
+      this.insertSoftBreak();
     },
     onBodyKeydown(ev) {
       if (this.mentionOpen && this.mentionSuggestions.length) {
@@ -1405,14 +1498,15 @@ function chatRoom(cfg) {
       }
       const isEnter = ev.key === 'Enter' || ev.code === 'Enter' || ev.code === 'NumpadEnter';
       if (isEnter) {
-        // Entrée = envoyer ; Maj+Entrée = nouvelle ligne et fin du formatage en cours.
         ev.preventDefault();
-        if (ev.shiftKey) {
-          this.insertSoftBreak();
+        this._enterHandled = true;
+        queueMicrotask(() => { this._enterHandled = false; });
+        if (this._enterSendsMessage(ev)) {
+          this.syncBodyFromEditor();
+          this.send();
           return;
         }
-        this.syncBodyFromEditor();
-        this.send();
+        this.insertSoftBreak();
         return;
       }
       if ((ev.key === 'b' || ev.key === 'B') && (ev.metaKey || ev.ctrlKey)) {
@@ -1425,17 +1519,143 @@ function chatRoom(cfg) {
         this.applyRichFormat('italic');
       }
     },
-    scrollToMessage(id, opts) {
+    _normalizeIncoming(message) {
+      return Object.assign({
+        likes: 0, mine: null, hidden: false, reply_to: null,
+        author_username: '', edited_at: null,
+        replies_count: 0, first_reply_id: null,
+        thread_event_id: null,
+      }, message);
+    },
+    findMessageById(id) {
+      const nid = Number(id);
+      let m = this.messages.find(x => Number(x.id) === nid);
+      if (m) return m;
+      return (this.archiveMessages || []).find(x => Number(x.id) === nid) || null;
+    },
+    toggleArchive() {
+      if (!this.archiveEnabled) return;
+      if (this.archiveOpen) this.closeArchive();
+      else this.openArchive();
+    },
+    closeArchive() {
+      this.archiveOpen = false;
+      this.archiveError = '';
+      this.$nextTick(() => {
+        this.measureComposer();
+        this.queueJumpBottomUpdate();
+      });
+    },
+    bindArchiveEsc() {
+      if (this._archiveEscHandler) return;
+      this._archiveEscHandler = (ev) => {
+        if (ev.key === 'Escape' && this.archiveOpen) {
+          this.closeArchive();
+        }
+      };
+      document.addEventListener('keydown', this._archiveEscHandler);
+    },
+    async openArchive(opts) {
+      if (!this.archiveEnabled) return;
+      opts = opts || {};
+      this.archiveOpen = true;
+      this.menuOpen = false;
+      this.showJumpBottom = false;
+      await this.loadArchive({
+        includeId: opts.includeId,
+        reset: true,
+      });
+      if (!this.archiveOpen) return;
+      const focus = opts.includeId;
+      if (focus) {
+        this.$nextTick(() => {
+          const el = document.getElementById('chat-msg-' + focus);
+          if (!el) return;
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          el.classList.add('chat-msg--flash');
+          setTimeout(() => el.classList.remove('chat-msg--flash'), 1200);
+        });
+      } else {
+        this.$nextTick(() => this.scrollBottom(true));
+      }
+    },
+    _archiveUrl(params) {
+      const base = this.apiArchiveUrl;
+      if (!base) return '';
+      const q = new URLSearchParams();
+      if (this.initialLastReadAt) q.set('as_of', this.initialLastReadAt);
+      else q.set('as_of', '');
+      Object.keys(params || {}).forEach((k) => {
+        if (params[k] != null && params[k] !== '') q.set(k, String(params[k]));
+      });
+      const qs = q.toString();
+      return qs ? (base + (base.indexOf('?') >= 0 ? '&' : '?') + qs) : base;
+    },
+    async loadArchive(opts) {
+      opts = opts || {};
+      if (!this.apiArchiveUrl || this.archiveBusy) return;
+      this.archiveBusy = true;
+      this.archiveError = '';
+      const params = {};
+      if (opts.includeId) params.include = opts.includeId;
+      if (opts.beforeId) params.before = opts.beforeId;
+      try {
+        const r = await fetch(this._archiveUrl(params), {
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json' },
+        });
+        const data = await r.json();
+        if (!data || !data.ok) {
+          this.archiveError = (data && data.error) || 'Impossible de charger l’archive.';
+          this.archiveBusy = false;
+          return;
+        }
+        const incoming = (data.messages || []).map((m) => this._normalizeIncoming(m));
+        if (opts.beforeId && !opts.reset) {
+          const have = new Set(this.archiveMessages.map((m) => m.id));
+          const older = incoming.filter((m) => !have.has(m.id));
+          this.archiveMessages = older.concat(this.archiveMessages);
+        } else {
+          this.archiveMessages = incoming;
+        }
+        this.archiveHasMore = !!data.has_more;
+        if (opts.includeId && data.found === false) {
+          this.closeArchive();
+        }
+      } catch (e) {
+        this.archiveError = 'Impossible de charger l’archive.';
+      }
+      this.archiveBusy = false;
+    },
+    async loadOlderArchive() {
+      if (!this.archiveHasMore || this.archiveBusy) return;
+      const el = this.$refs.thread;
+      const prevH = el ? el.scrollHeight : 0;
+      const prevTop = el ? el.scrollTop : 0;
+      const oldest = this.archiveMessages[0];
+      await this.loadArchive({ beforeId: oldest && oldest.id });
+      this.$nextTick(() => {
+        if (!el) return;
+        el.scrollTop = prevTop + (el.scrollHeight - prevH);
+      });
+    },
+    async scrollToMessage(id, opts) {
       if (!id) return;
-      const el = document.getElementById('chat-msg-' + id);
+      let el = document.getElementById('chat-msg-' + id);
+      if (!el && this.archiveEnabled && !this.archiveOpen) {
+        await this.openArchive({ includeId: id });
+        return;
+      }
       if (!el) return;
       const o = opts || {};
       el.scrollIntoView({
         block: o.block || 'center',
         behavior: o.behavior || 'smooth',
       });
-      el.classList.add('chat-msg--flash');
-      setTimeout(() => el.classList.remove('chat-msg--flash'), 1200);
+      if (o.flash !== false) {
+        el.classList.add('chat-msg--flash');
+        setTimeout(() => el.classList.remove('chat-msg--flash'), 1200);
+      }
       // Après un saut vers une citation, le FAB « bas » aide à revenir
       this.$nextTick(() => this.queueJumpBottomUpdate());
       setTimeout(() => this.updateJumpBottom(), 400);
@@ -1462,14 +1682,15 @@ function chatRoom(cfg) {
       const raw = this.initialLastReadAt;
       const lastReadMs = raw ? Date.parse(raw) : null;
       const unreadMs = raw && !lastReadMs ? null : (Number.isFinite(lastReadMs) ? lastReadMs : null);
-      for (let i = 0; i < this.messages.length; i++) {
-        const m = this.messages[i];
+      const list = this.threadList || [];
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
         if (!m || m.deleted || !m.reply_to || m.reply_to.id !== parentId) continue;
         if (this.isMessageUnread(m, unreadMs)) return m.id;
       }
       if (msg.first_reply_id) return msg.first_reply_id;
-      for (let i = 0; i < this.messages.length; i++) {
-        const m = this.messages[i];
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
         if (m && !m.deleted && m.reply_to && m.reply_to.id === parentId) return m.id;
       }
       return null;
@@ -1487,12 +1708,15 @@ function chatRoom(cfg) {
     },
     ingestMessage(message) {
       if (!message || !message.id) return false;
+      if (this.threadsMode) return false;
+      if (this.activeThreadEventId != null) {
+        const tid = message.thread_event_id;
+        if (tid == null || Number(tid) !== Number(this.activeThreadEventId)) {
+          return false;
+        }
+      }
       if (this.messages.find(m => m.id === message.id)) return false;
-      this.messages.push(Object.assign({
-        likes: 0, mine: null, hidden: false, reply_to: null,
-        author_username: '', edited_at: null,
-        replies_count: 0, first_reply_id: null,
-      }, message));
+      this.messages.push(this._normalizeIncoming(message));
       this.noteReplyOnParent(message);
       return true;
     },
@@ -1579,42 +1803,55 @@ function chatRoom(cfg) {
       }
       return null;
     },
-    scrollToInitialPosition() {
-      const targetMsg = this.scrollTargetMessageId();
-      if (targetMsg) {
-        this.scrollToMessage(targetMsg, { block: 'center', behavior: 'auto' });
+    // Message plus haut que le fil → coller le début en haut ; sinon optionnellement le bas.
+    scrollOpenToMessage(id, opts) {
+      const o = opts || {};
+      this.measureComposer();
+      const thread = this.$refs.thread;
+      const el = id ? document.getElementById('chat-msg-' + id) : null;
+      if (!thread || !el) {
+        if (o.fallbackBottom) this.scrollBottom(true);
         return;
       }
-      const id = this.findFirstUnreadId();
-      if (id) {
-        this.scrollToMessage(id, { block: 'start', behavior: 'auto' });
-        return;
-      }
-      // Mobile : garder date / lieu (intro) visibles ; le scroll utilisateur les masque.
-      if (this._preferIntroFirst()) {
-        const el = this.$refs.thread;
-        if (el) el.scrollTop = 0;
-        this.queueJumpBottomUpdate();
+      const tall = el.offsetHeight > thread.clientHeight * 0.85;
+      if (tall || !o.fallbackBottom) {
+        this.scrollToMessage(id, { block: 'start', behavior: 'auto', flash: false });
         return;
       }
       this.scrollBottom(true);
     },
-    _preferIntroFirst() {
-      try {
-        if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-          return false;
+    async scrollToInitialPosition() {
+      const targetMsg = this.scrollTargetMessageId();
+      if (targetMsg) {
+        const live = this.messages.some(function (m) {
+          return Number(m.id) === Number(targetMsg);
+        });
+        if (!live && this.archiveEnabled) {
+          if (this.archiveOpen) return;
+          await this.openArchive({ includeId: targetMsg });
+          return;
         }
-      } catch (_) {}
-      const el = this.$refs.thread;
-      if (!el) return false;
-      return !!el.querySelector('.chat-event-intro, .chat-piece-intro');
+        this.scrollOpenToMessage(targetMsg, { fallbackBottom: false });
+        return;
+      }
+      const id = this.findFirstUnreadId();
+      if (id) {
+        this.scrollOpenToMessage(id, { fallbackBottom: false });
+        return;
+      }
+      // Tous lus → dernier message (début s’il est long, sinon bas du fil).
+      const last = this.messages.length
+        ? this.messages[this.messages.length - 1]
+        : null;
+      if (last && last.id) {
+        this.scrollOpenToMessage(last.id, { fallbackBottom: true });
+        return;
+      }
+      this.measureComposer();
+      this.scrollBottom(true);
     },
     _canHoverZoom() {
-      try {
-        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-      } catch (_) {
-        return false;
-      }
+      return this._isDesktopKeyboard();
     },
     showAttZoom(ev, att) {
       if (!this._canHoverZoom() || !att || !att.url) return;
@@ -1858,23 +2095,34 @@ function chatRoom(cfg) {
     init() {
       this.refreshSetlistTip();
       this.loadMembers();
+      this.bindArchiveEsc();
       this.$nextTick(() => {
         this.bindThreadScroll();
+        this.measureComposer();
         this.scrollToInitialPosition();
         this.updateJumpBottom();
-        // Images / layout : 2e passe après paint
+        // Images / intro morceau / padding composer : repasser après paint
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
+            this.measureComposer();
             this.scrollToInitialPosition();
             this.updateJumpBottom();
           });
         });
+        // Audio / thumbs YouTube peuvent agrandir le fil après coup
+        if (this._openScrollTimer) clearTimeout(this._openScrollTimer);
+        this._openScrollTimer = setTimeout(() => {
+          this._openScrollTimer = null;
+          if (this._dead) return;
+          this.measureComposer();
+          this.scrollToInitialPosition();
+          this.updateJumpBottom();
+        }, 280);
       });
       this.connect();
       this.bindVisibility();
       if (!this.embedded) {
         this.bindViewport();
-        this.$nextTick(() => this.measureComposer());
         window.addEventListener('resize', () => {
           this.measureComposer();
           this.updateJumpBottom();
@@ -1883,6 +2131,10 @@ function chatRoom(cfg) {
     },
     destroy() {
       this._dead = true;
+      if (this._openScrollTimer) {
+        clearTimeout(this._openScrollTimer);
+        this._openScrollTimer = null;
+      }
       if (this._wsReconnectTimer) {
         clearTimeout(this._wsReconnectTimer);
         this._wsReconnectTimer = null;
@@ -1890,6 +2142,10 @@ function chatRoom(cfg) {
       if (this._visHandler) {
         document.removeEventListener('visibilitychange', this._visHandler);
         this._visHandler = null;
+      }
+      if (this._archiveEscHandler) {
+        document.removeEventListener('keydown', this._archiveEscHandler);
+        this._archiveEscHandler = null;
       }
       if (this.ws) {
         try {
@@ -1905,7 +2161,7 @@ function chatRoom(cfg) {
       return this.roomId ? ('joy.chat.setlistTip.' + this.roomId) : null;
     },
     refreshSetlistTip() {
-      if (!this.isRehearsalRoom || !this.roomId) {
+      if (!this.isRehearsalRoom || !this.roomId || this.threadsMode) {
         this.setlistTipVisible = false;
         return;
       }
@@ -2006,8 +2262,10 @@ function chatRoom(cfg) {
     autoGrow() {
       const el = this.$refs.input;
       if (!el) return;
+      /* max-height CSS uses min() — compute px cap here */
+      const maxH = Math.min(Math.round(window.innerHeight * 0.5), 320);
       el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+      el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
       this.measureComposer();
     },
     formatFileSize(bytes) {
@@ -2113,7 +2371,7 @@ function chatRoom(cfg) {
         let data;
         try { data = JSON.parse(ev.data); } catch (_) { return; }
         if (data.type === 'chat.message' && data.message) {
-          if (this.ingestMessage(data.message)) {
+          if (this.ingestMessage(data.message) && !this.archiveOpen) {
             this.$nextTick(() => this.scrollBottom(false));
           }
           if (data.message.author_id !== this.currentUserId) {
@@ -2123,14 +2381,23 @@ function chatRoom(cfg) {
           if (data.message.deleted) {
             this.removeDeletedMessage(data.message);
           } else {
-            const idx = this.messages.findIndex(m => m.id === data.message.id);
-            if (idx >= 0) {
-              const prev = this.messages[idx];
-              this.messages.splice(idx, 1, Object.assign({}, prev, data.message, {
+            const apply = (list) => {
+              const idx = list.findIndex(m => m.id === data.message.id);
+              if (idx < 0) return false;
+              const prev = list[idx];
+              list.splice(idx, 1, Object.assign({}, prev, data.message, {
                 likes: data.message.likes != null ? data.message.likes : prev.likes,
                 mine: data.message.mine != null ? data.message.mine : prev.mine,
                 hidden: data.message.hidden != null ? data.message.hidden : prev.hidden,
               }));
+              return true;
+            };
+            const inLive = apply(this.messages);
+            const inArchive = apply(this.archiveMessages);
+            if (inArchive && data.message.edited_at) {
+              const aidx = this.archiveMessages.findIndex(m => m.id === data.message.id);
+              if (aidx >= 0) this.archiveMessages.splice(aidx, 1);
+              if (!inLive) this.ingestMessage(data.message);
             }
             // Ne pas marquer lu auto : une édition après lecture reste « message modifié »
             // / non lu jusqu’à une relecture explicite (visibilité, nouveau message, etc.).
@@ -2139,7 +2406,7 @@ function chatRoom(cfg) {
             }
           }
         } else if (data.type === 'chat.reaction' && data.message_id) {
-          const msg = this.messages.find(m => m.id === data.message_id);
+          const msg = this.findMessageById(data.message_id);
           if (msg) msg.likes = data.likes || 0;
         } else if (data.type === 'chat.read' && data.cursor) {
           this.applyReadCursor(data.cursor);
@@ -2186,10 +2453,15 @@ function chatRoom(cfg) {
       }
       const nearBottom = this.isNearBottom(120);
       if (force || nearBottom) {
+        const top = el.scrollHeight;
         if (smooth) {
-          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+          el.scrollTo({ top, behavior: 'smooth' });
         } else {
-          el.scrollTop = el.scrollHeight;
+          el.scrollTop = top;
+          // 2e assignation au prochain frame (scrollHeight peut bouger avec le padding).
+          requestAnimationFrame(() => {
+            if (el) el.scrollTop = el.scrollHeight;
+          });
         }
       }
       this.queueJumpBottomUpdate();
@@ -2217,7 +2489,7 @@ function chatRoom(cfg) {
       const kept = this.editingAttachments || [];
       const pending = this.pendingFiles || [];
       if (!text && !kept.length && !pending.length) return;
-      const msg = this.messages.find(m => m.id === this.editingId);
+      const msg = this.findMessageById(this.editingId);
       const originalIds = ((msg && msg.attachments) || []).map(a => a.id);
       const keptIds = new Set(kept.map(a => a.id));
       this.busy = true;
@@ -2243,7 +2515,11 @@ function chatRoom(cfg) {
           if (idx >= 0) {
             const prev = this.messages[idx];
             this.messages.splice(idx, 1, Object.assign({}, prev, data.message));
+          } else {
+            this.ingestMessage(data.message);
           }
+          const aidx = this.archiveMessages.findIndex(m => m.id === data.message.id);
+          if (aidx >= 0) this.archiveMessages.splice(aidx, 1);
           this._resetComposer();
           this.$nextTick(() => this.measureComposer());
         }
@@ -2271,6 +2547,9 @@ function chatRoom(cfg) {
       const fd = new FormData();
       fd.append('body', text);
       if (replyId) fd.append('reply_to_id', replyId);
+      if (this.activeThreadEventId != null) {
+        fd.append('thread_event_id', String(this.activeThreadEventId));
+      }
       pending.forEach((item) => {
         if (item && item.file) fd.append('files', item.file, item.name || item.file.name);
       });

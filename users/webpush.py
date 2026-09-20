@@ -41,11 +41,16 @@ def send_web_push(subscription, *, title: str, body: str, url: str = "") -> bool
     from py_vapid import Vapid
     from pywebpush import WebPushException, webpush
 
+    from users.pwa_icons import absolute_icon_192
+
+    icon = absolute_icon_192()
     payload = json.dumps(
         {
             "title": title or "JOY",
             "body": body or "",
             "url": url or "/",
+            "icon": icon,
+            "badge": icon,
         },
         ensure_ascii=False,
     )

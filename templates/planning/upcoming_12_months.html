@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=9"></script>
+<script defer src="{% static 'chat/room.js' %}?v=21"></script>
 {% endblock %}
 
 {% block content %}
@@ -192,7 +192,7 @@
               <a class="pl-day-events__item" href="{% if s.is_poll_option %}{% url 'planning:poll_detail' s.poll_id %}{% elif s.is_rehearsal and event.cal_chat %}{% url 'chat:room' event.cal_chat.room_id %}{% elif s.is_rehearsal %}{% url 'repetitions:detail' event.pk %}{% else %}{% url 'planning:event_detail' event.pk %}{% endif %}">
                 <span class="pl-day-events__title-row">
                   <strong>{{ event.titre }}</strong>
-                  {% if s.is_rehearsal and event.cal_chat and event.cal_chat.unread %}
+                  {% if event.cal_chat and event.cal_chat.unread %}
                   <span class="pl-chat-badge" aria-label="{{ event.cal_chat.unread }} non lus">{{ event.cal_chat.unread }}</span>
                   {% endif %}
                 </span>

@@ -123,6 +123,12 @@ class Event(models.Model):
         blank=True,
         help_text="Horodatage de la notification J+7 demandant photos/vidéos aux membres.",
     )
+    morning_reminder_sent_at = models.DateTimeField(
+        "Rappel matinal envoyé",
+        null=True,
+        blank=True,
+        help_text="Horodatage du rappel joyeux du matin (présents + feuille de route + météo).",
+    )
     shares_facebook = models.PositiveIntegerField(
         "Partages Facebook",
         default=0,

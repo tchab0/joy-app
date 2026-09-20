@@ -116,6 +116,7 @@ def plain_text_to_html(text: str) -> str:
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MD_UNDERLINE_RE = re.compile(r"\+\+(.+?)\+\+")
 _MD_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)")
 _MD_CODE_RE = re.compile(r"`([^`]+)`")
 _SAFE_HREF_RE = re.compile(r"^(https?://|/|#mailto:)", re.I)
@@ -146,6 +147,9 @@ def _inline_markdown(escaped_line: str) -> str:
     def bold_sub(m):
         return f"<strong>{m.group(1) or m.group(2)}</strong>"
 
+    def underline_sub(m):
+        return f"<u>{m.group(1)}</u>"
+
     def italic_sub(m):
         return f"<em>{m.group(1) or m.group(2)}</em>"
 
@@ -155,6 +159,7 @@ def _inline_markdown(escaped_line: str) -> str:
     out = _MD_CODE_RE.sub(code_sub, escaped_line)
     out = _MD_LINK_RE.sub(link_sub, out)
     out = _MD_BOLD_RE.sub(bold_sub, out)
+    out = _MD_UNDERLINE_RE.sub(underline_sub, out)
     out = _MD_ITALIC_RE.sub(italic_sub, out)
     return out
 
