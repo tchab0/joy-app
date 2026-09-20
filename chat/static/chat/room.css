@@ -1431,11 +1431,32 @@
     border-radius: var(--r);
     color: var(--text);
   }
-  .chat-staff-panel h2 {
+  .chat-staff-panel__summary {
     font-family: var(--font-d);
     font-size: .95rem;
-    margin: 0 0 .5rem;
+    margin: 0;
     color: var(--staff);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    min-height: 44px;
+    user-select: none;
+  }
+  .chat-staff-panel__summary::-webkit-details-marker { display: none; }
+  .chat-staff-panel__summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--staff);
+    font-size: .85em;
+    line-height: 1;
+  }
+  .chat-staff-panel[open] > .chat-staff-panel__summary {
+    margin-bottom: .5rem;
+  }
+  .chat-staff-panel[open] > .chat-staff-panel__summary::before {
+    content: "▾";
   }
   .chat-staff-panel__actions {
     display: flex;

@@ -1,5 +1,5 @@
-<aside class="chat-staff-panel" aria-label="Actions staff">
-  <h2>Actions staff</h2>
+<details class="chat-staff-panel">
+  <summary class="chat-staff-panel__summary">Actions staff</summary>
   <div class="chat-staff-panel__actions">
     {% if draft_proposal %}
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
@@ -41,4 +41,4 @@
     {% include "planning/_invite_musician_form.html" with form_action=chat_invite_action invite_musicians=invite_musicians next_path=request.path submit_label="Inviter + notification" submit_class="btn-launch" id_prefix="chat_invite" %}
     {% endif %}
   </div>
-</aside>
+</details>
