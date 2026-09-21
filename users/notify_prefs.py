@@ -34,6 +34,7 @@ TYPE_PHOTOS = "photos"
 TYPE_CONTACT = "contact"
 TYPE_STAFF_ALERT = "staff_alert"
 TYPE_FEEDBACK = "feedback"
+TYPE_MEDIA = "media"
 
 # Types exclus du récap inbox (déjà couverts par le digest salon).
 # chat_reply reste digéré via l’inbox selon la préf. dédiée.
@@ -52,6 +53,7 @@ RELATED_TO_TYPE = {
     "contact": TYPE_CONTACT,
     "staff_alert": TYPE_STAFF_ALERT,
     "feedback": TYPE_FEEDBACK,
+    "media": TYPE_MEDIA,
 }
 
 WEEKDAY_LABELS = (
@@ -133,6 +135,12 @@ TYPE_CATALOG: tuple[NotifyTypeSpec, ...] = (
         TYPE_STAFF_ALERT,
         "Annulations de présence",
         "Un musicien confirme qu’il ne viendra plus.",
+        staff_only=True,
+    ),
+    NotifyTypeSpec(
+        TYPE_MEDIA,
+        "Médias à valider",
+        "Nouvelles photos, vidéos ou fichiers soumis pour la galerie.",
         staff_only=True,
     ),
 )

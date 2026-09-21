@@ -156,6 +156,15 @@
       margin: 0 !important;
     }
     .footer-staff a:hover { color: var(--staff-on-dark-h) !important; }
+    .staff-pending-dot {
+      width: .5rem; height: .5rem; border-radius: 50%; flex-shrink: 0;
+      margin-left: .35rem; background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .28);
+    }
+    .footer-staff .staff-pending-dot {
+      background: var(--staff-on-dark-h);
+      box-shadow: 0 0 0 2px rgba(168, 212, 232, .35);
+    }
     .footer-staff-icon {
       gap: .4rem;
       border: 1px solid rgba(126, 180, 204, .35);
@@ -484,6 +493,11 @@
       <a href="{% url 'admin_concerts' %}">CMS concerts</a>
       <a href="{% url 'planning:admin' %}">Admin planning</a>
       <a href="{% url 'repertoire:staff_list' %}">Atelier partitions</a>
+      {% if pending_media_count %}
+      <a href="{% url 'admin_medias' %}" aria-label="Médias, {{ pending_media_count }} à traiter"{% if request.resolver_match.url_name == 'admin_medias' %} class="is-current"{% endif %}>
+        Médias<span class="staff-pending-dot" aria-hidden="true"></span>
+      </a>
+      {% endif %}
       <a href="/admin/">Django admin</a>
     </div>
   </div>

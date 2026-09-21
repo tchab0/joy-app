@@ -1,7 +1,7 @@
 {% comment %}
 Nav commune Coulisses (planning, répertoire, chat, répés).
 Usage : {% include "planning/_module_nav.html" with active="calendrier" %}
-active : calendrier | mes_dates | repertoire | chat | chat_staff | repes | admin | musiciens | atelier | setlists
+active : calendrier | mes_dates | repertoire | chat | chat_staff | repes | admin | musiciens | atelier | setlists | medias
 {% endcomment %}
 <nav class="pl-nav" aria-label="Coulisses — planning, répertoire et chat">
   {# Rangée primaire : Planning | Répertoire | Chat restent côte à côte sur mobile #}
@@ -49,6 +49,9 @@ active : calendrier | mes_dates | repertoire | chat | chat_staff | repes | admin
       <a href="{% url 'repertoire:staff_list' %}" data-tour="staff-atelier"{% if active == "atelier" %} class="is-active" aria-current="page"{% endif %}>Atelier partitions</a>
       <a href="{% url 'repertoire:staff_setlist_list' %}" data-tour="staff-setlists"{% if active == "setlists" %} class="is-active" aria-current="page"{% endif %}>Setlists</a>
       <a href="{% url 'chat:staff' %}" data-tour="staff-chat"{% if active == "chat_staff" %} class="is-active" aria-current="page"{% endif %}>Chat Staff</a>
+      {% if pending_media_count %}
+      <a href="{% url 'admin_medias' %}" aria-label="Médias, {{ pending_media_count }} à traiter"{% if active == "medias" %} class="is-active" aria-current="page"{% endif %}>Médias<span class="staff-pending-dot" aria-hidden="true"></span></a>
+      {% endif %}
     </div>
   </div>
   {% endif %}

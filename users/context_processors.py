@@ -70,6 +70,7 @@ def nav_access(request):
                 "other": [],
             },
             "show_coulisses_unread_banner": False,
+            "pending_media_count": 0,
         }
 
     from users.tour_service import build_tour_config
@@ -129,6 +130,11 @@ def nav_access(request):
 
     is_staff = bool(user.is_staff or user.is_superuser)
     force_staff_surface = bool(getattr(request, "joy_force_staff_surface", False))
+    pending_media_count = 0
+    if is_staff:
+        from core.media_pending import pending_media_count as count_pending_media
+
+        pending_media_count = count_pending_media()
     return {
         "show_musician_nav": show_musician_nav,
         "show_staff_nav": is_staff,
@@ -149,4 +155,5 @@ def nav_access(request):
         "show_coulisses_unread_banner": bool(
             show_musician_nav and unread_inbox and in_coulisses
         ),
+        "pending_media_count": pending_media_count,
     }

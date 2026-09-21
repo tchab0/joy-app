@@ -2,7 +2,6 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
-from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.http import JsonResponse
@@ -376,7 +375,9 @@ def proposer_media(request):
                     medias_crees.append(media)
 
                 if medias_crees:
-                    _notifier_admin(medias_crees[0], len(medias_crees))
+                    _notifier_admin(
+                        medias_crees[0], len(medias_crees), exclude_user=request.user
+                    )
                 return render(request, "core/proposer_media_succes.html", {
                     "evenement": evenement,
                     "nb": len(medias_crees),
@@ -391,7 +392,7 @@ def proposer_media(request):
                 if media.fichier:
                     t = threading.Thread(target=compresser_media, args=(media,), daemon=True)
                     t.start()
-                _notifier_admin(media)
+                _notifier_admin(media, exclude_user=request.user)
                 return render(request, "core/proposer_media_succes.html", {
                     "evenement": evenement, "nb": 1
                 })
@@ -422,23 +423,36 @@ def _proposer_media_context(form, planning_event, prefilled_media_event):
     }
 
 
-def _notifier_admin(media, nb=1):
-    if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
-        logger.info("E-mail en pause — pas de notif admin média id=%s", getattr(media, "pk", None))
-        return
+def _notifier_admin(media, nb=1, exclude_user=None):
+    """Alerte tout le staff (inbox, push ou e-mail) qu’un média attend validation."""
+    from core.media_pending import invalidate_pending_media_count
+
+    invalidate_pending_media_count()
+    staff = User.objects.filter(is_active=True, is_staff=True)
+    if (
+        exclude_user is not None
+        and getattr(exclude_user, "is_authenticated", False)
+        and getattr(exclude_user, "pk", None)
+    ):
+        staff = staff.exclude(pk=exclude_user.pk)
+    evenement = media.evenement or media.titre or "?"
+    qui = media.soumis_par_nom or "Anonyme"
+    if media.soumis_par_email:
+        qui = f"{qui} <{media.soumis_par_email}>"
+    title = f"JOY — {nb} média(s) à valider"
+    body = f"{media.get_type_display()} · {evenement} · {qui}"
     try:
-        sujet = f"[JOY] {nb} média(s) soumis — {media.evenement or media.titre or '?'}"
-        corps = (
-            f"{nb} média(s) soumis.\n\n"
-            f"Type       : {media.get_type_display()}\n"
-            f"Événement  : {media.evenement or '(sans événement)'}\n"
-            f"Par        : {media.soumis_par_nom or 'Anonyme'} <{media.soumis_par_email}>\n"
-            f"Le         : {media.soumis_le.strftime('%d/%m/%Y %H:%M')}\n\n"
-            f"Validation : {settings.SITE_URL}/admin-medias/"
+        notify_users(
+            staff,
+            title=title,
+            body=body,
+            url="/admin-medias/",
+            related_type="media",
+            related_id=media.pk,
+            notify_type="media",
         )
-        send_mail(sujet, corps, settings.DEFAULT_FROM_EMAIL, [settings.ADMIN_EMAIL], fail_silently=True)
     except Exception:
-        logger.exception("Erreur notification admin media")
+        logger.exception("Erreur notification staff média id=%s", getattr(media, "pk", None))
 
 
 def _contact_mode(request) -> str:
@@ -764,7 +778,11 @@ def admin_media_action(request, pk):
         media.statut = "refuse"
         media.note_admin = request.POST.get("note", "")
         media.save(update_fields=["publie", "statut", "note_admin"])
-    elif action == "rattacher":
+    if action in ("publier", "refuser"):
+        from core.media_pending import invalidate_pending_media_count
+
+        invalidate_pending_media_count()
+    if action == "rattacher":
         ct_id = request.POST.get("content_type_id")
         obj_id = request.POST.get("object_id")
         if ct_id and obj_id:
