@@ -464,9 +464,6 @@
   {% if show_musician_nav and pending_polls and not hide_pending_polls_banner %}
   {% include "planning/_pending_polls_banner.html" %}
   {% endif %}
-  {% if show_coulisses_unread_banner %}
-  {% include "planning/_unread_notifications_banner.html" %}
-  {% endif %}
   {% block content %}{% endblock %}
 </main>
 <footer>

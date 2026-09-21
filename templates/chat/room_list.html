@@ -137,15 +137,17 @@
   }
   .chat-kind--staff { color: var(--staff); }
   .chat-badge {
-    align-self: start;
+    align-self: center;
     min-width: 1.75rem;
     min-height: 1.75rem;
-    padding: 0 .45rem;
+    padding: .35rem .55rem;
     border-radius: var(--r);
     background: var(--accent);
     color: #fff;
-    font-size: .8rem;
+    font-size: .75rem;
     font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -261,7 +263,7 @@
       <summary class="chat-accordion__summary">
         <span class="chat-accordion__label">Morceaux</span>
         <span class="chat-accordion__count">{{ piece_rooms|length }}</span>
-        {% if piece_unread_total %}<span class="chat-badge" aria-label="{{ piece_unread_total }} non lus">{{ piece_unread_total }}</span>{% endif %}
+        {% if piece_unread_total %}<span class="chat-badge">{% if piece_unread_total == 1 %}1 message non lu{% else %}{{ piece_unread_total }} messages non lus{% endif %}</span>{% endif %}
       </summary>
       <ul class="chat-list">
         {% for item in piece_rooms %}
@@ -276,7 +278,7 @@
       <summary class="chat-accordion__summary">
         <span class="chat-accordion__label">Événements</span>
         <span class="chat-accordion__count">{{ event_rooms|length }}</span>
-        {% if event_unread_total %}<span class="chat-badge" aria-label="{{ event_unread_total }} non lus">{{ event_unread_total }}</span>{% endif %}
+        {% if event_unread_total %}<span class="chat-badge">{% if event_unread_total == 1 %}1 message non lu{% else %}{{ event_unread_total }} messages non lus{% endif %}</span>{% endif %}
       </summary>
       <ul class="chat-list">
         {% for item in event_rooms %}

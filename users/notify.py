@@ -270,6 +270,187 @@ def _chat_rooms_by_id(room_ids: set[int]) -> dict[int, object]:
         return {}
 
 
+_BANNER_DOT_LABELS = {
+    "action": "à traiter",
+    "staff": "staff",
+    "event": "événements",
+    "rehearsal": "répétitions",
+    "info": "informations",
+    "chat": "messages",
+}
+
+
+def _banner_dot_for_item(item) -> str:
+    """Teinte du point selon le type (hors salon, déjà coloré par kind)."""
+    related = (getattr(item, "related_type", None) or "").strip()
+    if related in {"staff_alert", "contact"}:
+        return "staff"
+    if related == "feedback" and is_staff_destined_notification(item):
+        return "staff"
+    if getattr(item, "is_unanswered", False):
+        return "staff" if is_staff_destined_notification(item) else "action"
+    if related == "rehearsal":
+        return "rehearsal"
+    if related in {"event", "participation"}:
+        return "event"
+    if related in {"event_roadmap", "photos", "media"}:
+        return "info"
+    if related == "proposal":
+        return "action"
+    if is_staff_destined_notification(item):
+        return "staff"
+    return "chat"
+
+
+def _truncate_preview(text: str, limit: int = 140) -> str:
+    preview = (text or "").strip()
+    if len(preview) > limit:
+        return preview[: limit - 1].rstrip() + "…"
+    return preview
+
+
+def _bucket_by_dot(items: list) -> list[tuple[str, list]]:
+    buckets: dict[str, list] = {}
+    order: list[str] = []
+    for item in items:
+        dot = _banner_dot_for_item(item)
+        if dot not in buckets:
+            buckets[dot] = []
+            order.append(dot)
+        buckets[dot].append(item)
+    return [(dot, buckets[dot]) for dot in order]
+
+
+def _href_for_banner_items(items, *, is_chat: bool = False, room_id=None, url: str = "") -> str:
+    if is_chat:
+        if len(items) == 1:
+            return reverse("account_notification_open", args=[items[0].pk])
+        if room_id:
+            return reverse("chat:room", args=[room_id])
+        target = (url or "").split("?", 1)[0]
+        if target.startswith("/chat/"):
+            return target or reverse("chat:list")
+        return reverse("chat:list")
+    if len(items) == 1:
+        return reverse("account_notification_open", args=[items[0].pk])
+    return reverse("account_notifications")
+
+
+def _chip(
+    items,
+    *,
+    dot: str,
+    label: str,
+    is_chat: bool = False,
+    is_staff: bool = False,
+    room_id=None,
+    url: str = "",
+    qty: int | None = None,
+    preview: str = "",
+    kind: str = "",
+) -> dict:
+    count = len(items)
+    show = count == 1
+    display_qty = count if qty is None else qty
+    if is_chat and not show:
+        unit = "message non lu" if display_qty == 1 else "messages non lus"
+        aria = f"{display_qty} {unit} — {label}"
+    elif not show:
+        type_label = _BANNER_DOT_LABELS.get(dot, "notifications")
+        aria = f"{display_qty} notifications — {type_label}"
+    else:
+        aria = label
+    return {
+        "dot": dot,
+        "kind": kind or dot,
+        "count": count,
+        "qty": display_qty,
+        "label": label,
+        "preview": preview if show else "",
+        "show_content": show,
+        "is_chat": is_chat,
+        "is_staff": bool(is_staff or dot == "staff"),
+        "href": _href_for_banner_items(
+            items, is_chat=is_chat, room_id=room_id, url=url
+        ),
+        "aria": aria,
+        "open_pk": items[0].pk,
+        "room_id": room_id,
+    }
+
+
+def _banner_chips(*, action: list, chat_groups: list, other: list) -> list[dict]:
+    chips: list[dict] = []
+    for dot, items in _bucket_by_dot(action):
+        chips.append(
+            _chip(
+                items,
+                dot=dot,
+                label=(items[0].title or "").strip() or "Notification",
+                preview=_truncate_preview(items[0].body),
+            )
+        )
+    for group in chat_groups:
+        kind = group.get("kind") or "chat"
+        dot = f"chat-{kind}" if kind and kind != "chat" else "chat"
+        chips.append(
+            _chip(
+                _ChipItems(group),
+                dot=dot,
+                label=group.get("label") or "Salon",
+                is_chat=True,
+                is_staff=bool(group.get("is_staff")),
+                room_id=group.get("room_id"),
+                url=group.get("url") or "",
+                qty=group.get("qty") or group.get("count") or 1,
+                preview=group.get("preview") or "",
+                kind=kind,
+            )
+        )
+    for dot, items in _bucket_by_dot(other):
+        chips.append(
+            _chip(
+                items,
+                dot=dot,
+                label=(items[0].title or "").strip() or "Notification",
+                preview=_truncate_preview(items[0].body),
+            )
+        )
+    return chips
+
+
+class _ChipItems(list):
+    """Vue liste minimale (pk) pour réutiliser ``_chip`` sur un groupe chat."""
+
+    def __init__(self, group: dict):
+        pks = group.get("pks") or []
+        super().__init__([type("N", (), {"pk": pk})() for pk in pks] or [type("N", (), {"pk": group.get("open_pk")})()])
+
+
+def _unread_messages_by_room(user, room_ids: set[int]) -> dict[int, int]:
+    """Messages non lus par salon (membership), pas le nombre de notifications."""
+    ids = {rid for rid in room_ids if rid}
+    if user is None or not ids:
+        return {}
+    try:
+        from chat.models import ChatMembership
+        from chat.services import unread_counts_for_memberships
+
+        memberships = list(
+            ChatMembership.objects.filter(
+                user=user, room_id__in=ids, left_at__isnull=True
+            )
+        )
+        by_membership = unread_counts_for_memberships(memberships)
+        return {m.room_id: by_membership.get(m.pk, 0) for m in memberships}
+    except (ProgrammingError, OperationalError):
+        logger.warning("Compteurs non-lus salon indisponibles (migration ?)")
+        return {}
+    except Exception:
+        logger.exception("Échec compteurs non-lus salon")
+        return {}
+
+
 def group_unread_inbox_for_banner(notifications: list) -> dict:
     """
     Compacte l’inbox pour la bannière Coulisses.
@@ -288,7 +469,10 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
         if _is_chat_notification(item):
             chat_total += 1
             url = (item.url or "").strip() or "/chat/"
-            group = chat_by_url.get(url)
+            room_id = _chat_room_id_from_url(url)
+            # Même salon même si l’URL porte ?msg= / ?thread= : un seul groupe.
+            key = f"room:{room_id}" if room_id is not None else url.split("?", 1)[0]
+            group = chat_by_url.get(key)
             if group is None:
                 preview = (item.body or "").strip()
                 if len(preview) > 120:
@@ -297,7 +481,7 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                 if room_id is not None:
                     room_ids.add(room_id)
                 group = {
-                    "url": url,
+                    "url": url.split("?", 1)[0] or "/chat/",
                     "label": _chat_room_label(item),
                     "count": 0,
                     "open_pk": item.pk,
@@ -306,9 +490,12 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                     "is_staff": is_staff_destined_notification(item),
                     "room_id": room_id,
                     "kind": "chat",
+                    "show_content": False,
+                    "qty": 0,
+                    "unread_messages": 0,
                 }
-                chat_by_url[url] = group
-                chat_order.append(url)
+                chat_by_url[key] = group
+                chat_order.append(key)
             group["count"] += 1
             group["pks"].append(item.pk)
         elif getattr(item, "is_unanswered", False):
@@ -326,12 +513,55 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
         if kind == "staff":
             group["is_staff"] = True
 
+    chat_groups = [chat_by_url[u] for u in chat_order]
+    viewer = notifications[0].user if notifications else None
+    unread_by_room = _unread_messages_by_room(
+        viewer, {g["room_id"] for g in chat_groups if g.get("room_id")}
+    )
+    for group in chat_groups:
+        unread = unread_by_room.get(group.get("room_id") or 0, 0)
+        group["unread_messages"] = unread
+        group["qty"] = unread or group["count"]
+        group["show_content"] = group["count"] == 1
+        if not group["show_content"]:
+            group["preview"] = ""
+
     return {
         "action": action,
-        "chat_groups": [chat_by_url[u] for u in chat_order],
+        "chat_groups": chat_groups,
         "chat_total": chat_total,
         "other": other,
+        "chips": _banner_chips(
+            action=action,
+            chat_groups=chat_groups,
+            other=other,
+        ),
     }
+
+
+def mark_chat_room_notifications_read(user, room_id: int) -> int:
+    """Marque lues les notifications inbox qui pointent vers ce salon."""
+    if user is None or not getattr(user, "is_authenticated", False) or not room_id:
+        return 0
+    prefix = f"/chat/{int(room_id)}/"
+    try:
+        from users.models import UserNotification
+
+        updated = UserNotification.objects.filter(
+            user=user,
+            read_at__isnull=True,
+            archived_at__isnull=True,
+            url__startswith=prefix,
+        ).update(read_at=timezone.now())
+    except (ProgrammingError, OperationalError):
+        logger.warning(
+            "mark_chat_room_notifications_read indisponible user_id=%s",
+            getattr(user, "pk", None),
+        )
+        return 0
+    if updated:
+        invalidate_nav_banner(user)
+    return updated
 
 
 def mark_notifications_responded(

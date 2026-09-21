@@ -26,7 +26,9 @@
       <p class="chat-list__meta">Aucun message pour l’instant</p>
       {% endif %}
     </div>
-    {% if item.unread %}<span class="chat-badge{% if item.room.kind == 'staff' %} chat-badge--staff{% endif %}" aria-label="{{ item.unread }} non lus">{{ item.unread }}</span>{% endif %}
+    {% if item.unread %}
+    <span class="chat-badge{% if item.room.kind == 'staff' %} chat-badge--staff{% endif %}">{% if item.unread == 1 %}1 message non lu{% else %}{{ item.unread }} messages non lus{% endif %}</span>
+    {% endif %}
   </a>
   {% endif %}
 </li>

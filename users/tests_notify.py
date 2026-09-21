@@ -318,11 +318,11 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertTrue(r.context["show_coulisses_unread_banner"])
         self.assertEqual(r.context["unread_inbox_count"], 1)
         self.assertContains(r, "Invite Coulisses")
-        self.assertContains(r, "notification non lue")
-        # Bannière avant la nav / contenu Planning.
+        self.assertContains(r, "Merci de répondre")
+        # Sous le menu Coulisses, pas au-dessus.
         self.assertLess(
-            r.content.find(b"Invite Coulisses"),
             r.content.find(b'pl-nav__label">Planning'),
+            r.content.find(b"Invite Coulisses"),
         )
 
     def test_coulisses_chat_unread_grouped_as_messages(self):
@@ -330,7 +330,7 @@ class StaffUnreadNotificationsTests(TestCase):
             [self.musician],
             title="JOY — Salon orchestre",
             body="Alice vous a cité dans Salon orchestre : hello",
-            url="/chat/1/",
+            url="/chat/1/?msg=10",
             related_type="chat_msg",
             related_id=10,
         )
@@ -338,7 +338,7 @@ class StaffUnreadNotificationsTests(TestCase):
             [self.musician],
             title="JOY — Salon orchestre",
             body="Bob vous a cité dans Salon orchestre : world",
-            url="/chat/1/",
+            url="/chat/1/?msg=11",
             related_type="chat_msg",
             related_id=11,
         )
@@ -346,7 +346,7 @@ class StaffUnreadNotificationsTests(TestCase):
             [self.musician],
             title="JOY — Répétition",
             body="Alice vous a cité dans Répétition : ping",
-            url="/chat/2/",
+            url="/chat/2/?msg=12",
             related_type="chat_msg",
             related_id=12,
         )
@@ -356,14 +356,21 @@ class StaffUnreadNotificationsTests(TestCase):
         banner = r.context["unread_inbox_banner"]
         self.assertEqual(banner["chat_total"], 3)
         self.assertEqual(len(banner["chat_groups"]), 2)
-        self.assertContains(r, "3 notifications non lues")
         self.assertContains(r, "Tout marquer lu")
         self.assertNotContains(r, ">Toutes</a>")
-        self.assertNotContains(r, "messages non lus")
+        self.assertContains(r, "2 messages non lus")
         self.assertContains(r, "Salon orchestre")
         self.assertContains(r, "Répétition")
-        self.assertContains(r, "Bob vous a cité dans Salon orchestre")
+        self.assertContains(r, "Alice vous a cité dans Répétition")
+        self.assertNotContains(r, "Bob vous a cité dans Salon orchestre")
         self.assertNotContains(r, "Alice vous a cité dans Salon orchestre : hello")
+        self.assertContains(r, reverse("chat:room", args=[1]))
+        # Le groupe à une seule notif ouvre le salon (via le lien d’ouverture).
+        solo = next(g for g in banner["chat_groups"] if g["count"] == 1)
+        self.assertTrue(solo["show_content"])
+        self.assertContains(
+            r, reverse("account_notification_open", args=[solo["open_pk"]])
+        )
 
     def test_coulisses_action_notifications_shown_before_chat(self):
         """Sondage / événement à répondre : listés avant le chat, avec point."""

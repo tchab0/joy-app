@@ -381,6 +381,10 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
     if membership is None and is_staff:
         membership = ensure_staff_membership(room, request.user)
 
+    from users.notify import mark_chat_room_notifications_read
+
+    mark_chat_room_notifications_read(request.user, room.pk)
+
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "subscribe":

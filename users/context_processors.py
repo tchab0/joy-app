@@ -68,6 +68,7 @@ def nav_access(request):
                 "chat_groups": [],
                 "chat_total": 0,
                 "other": [],
+                "chips": [],
             },
             "show_coulisses_unread_banner": False,
             "pending_media_count": 0,
@@ -84,6 +85,7 @@ def nav_access(request):
         "chat_groups": [],
         "chat_total": 0,
         "other": [],
+        "chips": [],
     }
     match = getattr(request, "resolver_match", None)
     ns = getattr(match, "namespace", None) or ""

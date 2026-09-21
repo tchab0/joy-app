@@ -24,11 +24,11 @@
     flex-direction: column;
     overflow: hidden;
   }
-  /* Banners above the salon: keep them, but don’t let them blow past the shell */
+  /* Bannières sous le menu Coulisses : ne pas les laisser manger le salon */
   body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-poll-banner,
   body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-notif-banner {
     flex-shrink: 0;
-    max-height: 28vh;
+    max-height: 22vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }

@@ -370,6 +370,20 @@ class ChatCoreTests(TestCase):
         self.assertContains(r, "Système")
         self.assertContains(r, "Message système de bienvenue")
 
+    def test_room_list_shows_unread_message_count(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        post_message(room=room, author=self.other, body="Non lu un")
+        post_message(room=room, author=self.other, body="Non lu deux")
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:list"))
+        self.assertEqual(r.status_code, 200)
+        item = next(i for i in r.context["primary_rooms"] if i["room"].pk == room.pk)
+        self.assertEqual(item["unread"], 2)
+        self.assertContains(r, "2 messages non lus")
+
     def test_room_list_excludes_rehearsals_from_evenements(self):
         """L’accordéon Événements ne liste pas les salons liés à une répétition."""
         from planning.services import invite_musician_to_event
