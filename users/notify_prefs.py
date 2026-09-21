@@ -17,11 +17,16 @@ FREQ_WEEKLY = "weekly"
 OVERRIDE_FOLLOW = "default"
 OVERRIDE_REALTIME = FREQ_REALTIME
 OVERRIDE_DAILY = FREQ_DAILY
+OVERRIDE_OFF = "off"
 
 DIGEST_FREQUENCIES = frozenset(
     {FREQ_DAILY, FREQ_EVERY_2_DAYS, FREQ_EVERY_3_DAYS, FREQ_WEEKLY}
 )
 OVERRIDE_FREQUENCIES = frozenset({FREQ_REALTIME, FREQ_DAILY})
+# Modes salon (fréquence + coupure d’alertes via subscribed).
+ROOM_OVERRIDE_MODES = frozenset(
+    {OVERRIDE_FOLLOW, FREQ_REALTIME, FREQ_DAILY, OVERRIDE_OFF}
+)
 
 TYPE_CHAT = "chat"
 TYPE_CHAT_REPLY = "chat_reply"
@@ -448,30 +453,53 @@ def save_notification_overrides(user, post, *, memberships) -> list[str]:
             post.get(f"ov_room_{membership.pk}") or OVERRIDE_FOLLOW
         ).strip()
         fields = []
-        if mode == OVERRIDE_FOLLOW or mode == "":
-            if membership.notify_frequency_override:
-                membership.notify_frequency_override = ""
-                membership.notify_digest_hour = None
-                fields = ["notify_frequency_override", "notify_digest_hour"]
-        elif mode not in OVERRIDE_FREQUENCIES:
+        if mode not in ROOM_OVERRIDE_MODES and mode != "":
             errors.append(f"Fréquence invalide pour « {membership.room.title} ».")
             continue
+
+        if mode == OVERRIDE_OFF:
+            if membership.subscribed:
+                membership.subscribed = False
+                fields.append("subscribed")
+            if membership.notify_frequency_override:
+                membership.notify_frequency_override = ""
+                fields.append("notify_frequency_override")
+            if membership.notify_digest_hour is not None:
+                membership.notify_digest_hour = None
+                fields.append("notify_digest_hour")
         else:
-            hour = default_hour
-            if mode == OVERRIDE_DAILY:
-                parsed = _parse_hour(
-                    post.get(f"ov_room_{membership.pk}_hour"), default_hour
-                )
-                if parsed is None:
-                    errors.append(f"Heure invalide pour « {membership.room.title} ».")
-                    continue
-                hour = parsed
-            membership.notify_frequency_override = mode
-            membership.notify_digest_hour = (
-                hour if mode == OVERRIDE_DAILY else None
-            )
-            fields = ["notify_frequency_override", "notify_digest_hour"]
+            # Réactive les alertes si elles étaient coupées (prefs ou menu salon).
+            if not membership.subscribed:
+                membership.subscribed = True
+                fields.append("subscribed")
+            if mode == OVERRIDE_FOLLOW or mode == "":
+                if membership.notify_frequency_override:
+                    membership.notify_frequency_override = ""
+                    fields.append("notify_frequency_override")
+                if membership.notify_digest_hour is not None:
+                    membership.notify_digest_hour = None
+                    fields.append("notify_digest_hour")
+            else:
+                hour = default_hour
+                if mode == OVERRIDE_DAILY:
+                    parsed = _parse_hour(
+                        post.get(f"ov_room_{membership.pk}_hour"), default_hour
+                    )
+                    if parsed is None:
+                        errors.append(
+                            f"Heure invalide pour « {membership.room.title} »."
+                        )
+                        continue
+                    hour = parsed
+                if membership.notify_frequency_override != mode:
+                    membership.notify_frequency_override = mode
+                    fields.append("notify_frequency_override")
+                new_hour = hour if mode == OVERRIDE_DAILY else None
+                if membership.notify_digest_hour != new_hour:
+                    membership.notify_digest_hour = new_hour
+                    fields.append("notify_digest_hour")
         if fields:
-            membership.save(update_fields=fields)
+            # Dédupliquer tout en gardant l’ordre.
+            membership.save(update_fields=list(dict.fromkeys(fields)))
 
     return errors

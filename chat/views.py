@@ -498,6 +498,7 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
     from users.notify_prefs import (
         OVERRIDE_DAILY,
         OVERRIDE_FOLLOW,
+        OVERRIDE_OFF,
         OVERRIDE_REALTIME,
         HOUR_CHOICES,
         save_notification_overrides,
@@ -573,7 +574,10 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
 
     room_rows = []
     for m in memberships:
-        mode = m.notify_frequency_override or OVERRIDE_FOLLOW
+        if not m.subscribed:
+            mode = OVERRIDE_OFF
+        else:
+            mode = m.notify_frequency_override or OVERRIDE_FOLLOW
         hour = (
             m.notify_digest_hour
             if m.notify_digest_hour is not None
@@ -601,6 +605,7 @@ def account_prefs(request: HttpRequest) -> HttpResponse:
             "override_follow": OVERRIDE_FOLLOW,
             "override_realtime": OVERRIDE_REALTIME,
             "override_daily": OVERRIDE_DAILY,
+            "override_off": OVERRIDE_OFF,
         },
     )
 

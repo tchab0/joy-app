@@ -371,8 +371,8 @@
     <div class="chat-prefs__section">
       <h2>Par salon</h2>
       <p>
-        Chaque salon peut contourner le défaut : temps réel, ou une fois par jour.
-        Si les alertes sont coupées dans le salon, réactivez-les depuis le menu ⋯ du salon.
+        Chaque salon peut contourner le défaut : temps réel, une fois par jour, ou pas de notification.
+        Vous pouvez aussi couper / réactiver les alertes depuis le menu ⋯ du salon.
       </p>
       {% for row in room_rows %}
       <div class="chat-prefs__row{% if row.membership.room.kind == 'staff' %} chat-prefs__row--staff{% endif %}"
@@ -391,6 +391,7 @@
             <option value="{{ override_follow }}" {% if row.mode == override_follow %}selected{% endif %}>Comme le défaut</option>
             <option value="{{ override_realtime }}" {% if row.mode == override_realtime %}selected{% endif %}>Temps réel</option>
             <option value="{{ override_daily }}" {% if row.mode == override_daily %}selected{% endif %}>Une fois par jour</option>
+            <option value="{{ override_off }}" {% if row.mode == override_off %}selected{% endif %}>Pas de notification</option>
           </select>
           <select name="ov_room_{{ row.membership.pk }}_hour"
                   x-show="mode === 'daily'" x-cloak

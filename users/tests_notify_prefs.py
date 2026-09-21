@@ -18,6 +18,8 @@ from users.notify_prefs import (
     FREQ_EVERY_2_DAYS,
     FREQ_REALTIME,
     FREQ_WEEKLY,
+    OVERRIDE_FOLLOW,
+    OVERRIDE_OFF,
     TYPE_EVENT,
     digest_is_due,
     resolve_delivery,
@@ -371,3 +373,50 @@ class NotifyPrefsViewTests(TestCase):
         self.assertEqual(policy.frequency, FREQ_DAILY)
         self.assertEqual(policy.hour, 7)
         self.assertEqual(policy.source, "room")
+
+    def test_room_override_off_unsubscribes(self):
+        room = ensure_orchestra_room()
+        m = sync_musician_to_orchestra(self.user)
+        m.notify_frequency_override = FREQ_DAILY
+        m.notify_digest_hour = 7
+        m.save(update_fields=["notify_frequency_override", "notify_digest_hour"])
+        r = self.client.post(
+            reverse("chat:prefs"),
+            {
+                "notify_frequency": FREQ_REALTIME,
+                "notify_digest_hour": 18,
+                "notify_digest_weekday": 0,
+                "chat_auto_subscribe": True,
+                f"ov_room_{m.pk}": OVERRIDE_OFF,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        m.refresh_from_db()
+        self.assertFalse(m.subscribed)
+        self.assertEqual(m.notify_frequency_override, "")
+        self.assertIsNone(m.notify_digest_hour)
+        # GET affiche l’option sélectionnée.
+        r = self.client.get(reverse("chat:prefs"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Pas de notification")
+        self.assertContains(r, "alertes off")
+
+    def test_room_override_reactivates_from_off(self):
+        ensure_orchestra_room()
+        m = sync_musician_to_orchestra(self.user)
+        m.subscribed = False
+        m.save(update_fields=["subscribed"])
+        r = self.client.post(
+            reverse("chat:prefs"),
+            {
+                "notify_frequency": FREQ_REALTIME,
+                "notify_digest_hour": 18,
+                "notify_digest_weekday": 0,
+                "chat_auto_subscribe": True,
+                f"ov_room_{m.pk}": OVERRIDE_FOLLOW,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        m.refresh_from_db()
+        self.assertTrue(m.subscribed)
+        self.assertEqual(m.notify_frequency_override, "")
