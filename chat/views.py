@@ -21,18 +21,21 @@ from chat.services import (
     active_membership,
     add_member,
     build_room_embed_context,
+    create_private_room,
     create_thematic_room,
     deactivate_rehearsal_event_rooms,
     delete_message,
     edit_message,
     ensure_staff_membership,
     ensure_staff_room,
+    is_private_adhoc_room,
     is_thematic_room,
     join_thematic_room,
     list_discoverable_thematic_rooms,
     list_orchestra_archive,
     mark_room_read,
     post_message,
+    remove_private_member,
     remove_thematic_member,
     room_mention_members,
     serialize_mention_members,
@@ -255,6 +258,143 @@ def thematic_create(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def private_create(request: HttpRequest) -> HttpResponse:
+    """Musicien : créer un salon privé et y inviter des personnes."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    User = get_user_model()
+    candidates = list(
+        User.objects.filter(is_musician=True, is_active=True)
+        .exclude(pk=request.user.pk)
+        .order_by("last_name", "first_name", "username")[:300]
+    )
+
+    if request.method == "POST":
+        title = (request.POST.get("title") or "").strip()
+        raw_ids = request.POST.getlist("user_ids")
+        selected_ids: set[int] = set()
+        for raw in raw_ids:
+            try:
+                selected_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        selected = [u for u in candidates if u.pk in selected_ids]
+        try:
+            room = create_private_room(
+                title,
+                invited_users=selected,
+                created_by=request.user,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return render(
+                request,
+                "chat/private_create.html",
+                {
+                    "candidates": candidates,
+                    "title_value": title,
+                    "selected_ids": selected_ids,
+                    "is_planning_staff": bool(
+                        request.user.is_staff or request.user.is_superuser
+                    ),
+                },
+            )
+        messages.success(request, f"Salon privé « {room.title} » créé.")
+        return redirect("chat:room", room_id=room.pk)
+
+    return render(
+        request,
+        "chat/private_create.html",
+        {
+            "candidates": candidates,
+            "title_value": "",
+            "selected_ids": set(),
+            "is_planning_staff": bool(
+                request.user.is_staff or request.user.is_superuser
+            ),
+        },
+    )
+
+
+@login_required
+@require_POST
+def private_member_add(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Membre d’un salon privé : inviter un musicien."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not is_private_adhoc_room(room):
+        messages.error(request, "Ce salon n’est pas privé.")
+        return redirect("chat:room", room_id=room.pk)
+    if active_membership(room, request.user) is None:
+        return HttpResponseForbidden("Vous n’êtes pas membre de ce salon.")
+
+    User = get_user_model()
+    try:
+        user_id = int(request.POST.get("user_id") or 0)
+    except (TypeError, ValueError):
+        user_id = 0
+    user = User.objects.filter(
+        pk=user_id, is_musician=True, is_active=True
+    ).first()
+    if user is None:
+        messages.error(request, "Personne invalide.")
+        return redirect("chat:room", room_id=room.pk)
+
+    add_member(room, user)
+    name = user.get_full_name() or user.username
+    messages.success(request, f"{name} a été invité au salon.")
+    return redirect("chat:room", room_id=room.pk)
+
+
+@login_required
+@require_POST
+def private_member_remove(request: HttpRequest, room_id: int) -> HttpResponse:
+    """Membre d’un salon privé : retirer une personne (ou se retirer)."""
+    denied = _require_musician(request)
+    if denied:
+        return denied
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not is_private_adhoc_room(room):
+        messages.error(request, "Ce salon n’est pas privé.")
+        return redirect("chat:room", room_id=room.pk)
+    if active_membership(room, request.user) is None:
+        return HttpResponseForbidden("Vous n’êtes pas membre de ce salon.")
+
+    User = get_user_model()
+    try:
+        user_id = int(request.POST.get("user_id") or 0)
+    except (TypeError, ValueError):
+        user_id = 0
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        messages.error(request, "Utilisateur invalide.")
+        return redirect("chat:room", room_id=room.pk)
+
+    try:
+        removed = remove_private_member(room, user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("chat:room", room_id=room.pk)
+
+    if removed:
+        if user.pk == request.user.pk:
+            messages.info(request, "Vous avez quitté le salon.")
+            return redirect("chat:list")
+        name = user.get_full_name() or user.username
+        messages.success(request, f"{name} a été retiré du salon.")
+    else:
+        messages.info(request, "Cette personne n’était pas membre du salon.")
+    return redirect("chat:room", room_id=room.pk)
+
+
+@login_required
 @require_POST
 def thematic_join(request: HttpRequest, room_id: int) -> HttpResponse:
     """Musicien : devenir membre d’un salon thématique (vue Tous les salons)."""
@@ -364,10 +504,11 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
     )
     membership = active_membership(room, request.user)
     is_staff = request.user.is_staff or request.user.is_superuser
+    is_private = is_private_adhoc_room(room)
     if room.kind == ChatRoom.Kind.STAFF and not is_staff:
         return HttpResponseForbidden("Salon réservé au staff.")
-    if membership is None and not is_staff:
-        # Peut avoir quitté : afficher page de réintégration si membership existe
+    if membership is None and (not is_staff or is_private):
+        # Privé : pas de bypass staff. Autres salons : non-staff sans membership.
         try:
             left = ChatMembership.objects.get(room=room, user=request.user)
         except ChatMembership.DoesNotExist:
@@ -378,7 +519,7 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
             {"room": room, "membership": left},
         )
 
-    if membership is None and is_staff:
+    if membership is None and is_staff and not is_private:
         membership = ensure_staff_membership(room, request.user)
 
     from users.notify import mark_chat_room_notifications_read
@@ -452,9 +593,7 @@ def room_embed_fragment(request: HttpRequest, room_id: int) -> HttpResponse:
     ):
         return HttpResponseForbidden("Salon réservé au staff.")
     if not user_can_access_room(request.user, room):
-        is_staff = request.user.is_staff or request.user.is_superuser
-        if not is_staff:
-            return HttpResponseForbidden("Vous n’êtes pas membre de ce salon.")
+        return HttpResponseForbidden("Vous n’êtes pas membre de ce salon.")
 
     ctx = build_room_embed_context(
         request,
@@ -650,13 +789,16 @@ def api_poll(request: HttpRequest, room_id: int) -> JsonResponse:
     room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
     if not user_can_access_room(request.user, room):
         return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
-    if active_membership(room, request.user) is None and not (
-        request.user.is_staff or request.user.is_superuser
-    ):
-        return JsonResponse(
-            {"ok": False, "error": "Rejoignez le salon pour lancer un sondage."},
-            status=403,
-        )
+    if active_membership(room, request.user) is None:
+        if (
+            request.user.is_staff or request.user.is_superuser
+        ) and not is_private_adhoc_room(room):
+            ensure_staff_membership(room, request.user)
+        else:
+            return JsonResponse(
+                {"ok": False, "error": "Rejoignez le salon pour lancer un sondage."},
+                status=403,
+            )
 
     import json
 
@@ -822,7 +964,9 @@ def api_read(request: HttpRequest, room_id: int) -> JsonResponse:
         return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
 
     if active_membership(room, request.user) is None:
-        if request.user.is_staff or request.user.is_superuser:
+        if (
+            request.user.is_staff or request.user.is_superuser
+        ) and not is_private_adhoc_room(room):
             ensure_staff_membership(room, request.user)
         else:
             return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
@@ -863,7 +1007,9 @@ def api_archive(request: HttpRequest, room_id: int) -> JsonResponse:
         )
 
     if active_membership(room, request.user) is None:
-        if request.user.is_staff or request.user.is_superuser:
+        if (
+            request.user.is_staff or request.user.is_superuser
+        ) and not is_private_adhoc_room(room):
             ensure_staff_membership(room, request.user)
         else:
             return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)

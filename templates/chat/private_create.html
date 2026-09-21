@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load page_lead %}
+{% block title %}Salon privé — Chat JOY{% endblock %}
+{% block extra_css %}
+{% include "planning/_styles.html" %}
+<style>
+  @media (min-width: 720px) {
+    .pl { max-width: calc(100vw * 2 / 3); }
+  }
+  .chat-private-create {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 1rem calc(2rem + env(safe-area-inset-bottom));
+    color: var(--text);
+  }
+  .chat-private-create h1 {
+    font-family: var(--font-d);
+    font-size: 1.6rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .chat-private-create label {
+    display: block;
+    font-weight: 600;
+    font-size: .9rem;
+    margin-bottom: .35rem;
+    color: var(--text);
+  }
+  .chat-private-create input[type="text"] {
+    width: 100%;
+    min-height: 44px;
+    padding: .55rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .chat-private-create__field {
+    margin-bottom: 1.15rem;
+  }
+  .chat-private-create__help {
+    margin: .35rem 0 0;
+    font-size: .82rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .chat-private-create__list {
+    list-style: none;
+    margin: 0;
+    padding: .5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    max-height: min(50vh, 420px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+  }
+  .chat-private-create__item {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border-radius: var(--r);
+    cursor: pointer;
+    color: var(--text);
+  }
+  .chat-private-create__item:hover,
+  .chat-private-create__item:focus-within {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .chat-private-create__item input {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+  .chat-private-create__actions {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: 1.25rem;
+  }
+  .chat-private-create__actions .pl-btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  @media (min-width: 560px) {
+    .chat-private-create__actions {
+      flex-direction: row;
+    }
+    .chat-private-create__actions .pl-btn {
+      width: auto;
+      flex: 1;
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pl">
+  {% include "planning/_module_nav.html" with active="chat" %}
+</div>
+<div class="chat-private-create" data-tour="chat-private-create">
+  <h1>Salon privé</h1>
+  {% page_lead "chat.private_create" %}
+    Visible uniquement par vous et les personnes invitées — personne d’autre ne le voit.
+  {% endpage_lead %}
+
+  <form method="post" class="pl-form">
+    {% csrf_token %}
+    <div class="chat-private-create__field">
+      <label for="private_title">Titre</label>
+      <input id="private_title" type="text" name="title" maxlength="200"
+             value="{{ title_value }}" required autocomplete="off"
+             placeholder="Ex. CEM-27 Thierry">
+    </div>
+
+    <div class="chat-private-create__field">
+      <label id="private_invite_label">Inviter</label>
+      <p class="chat-private-create__help">
+        Vous êtes déjà membre. Vous pourrez inviter d’autres personnes ensuite.
+      </p>
+      {% if candidates %}
+      <ul class="chat-private-create__list" role="group" aria-labelledby="private_invite_label">
+        {% for u in candidates %}
+        <li>
+          <label class="chat-private-create__item">
+            <input type="checkbox" name="user_ids" value="{{ u.pk }}"
+                   {% if u.pk in selected_ids %}checked{% endif %}>
+            <span>{{ u.get_full_name|default:u.username }}</span>
+          </label>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="chat-private-create__help">Aucun autre musicien actif pour le moment.</p>
+      {% endif %}
+    </div>
+
+    <div class="chat-private-create__actions">
+      <button type="submit" class="pl-btn pl-btn--primary">Créer le salon</button>
+      <a class="pl-btn" href="{% url 'chat:list' %}">Annuler</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

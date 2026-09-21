@@ -1,0 +1,86 @@
+{% if is_private_room %}
+{# Invitation / membres : icône dans la barre, panneau à la demande #}
+<div class="chat-invite" x-data="{ open: false }" @keydown.escape.window="open = false">
+  <button type="button"
+          class="chat-invite__btn"
+          @click.stop="open = !open"
+          :class="{ 'is-open': open }"
+          :aria-expanded="open.toString()"
+          aria-controls="chat-invite-panel"
+          aria-label="Membres et invitations"
+          title="Inviter">
+    <svg class="chat-invite__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="9" cy="8" r="3.25" stroke="currentColor" stroke-width="1.75"/>
+      <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+            d="M3.75 18.5c.7-2.85 2.95-4.5 5.25-4.5s4.55 1.65 5.25 4.5"/>
+      <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+            d="M17.5 8.5v5M15 11h5"/>
+    </svg>
+  </button>
+  <div class="chat-invite__backdrop"
+       x-show="open"
+       x-cloak
+       @click="open = false"
+       aria-hidden="true"></div>
+  <div id="chat-invite-panel"
+       class="chat-invite__panel"
+       role="dialog"
+       aria-label="Membres du salon privé"
+       x-show="open"
+       x-cloak
+       x-transition.opacity.duration.150ms
+       @click.stop>
+    <div class="chat-invite__head">
+      <h2>Membres</h2>
+      <button type="button" class="chat-invite__close" @click="open = false" aria-label="Fermer">×</button>
+    </div>
+
+    {% if private_members %}
+    <ul class="chat-invite__list">
+      {% for m in private_members %}
+      <li class="chat-invite__row">
+        <span class="chat-invite__name">
+          {{ m.get_full_name|default:m.username }}
+          {% if m.pk == current_user_id %}
+          <span class="chat-invite__you">vous</span>
+          {% endif %}
+        </span>
+        {% if m.pk != current_user_id %}
+        <form method="post" action="{% url 'chat:private_member_remove' room.pk %}"
+              onsubmit="return confirm('Retirer {{ m.get_full_name|default:m.username|escapejs }} du salon ?');">
+          {% csrf_token %}
+          <input type="hidden" name="user_id" value="{{ m.pk }}">
+          <button type="submit" class="chat-invite__remove" aria-label="Retirer {{ m.get_full_name|default:m.username }}">
+            Retirer
+          </button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="chat-invite__empty">Aucun membre pour le moment.</p>
+    {% endif %}
+
+    {% if private_candidates %}
+    <div class="chat-invite__section">
+      <p class="chat-invite__label">Inviter</p>
+      <ul class="chat-invite__candidates">
+        {% for m in private_candidates %}
+        <li>
+          <form method="post" action="{% url 'chat:private_member_add' room.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="user_id" value="{{ m.pk }}">
+            <button type="submit" class="chat-invite__candidate">
+              <span class="chat-invite__candidate-plus" aria-hidden="true">+</span>
+              <span>{{ m.get_full_name|default:m.username }}</span>
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

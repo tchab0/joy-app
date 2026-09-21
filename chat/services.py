@@ -678,8 +678,110 @@ def is_thematic_room(room: ChatRoom) -> bool:
 
 
 def is_private_adhoc_room(room: ChatRoom) -> bool:
-    """Ancien salon privé ad hoc (ex. Montaigu Joy) : EVENT sans événement."""
+    """Salon privé (ex. Montaigu Joy, CEM) : EVENT sans événement lié."""
     return room.kind == ChatRoom.Kind.EVENT and not room.event_id
+
+
+@transaction.atomic
+def create_private_room(
+    title: str,
+    *,
+    invited_users=None,
+    created_by=None,
+) -> ChatRoom:
+    """
+    Crée un salon privé : uniquement le créateur + les invités.
+    Invisible hors membership (y compris pour le staff non invité).
+    """
+    cleaned = (title or "").strip()
+    if not cleaned:
+        raise ValueError("Le titre du salon est obligatoire.")
+    if len(cleaned) > 200:
+        cleaned = cleaned[:200]
+    if created_by is None or not getattr(created_by, "pk", None):
+        raise ValueError("Un créateur est obligatoire pour un salon privé.")
+    if not getattr(created_by, "is_active", False):
+        raise ValueError("Le créateur doit être un compte actif.")
+
+    room = ChatRoom.objects.create(
+        kind=ChatRoom.Kind.EVENT,
+        title=cleaned,
+        event=None,
+        is_active=True,
+    )
+
+    seen: set[int] = set()
+    add_member(room, created_by)
+    seen.add(created_by.pk)
+
+    for user in invited_users or []:
+        if not user or not getattr(user, "pk", None):
+            continue
+        if user.pk in seen:
+            continue
+        seen.add(user.pk)
+        if not user.is_active:
+            continue
+        # Musiciens (et staff musiciens) uniquement — pas de seed staff global.
+        if not (
+            getattr(user, "is_musician", False)
+            or user.is_staff
+            or user.is_superuser
+        ):
+            continue
+        add_member(room, user)
+
+    creator_name = (
+        created_by.get_full_name() or created_by.username or ""
+    ).strip()
+    body = (
+        f"Salon privé créé par {creator_name}."
+        if creator_name
+        else "Salon privé créé."
+    )
+    post_message(
+        room=room,
+        author=None,
+        body=body,
+        kind=ChatMessage.Kind.SYSTEM,
+    )
+    return room
+
+
+def private_active_members(room: ChatRoom) -> list:
+    """Membres actifs d’un salon privé."""
+    return list(
+        User.objects.filter(
+            is_active=True,
+            chat_memberships__room=room,
+            chat_memberships__left_at__isnull=True,
+        )
+        .distinct()
+        .order_by("last_name", "first_name", "username")
+    )
+
+
+def private_member_candidates(room: ChatRoom) -> list:
+    """Musiciens actifs non déjà membres du salon privé."""
+    member_ids = ChatMembership.objects.filter(
+        room=room, left_at__isnull=True
+    ).values_list("user_id", flat=True)
+    return list(
+        User.objects.filter(is_musician=True, is_active=True)
+        .exclude(pk__in=member_ids)
+        .order_by("last_name", "first_name", "username")[:300]
+    )
+
+
+def remove_private_member(room: ChatRoom, user) -> bool:
+    """Retire un membre d’un salon privé (leave)."""
+    if not is_private_adhoc_room(room):
+        raise ValueError("Ce salon n’est pas un salon privé.")
+    membership = active_membership(room, user)
+    if membership is None:
+        return False
+    membership.leave()
+    return True
 
 
 @transaction.atomic
@@ -1096,6 +1198,9 @@ def user_can_access_room(user, room: ChatRoom) -> bool:
         return False
     if room.kind == ChatRoom.Kind.STAFF:
         return bool(user.is_superuser or user.is_staff)
+    # Privé : strictement les invités (pas de bypass staff).
+    if is_private_adhoc_room(room):
+        return active_membership(room, user) is not None
     if user.is_superuser or user.is_staff:
         return True
     return active_membership(room, user) is not None
@@ -1550,7 +1655,11 @@ def room_mention_members(room: ChatRoom) -> list:
     User = get_user_model()
     if room.kind == ChatRoom.Kind.STAFF:
         q = Q(is_staff=True) | Q(is_superuser=True)
-    elif room.kind == ChatRoom.Kind.SECTION or is_thematic_room(room):
+    elif (
+        room.kind == ChatRoom.Kind.SECTION
+        or is_thematic_room(room)
+        or is_private_adhoc_room(room)
+    ):
         # Composition figée : pas tout l’orchestre.
         q = Q(
             chat_memberships__room=room,
@@ -1637,8 +1746,12 @@ def resolve_mentioned_users(room: ChatRoom, body: str, *, exclude_user=None) -> 
             continue
         if not user_can_access_room(u, room):
             # Événement / morceau : ajouter pour que la notif soit ouvrable.
-            # Pupitre / thématique : pas d’ajout auto (composition figée).
-            if room.kind == ChatRoom.Kind.SECTION or is_thematic_room(room):
+            # Pupitre / thématique / privé : pas d’ajout auto (composition figée).
+            if (
+                room.kind == ChatRoom.Kind.SECTION
+                or is_thematic_room(room)
+                or is_private_adhoc_room(room)
+            ):
                 continue
             try:
                 add_member(room, u, subscribed=bool(getattr(u, "chat_auto_subscribe", True)))
@@ -2261,6 +2374,8 @@ def mark_room_read(room: ChatRoom, user, *, broadcast: bool = False) -> dict | N
 
 def ensure_staff_membership(room: ChatRoom, user) -> ChatMembership:
     """Staff sans membership : crée / réintègre (alertes ON par défaut)."""
+    if is_private_adhoc_room(room):
+        raise ValueError("Salon privé : invitation requise (pas d’accès staff auto).")
     subscribed = bool(getattr(user, "chat_auto_subscribe", True))
     membership, _ = ChatMembership.objects.get_or_create(
         room=room,
@@ -2292,7 +2407,7 @@ def build_room_embed_context(
     user = request.user
     is_staff = user.is_staff or user.is_superuser
     membership = active_membership(room, user)
-    if membership is None and is_staff:
+    if membership is None and is_staff and not is_private_adhoc_room(room):
         membership = ensure_staff_membership(room, user)
 
     is_rehearsal_room = room.kind == ChatRoom.Kind.REHEARSALS or bool(
@@ -2381,11 +2496,18 @@ def build_room_embed_context(
     lock_options: list = []
     thematic_members: list = []
     thematic_candidates: list = []
+    private_members: list = []
+    private_candidates: list = []
     is_thematic = is_thematic_room(room)
+    is_private = is_private_adhoc_room(room)
 
     if is_thematic and is_staff and show_staff_panel:
         thematic_members = thematic_active_members(room)
         thematic_candidates = thematic_member_candidates(room)
+
+    if is_private and membership is not None:
+        private_members = private_active_members(room)
+        private_candidates = private_member_candidates(room)
 
     if room.event_id:
         participation = (
@@ -2479,8 +2601,11 @@ def build_room_embed_context(
         "initial_last_read_at": initial_last_read_at,
         "is_planning_staff": is_staff,
         "is_thematic_room": is_thematic,
+        "is_private_room": is_private,
         "thematic_members": thematic_members,
         "thematic_candidates": thematic_candidates,
+        "private_members": private_members,
+        "private_candidates": private_candidates,
         "draft_proposal": draft_proposal,
         "invite_musicians": invite_musicians,
         "invite_choices": invite_choices,

@@ -6,6 +6,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from chat.services import (
     active_membership,
     ensure_staff_membership,
+    is_private_adhoc_room,
     mark_room_read,
     post_message,
     serialize_message,
@@ -28,7 +29,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         self.room = room
-        if self.user.is_staff or self.user.is_superuser:
+        if (self.user.is_staff or self.user.is_superuser) and not is_private_adhoc_room(
+            room
+        ):
             await self._ensure_staff_membership()
         self.group_name = room.channel_group
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -65,13 +68,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         membership = await self._active_membership()
-        if membership is None and not (self.user.is_staff or self.user.is_superuser):
-            await self.send(
-                text_data=json.dumps({"type": "error", "error": "Accès refusé"})
-            )
-            return
-        if membership is None and (self.user.is_staff or self.user.is_superuser):
-            await self._ensure_staff_membership()
+        if membership is None:
+            if (self.user.is_staff or self.user.is_superuser) and not is_private_adhoc_room(
+                self.room
+            ):
+                await self._ensure_staff_membership()
+            else:
+                await self.send(
+                    text_data=json.dumps({"type": "error", "error": "Accès refusé"})
+                )
+                return
 
         reply_to_id = payload.get("reply_to_id")
         try:

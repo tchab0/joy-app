@@ -14,6 +14,7 @@ from chat.models import ChatMembership, ChatMessage, ChatMessageReaction, ChatRo
 from chat.services import (
     assign_mention_handles,
     chat_room_url,
+    create_private_room,
     create_thematic_room,
     delete_message,
     ensure_event_room,
@@ -25,6 +26,7 @@ from chat.services import (
     ensure_staff_room,
     edit_message,
     extract_mention_tokens,
+    is_private_adhoc_room,
     is_thematic_room,
     list_discoverable_thematic_rooms,
     join_thematic_room,
@@ -34,6 +36,7 @@ from chat.services import (
     orchestra_archived_q,
     partition_rehearsal_threads,
     post_message,
+    remove_private_member,
     remove_thematic_member,
     replies_prefetch,
     resolve_mentioned_users,
@@ -1697,11 +1700,14 @@ class ThematicRoomTests(TestCase):
         client.login(username="them_musi", password="pass")
         r = client.get(reverse("chat:list"))
         self.assertNotContains(r, reverse("chat:thematic_create"))
+        self.assertContains(r, reverse("chat:private_create"))
+        self.assertContains(r, "Salon privé")
 
         client.login(username="them_staff", password="pass")
         r = client.get(reverse("chat:list"))
         self.assertContains(r, reverse("chat:thematic_create"))
-        self.assertContains(r, "Nouveau salon")
+        self.assertContains(r, "Salon thématique")
+        self.assertContains(r, reverse("chat:private_create"))
 
     def test_remove_thematic_member_helper(self):
         room = create_thematic_room(
@@ -1819,4 +1825,200 @@ class ThematicRoomTests(TestCase):
             ChatMembership.objects.filter(
                 room=room, user=self.musician, left_at__isnull=True
             ).exists()
+        )
+
+
+class PrivateRoomTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.creator = User.objects.create_user(
+            username="priv_creator",
+            password="pass",
+            email="priv_creator@example.com",
+            is_musician=True,
+            first_name="Aline",
+            last_name="Creator",
+        )
+        cls.guest = User.objects.create_user(
+            username="priv_guest",
+            password="pass",
+            email="priv_guest@example.com",
+            is_musician=True,
+            first_name="Benoit",
+            last_name="Guest",
+        )
+        cls.outsider = User.objects.create_user(
+            username="priv_out",
+            password="pass",
+            email="priv_out@example.com",
+            is_musician=True,
+            first_name="Carla",
+            last_name="Out",
+        )
+        cls.staff = User.objects.create_user(
+            username="priv_staff",
+            password="pass",
+            email="priv_staff@example.com",
+            is_musician=True,
+            is_staff=True,
+            first_name="Staff",
+            last_name="Priv",
+        )
+
+    def test_create_private_room_only_invites_selected(self):
+        room = create_private_room(
+            "  CEM test  ",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        self.assertTrue(is_private_adhoc_room(room))
+        self.assertEqual(room.title, "CEM test")
+        self.assertFalse(is_thematic_room(room))
+        member_ids = set(
+            ChatMembership.objects.filter(
+                room=room, left_at__isnull=True
+            ).values_list("user_id", flat=True)
+        )
+        self.assertEqual(member_ids, {self.creator.pk, self.guest.pk})
+        self.assertNotIn(self.staff.pk, member_ids)
+        self.assertTrue(
+            ChatMessage.objects.filter(
+                room=room, kind=ChatMessage.Kind.SYSTEM
+            ).exists()
+        )
+
+    def test_staff_without_invite_cannot_access(self):
+        room = create_private_room(
+            "Secret",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        self.assertFalse(user_can_access_room(self.staff, room))
+        self.assertFalse(user_can_access_room(self.outsider, room))
+        self.assertTrue(user_can_access_room(self.creator, room))
+        self.assertTrue(user_can_access_room(self.guest, room))
+
+        client = Client()
+        client.login(username="priv_staff", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(
+            ChatMembership.objects.filter(room=room, user=self.staff).exists()
+        )
+
+        client.login(username="priv_guest", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Secret")
+        self.assertContains(r, "Salon privé")
+
+    def test_private_not_in_discoverable_tous(self):
+        room = create_private_room(
+            "Invisible",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        discoverable = list_discoverable_thematic_rooms(self.outsider)
+        self.assertNotIn(room, discoverable)
+
+        client = Client()
+        client.login(username="priv_out", password="pass")
+        r = client.get(reverse("chat:list") + "?vue=tous")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Invisible")
+
+        client.login(username="priv_creator", password="pass")
+        r = client.get(reverse("chat:list") + "?vue=mes")
+        self.assertContains(r, "Invisible")
+        self.assertContains(r, "Privé")
+
+    def test_musician_can_create_via_view(self):
+        client = Client()
+        client.login(username="priv_creator", password="pass")
+        r = client.get(reverse("chat:private_create"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Salon privé")
+
+        r = client.post(
+            reverse("chat:private_create"),
+            {
+                "title": "Duo Aline",
+                "user_ids": [str(self.guest.pk)],
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        room = ChatRoom.objects.get(title="Duo Aline", event__isnull=True)
+        self.assertTrue(is_private_adhoc_room(room))
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.creator, left_at__isnull=True
+            ).exists()
+        )
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.guest, left_at__isnull=True
+            ).exists()
+        )
+
+    def test_member_can_invite_and_remove(self):
+        room = create_private_room(
+            "Trio",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        client = Client()
+        client.login(username="priv_guest", password="pass")
+        r = client.post(
+            reverse("chat:private_member_add", args=[room.pk]),
+            {"user_id": str(self.outsider.pk)},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+
+        r = client.post(
+            reverse("chat:private_member_remove", args=[room.pk]),
+            {"user_id": str(self.outsider.pk)},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(
+            ChatMembership.objects.filter(
+                room=room, user=self.outsider, left_at__isnull=True
+            ).exists()
+        )
+
+        # Non-membre ne peut pas inviter
+        client.login(username="priv_staff", password="pass")
+        r = client.post(
+            reverse("chat:private_member_add", args=[room.pk]),
+            {"user_id": str(self.outsider.pk)},
+        )
+        self.assertEqual(r.status_code, 403)
+
+    def test_remove_private_member_helper(self):
+        room = create_private_room(
+            "Helper",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        self.assertTrue(remove_private_member(room, self.guest))
+        self.assertFalse(remove_private_member(room, self.guest))
+
+    def test_mention_candidates_are_members_only(self):
+        room = create_private_room(
+            "Mentions",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        candidates = room_mention_members(room)
+        ids = {u.pk for u in candidates}
+        self.assertEqual(ids, {self.creator.pk, self.guest.pk})
+        mentioned = resolve_mentioned_users(room, f"@{self.outsider.username}")
+        self.assertEqual(mentioned, [])
+        self.assertFalse(
+            ChatMembership.objects.filter(room=room, user=self.outsider).exists()
         )

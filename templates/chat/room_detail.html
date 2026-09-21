@@ -45,7 +45,7 @@
        composerPlaceholder: '{{ composer_placeholder|escapejs }}'
      })"
      x-init="init()"
-     @click="if (!$event.target.closest('.chat-menu')) menuOpen = false">
+     @click="if (!$event.target.closest('.chat-menu') && !$event.target.closest('.chat-invite')) menuOpen = false">
   {% include "chat/_room_chrome.html" %}
 
   {% if is_planning_staff and room.event %}

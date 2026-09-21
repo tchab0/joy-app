@@ -50,6 +50,7 @@
     {% endif %}
   </button>
   {% endif %}
+  {% include "chat/_room_private_invite.html" %}
   <div class="chat-menu" @click.stop>
     <button type="button" class="chat-menu__btn" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen.toString()" aria-label="Options du salon">⋯</button>
     <div class="chat-menu__panel" x-show="menuOpen" x-cloak x-transition.opacity.duration.150ms>

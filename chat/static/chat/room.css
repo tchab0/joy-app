@@ -1521,6 +1521,213 @@
     background: var(--staff-h, #2f4756);
     border-color: var(--staff-h, #2f4756);
   }
+  .chat-invite {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .chat-invite__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chat-invite__btn.is-open {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), .08);
+  }
+  .chat-invite__icon { display: block; }
+  .chat-invite__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(18, 16, 14, .35);
+  }
+  .chat-invite__panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 41;
+    max-height: min(72vh, 520px);
+    overflow: auto;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 12px 12px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, .12);
+  }
+  @media (min-width: 640px) {
+    .chat-invite__backdrop { display: none; }
+    .chat-invite__panel {
+      position: absolute;
+      left: auto;
+      right: 0;
+      top: calc(100% + .35rem);
+      bottom: auto;
+      width: min(320px, calc(100vw - 1.5rem));
+      max-height: min(60vh, 420px);
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, .12);
+      padding: .85rem;
+    }
+  }
+  .chat-invite__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .65rem;
+  }
+  .chat-invite__head h2 {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0;
+    color: var(--text);
+  }
+  .chat-invite__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: -.35rem -.35rem -.35rem 0;
+    border: none;
+    border-radius: var(--r);
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .chat-invite__close:hover,
+  .chat-invite__close:focus-visible {
+    color: var(--text);
+    background: rgba(0, 0, 0, .06);
+    outline: none;
+  }
+  .chat-invite__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-invite__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    min-height: 44px;
+    padding: .2rem 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .chat-invite__row:last-child { border-bottom: 0; }
+  .chat-invite__name {
+    font-size: .92rem;
+    line-height: 1.3;
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-invite__you {
+    display: inline-block;
+    margin-left: .35rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .chat-invite__remove {
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: .3rem .55rem;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--accent);
+    font: inherit;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chat-invite__empty {
+    margin: 0;
+    font-size: .88rem;
+    color: var(--muted);
+  }
+  .chat-invite__section {
+    margin-top: .85rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border);
+  }
+  .chat-invite__label {
+    margin: 0 0 .4rem;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .chat-invite__candidates {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    max-height: min(36vh, 240px);
+    overflow: auto;
+  }
+  .chat-invite__candidates form { margin: 0; }
+  .chat-invite__candidate {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    width: 100%;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border: 1px solid transparent;
+    border-radius: var(--r);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: .92rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .chat-invite__candidate:hover,
+  .chat-invite__candidate:focus-visible {
+    background: rgba(var(--accent-rgb), .08);
+    border-color: rgba(var(--accent-rgb), .22);
+    outline: none;
+  }
+  .chat-invite__candidate-plus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1;
+  }
   .chat-staff-invite {
     display: flex;
     flex-direction: column;
