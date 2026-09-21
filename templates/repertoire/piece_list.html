@@ -9,31 +9,56 @@
 {% endblock %}
 
 {% block content %}
-<div class="pl">
+<div class="pl" x-data="repertoireListFilters('{{ search_q|escapejs }}')">
   {% include "planning/_module_nav.html" with active="repertoire" %}
 
   <header class="pl-head">
     <h1>Répertoire</h1>
     {% page_lead "repertoire.pieces" class="page-lead--in-head" %}
-      Partitions par instrument — filtrez votre poste pour n’afficher que vos parties.
+      Partitions par instrument — filtrez votre poste, une setlist ou un titre.
     {% endpage_lead %}
   </header>
 
-  <form class="rep-filter" method="get" action="" data-tour="repertoire-filter">
-    <label for="poste">Poste</label>
-    <select id="poste" name="poste" onchange="this.form.submit()">
-      <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
-      {% for value, label in poste_choices %}
-      <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
-      {% endfor %}
-    </select>
+  <form class="rep-filter" method="get" action="" data-tour="repertoire-filter"
+        @submit="syncQueryBeforeSubmit()">
+    <div class="rep-filter__field">
+      <label for="poste">Poste</label>
+      <select id="poste" name="poste" onchange="this.form.submit()">
+        <option value="all" {% if selected_poste == 'all' %}selected{% endif %}>Tous</option>
+        {% for value, label in poste_choices %}
+        <option value="{{ value }}" {% if selected_poste == value %}selected{% endif %}>{{ label }}{% if value in user_postes %} · mon poste{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="rep-filter__field">
+      <label for="setlist">Setlist</label>
+      <select id="setlist" name="setlist" onchange="this.form.submit()">
+        <option value="" {% if not selected_setlist %}selected{% endif %}>Toutes</option>
+        {% for s in setlist_choices %}
+        <option value="{{ s.pk }}" {% if selected_setlist == s.pk %}selected{% endif %}>
+          {{ s.title }}{% if s.event %} · {{ s.event.date_debut|date:"d/m/Y" }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="rep-filter__field rep-filter__field--grow">
+      <label for="rep-q">Morceau</label>
+      <input id="rep-q" class="pl-input" type="search" name="q"
+             placeholder="Quelques lettres…" autocomplete="off"
+             x-model="query"
+             @keydown.enter.prevent="syncQueryBeforeSubmit(); $el.form.requestSubmit()">
+    </div>
   </form>
 
   {% if pieces %}
-  <section class="pl-section">
+  <section class="pl-section" aria-live="polite">
     {% for piece in pieces %}
     {% with missing=piece.missing_big_band_labels %}
-    <div class="pl-row rep-piece-row">
+    <div class="pl-row rep-piece-row"
+         data-title="{{ piece.title }}"
+         x-show="matchesTitle($el.dataset.title)">
       <div class="pl-row__main">
         <a class="pl-row__title" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">
           {{ piece.title }}
@@ -55,7 +80,6 @@
           {% endif %}
         </p>
       </div>
-      {% if piece.chat_stats.room_id or piece.matching_part %}
       <div class="pl-row__actions">
         {% if piece.chat_stats.room_id %}
         {% include "repertoire/_piece_salon_icon.html" with piece=piece %}
@@ -63,14 +87,48 @@
         {% if piece.matching_part %}
         <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' piece.matching_part.pk %}">PDF</a>
         {% endif %}
+        <a class="pl-btn" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">Fiche</a>
       </div>
-      {% endif %}
     </div>
     {% endwith %}
     {% endfor %}
+    <p class="pl-empty" x-show="!hasVisible()" x-cloak>
+      Aucun morceau ne correspond à ces filtres.
+    </p>
   </section>
   {% else %}
-  <p class="pl-empty">Aucun morceau publié{% if selected_poste != 'all' %} pour ce poste{% endif %}.</p>
+  <p class="pl-empty">
+    Aucun morceau publié{% if selected_setlist %} dans cette setlist{% endif %}{% if selected_poste != 'all' %} pour ce poste{% endif %}.
+  </p>
   {% endif %}
 </div>
+
+<script>
+window.repertoireListFilters = function (initialQuery) {
+  return {
+    query: initialQuery || '',
+    norm(s) {
+      return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    },
+    matchesTitle(title) {
+      const q = this.norm(this.query).trim();
+      return !q || this.norm(title).includes(q);
+    },
+    hasVisible() {
+      const rows = this.$root.querySelectorAll('.rep-piece-row');
+      if (!rows.length) return false;
+      const q = this.norm(this.query).trim();
+      if (!q) return true;
+      return Array.from(rows).some((el) => this.matchesTitle(el.dataset.title || ''));
+    },
+    syncQueryBeforeSubmit() {
+      const input = this.$root.querySelector('#rep-q');
+      if (input) input.value = this.query;
+    },
+  };
+};
+</script>
 {% endblock %}

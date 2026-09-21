@@ -1,22 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Média reçu — JOY{% endblock %}
+{% block extra_css %}
+<style>
+  .section:has(.propose-success) { padding: 1.75rem 0 2.5rem; }
+  .propose-success { max-width: 520px; text-align: center; }
+  .propose-success .section-title { margin-bottom: .75rem; text-align: center; }
+  .propose-success__text {
+    color: var(--muted); margin: 0 0 1.5rem; font-size: .98rem; line-height: 1.5;
+  }
+  .propose-success__text strong { color: var(--text); font-weight: 650; }
+  .propose-success__actions {
+    display: flex; flex-direction: column; gap: .65rem;
+  }
+  .propose-success__actions .btn {
+    min-height: 48px; width: 100%;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-sizing: border-box;
+  }
+  @media (min-width: 640px) {
+    .section:has(.propose-success) { padding: 4rem 0; }
+    .propose-success .section-title { margin-bottom: 1.25rem; }
+    .propose-success__actions {
+      flex-direction: row; justify-content: center; flex-wrap: wrap;
+    }
+    .propose-success__actions .btn { width: auto; min-width: 11rem; }
+  }
+</style>
+{% endblock %}
 {% block content %}
 <section class="section">
-  <div class="container" style="max-width:600px;text-align:center;padding-top:4rem">
-    <div style="font-size:3rem;margin-bottom:1.5rem">🎷</div>
-    <h1 class="section-title" style="text-align:center">Merci !</h1>
-    <p style="color:var(--muted);margin-bottom:2rem">
+  <div class="container propose-success">
+    <h1 class="section-title">Merci&nbsp;!</h1>
+    <p class="propose-success__text">
       {% if nb and nb > 1 %}
         <strong>{{ nb }} photo{{ nb|pluralize }}</strong> reçue{{ nb|pluralize }}
       {% else %}
         Votre média a bien été reçu
       {% endif %}
-      pour l'événement <strong>{{ evenement }}</strong>.<br>
+      pour l’événement <strong>{{ evenement }}</strong>.
       Il sera examiné par notre équipe avant publication.
     </p>
-    <a href="{% url 'medias' %}" class="btn btn-outline">Voir la galerie</a>
-    &nbsp;
-    <a href="{% url 'proposer_media' %}" class="btn btn-primary">Proposer d'autres médias</a>
+    <div class="propose-success__actions">
+      <a href="{% url 'medias' %}" class="btn btn-outline">Voir la galerie</a>
+      <a href="{% url 'proposer_media' %}" class="btn btn-primary">Proposer d’autres médias</a>
+    </div>
   </div>
 </section>
 {% endblock %}

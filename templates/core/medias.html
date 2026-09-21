@@ -11,55 +11,58 @@
 .media-groupe-titre { font-family:var(--font-d); font-style:italic; font-size:1.2rem; color:var(--text); margin-bottom:1rem; padding-bottom:.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
 .media-photos-head { display:flex; flex-direction:column; gap:1rem; margin-bottom:1.5rem; }
 .media-photos-head h2 { font-family:var(--font-d); font-style:italic; font-size:1.3rem; margin:0; color:var(--text); }
-.media-photos-controls { display:flex; flex-direction:column; gap:.75rem; width:100%; }
-.media-tri { display:flex; gap:.35rem; flex-wrap:wrap; width:100%; }
+.media-tri { display:flex; gap:.35rem; flex-wrap:wrap; width:100%; align-items:stretch; }
 .media-tri a,
-.media-tri button {
+.media-tri button,
+.media-tri .media-event-filter select {
   flex:1 1 auto; min-height:44px; min-width:7rem;
   display:inline-flex; align-items:center; justify-content:center; gap:.35rem;
   padding:.45rem .7rem; border:1px solid var(--border); border-radius:var(--r);
-  background:var(--surface); color:var(--text); text-decoration:none;
+  background-color:var(--surface); color:var(--text); text-decoration:none;
   font-family:var(--font-b); font-size:.85rem; font-weight:600;
-  cursor:pointer;
+  cursor:pointer; box-sizing:border-box;
 }
 .media-tri button {
   text-transform:uppercase; letter-spacing:.04em;
   border-color:var(--accent); color:var(--accent);
 }
-.media-tri a.is-active {
+.media-tri a.is-active,
+.media-tri .media-event-filter select.is-active {
   border-color:var(--accent);
-  background:color-mix(in srgb, var(--accent) 12%, var(--surface));
+  background-color:color-mix(in srgb, var(--accent) 12%, var(--surface));
   color:var(--accent);
 }
 .media-tri a:focus-visible,
-.media-tri button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.media-tri button:focus-visible,
+.media-tri .media-event-filter select:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px;
+}
 .media-event-filter {
-  display:flex; flex-direction:column; gap:.35rem; width:100%;
+  flex:1 1 11rem; min-width:0; margin:0; display:flex;
 }
 .media-event-filter label {
-  font-family:var(--font-b); font-size:.72rem; font-weight:600;
-  letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
 }
 .media-event-filter select {
-  width:100%; box-sizing:border-box; min-height:44px;
-  padding:.55rem .75rem; padding-right:2rem;
-  border:1px solid var(--border); border-radius:var(--r);
-  background:var(--surface); color:var(--text);
-  font-family:var(--font-b); font-size:1rem; line-height:1.3;
+  width:100%;
+  justify-content:flex-start;
   appearance:none;
   background-image:
     linear-gradient(45deg, transparent 50%, var(--muted) 50%),
     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
-  background-size: 6px 6px, 6px 6px;
+  background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+  padding-right:1.6rem;
+  text-align:left;
 }
-.media-event-filter select:focus {
-  outline:none; border-color:var(--accent);
+.media-event-filter select.is-active {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
 }
-.media-event-filter select:focus-visible {
-  outline:2px solid var(--accent); outline-offset:2px;
-}
+.media-event-filter select:focus { outline:none; border-color:var(--accent); }
 .media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.75rem; }
 .video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; margin-top:1rem; }
 .video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
@@ -134,12 +137,11 @@
 .lightbox-vote:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 @media (min-width: 640px) {
-  .media-photos-head { flex-direction:row; align-items:flex-start; justify-content:space-between; }
-  .media-photos-controls { width:auto; max-width:min(100%, 28rem); align-items:stretch; }
+  .media-photos-head { flex-direction:row; align-items:center; justify-content:space-between; }
   .media-tri { width:auto; flex-wrap:nowrap; }
   .media-tri a,
   .media-tri button { flex:0 0 auto; }
-  .media-event-filter { min-width:16rem; }
+  .media-event-filter { flex:0 1 14rem; max-width:16rem; }
   .media-grid { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
   .video-grid { grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
   .lightbox-inner { padding:4rem 5rem; }
@@ -188,17 +190,13 @@
     {% if groupes_photos or photos_votes or evenements_filtre %}
     <div class="media-photos-head">
       <h2>Photos</h2>
-      <div class="media-photos-controls">
-        <nav class="media-tri" aria-label="Tri des photos">
-          <a href="?tri=evenements{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}" class="{% if tri != 'votes' %}is-active{% endif %}" {% if tri != 'votes' %}aria-current="page"{% endif %}>Par événement</a>
-          <a href="?tri=votes" class="{% if tri == 'votes' %}is-active{% endif %}" {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
-          <button type="button" onclick="openLightbox('{% if tri == "votes" %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
-        </nav>
+      <nav class="media-tri" aria-label="Tri des photos">
+        <a href="?tri=evenements{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}" class="{% if tri != 'votes' %}is-active{% endif %}" {% if tri != 'votes' %}aria-current="page"{% endif %}>Par événement</a>
         {% if tri != 'votes' and evenements_filtre %}
         <form class="media-event-filter" method="get" action="{% url 'medias' %}">
           <input type="hidden" name="tri" value="evenements">
           <label for="media-evenement">Événement</label>
-          <select id="media-evenement" name="evenement" onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();" aria-label="Filtrer les photos par événement">
+          <select id="media-evenement" name="evenement" class="{% if evenement_actif %}is-active{% endif %}" onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();" aria-label="Filtrer les photos par événement">
             <option value="">Tous les événements</option>
             {% for ev in evenements_filtre %}
             <option value="{{ ev.pk }}" {% if evenement_actif and evenement_actif.pk == ev.pk %}selected{% endif %}>
@@ -208,7 +206,9 @@
           </select>
         </form>
         {% endif %}
-      </div>
+        <a href="?tri=votes" class="{% if tri == 'votes' %}is-active{% endif %}" {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
+        <button type="button" onclick="openLightbox('{% if tri == "votes" %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
+      </nav>
     </div>
 
     {% if tri == 'votes' %}

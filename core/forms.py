@@ -338,7 +338,7 @@ class MediaSoumissionForm(forms.ModelForm):
         }
         widgets = {
             "type": forms.Select(attrs={"class": "form-select", "x-model": "type"}),
-            "fichier": forms.FileInput(attrs={"class": "form-input"}),
+            "fichier": forms.FileInput(attrs={"class": "file-field"}),
             "url_externe": forms.URLInput(attrs={"class": "form-input", "placeholder": "https://youtube.com/..."}),
             "soumis_par_nom": forms.TextInput(attrs={"class": "form-input", "placeholder": "Jean Dupont"}),
             "soumis_par_email": forms.EmailInput(attrs={"class": "form-input", "placeholder": "jean@exemple.fr"}),

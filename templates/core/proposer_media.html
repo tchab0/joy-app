@@ -5,45 +5,182 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'core/photo-editor.css' %}">
 <style>
-.upload-form { max-width: 600px; margin: 0 auto; }
-.form-group { margin-bottom: 1.5rem; }
-.form-label { display:block; font-size:.85rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:.4rem; }
-.form-input, .form-select { width:100%; padding:.6rem .9rem; border:1.5px solid var(--border); border-radius:var(--r); font-family:var(--font-b); font-size:.95rem; background:var(--surface); color:var(--text); transition:border-color var(--trans); }
-.form-input:focus, .form-select:focus { outline:none; border-color:var(--accent); }
-.form-hint { font-size:.8rem; color:var(--muted); margin-top:.3rem; }
-.form-error { font-size:.85rem; color:var(--accent); margin-top:.3rem; }
-.drop-zone { border:2px dashed var(--border); border-radius:var(--r); padding:2rem; text-align:center; cursor:pointer; transition:border-color var(--trans),background var(--trans); }
-.drop-zone:hover, .drop-zone.drag-over { border-color:var(--accent); background:rgba(201,79,58,.04); }
-.drop-zone input[type=file] { display:none; }
-.file-preview { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; text-align:left; }
-.file-preview-item { display:flex; align-items:center; gap:.75rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r); padding:.5rem .65rem; }
-.file-thumb { width:72px; height:54px; object-fit:cover; border-radius:var(--r); border:1px solid var(--border); flex-shrink:0; }
-.file-preview-meta { flex:1; min-width:0; font-size:.82rem; color:var(--muted); }
-.file-preview-meta strong { display:block; color:var(--text); font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.file-preview-item .btn { flex-shrink:0; font-size:.75rem; padding:.4rem .7rem; min-height:40px; }
-.ev-separator { display:flex; align-items:center; gap:.75rem; margin:.75rem 0; color:var(--muted); font-size:.8rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
-.ev-separator::before, .ev-separator::after { content:''; flex:1; height:1px; background:var(--border); }
-[x-cloak] { display:none!important; }
+  .section:has(.propose-page) { padding: 1.75rem 0 2.5rem; }
+  .propose-page { max-width: 640px; }
+  .propose-page .section-title { margin-bottom: .75rem; }
+  .propose-back {
+    display: inline-flex; align-items: center; gap: .35rem;
+    margin: 0 0 .85rem; font-size: .9rem; font-weight: 600;
+    color: var(--accent); text-decoration: none; min-height: 44px;
+  }
+  .propose-back:hover { color: var(--accent-h); }
+  .propose-event-hint {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .65rem;
+    margin: 0 0 1rem; padding: .75rem .9rem;
+    background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--border));
+    border-radius: var(--r); color: var(--text); font-size: .92rem; line-height: 1.4;
+  }
+  .propose-event-hint strong { font-weight: 650; }
+  .propose-event-hint__meta { color: var(--muted); font-size: .85rem; }
+  .propose-form {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 1rem;
+  }
+  .propose-section { margin-bottom: 1.15rem; }
+  .propose-section:last-of-type { margin-bottom: .65rem; }
+  .propose-section-title {
+    font-family: var(--font-d); font-size: 1.05rem; color: var(--text);
+    margin: 0 0 .55rem; padding-bottom: .3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-row {
+    display: grid; grid-template-columns: 1fr; gap: 0;
+  }
+  .form-group {
+    display: flex; flex-direction: column; gap: .3rem;
+    margin-bottom: .75rem; min-width: 0;
+  }
+  .form-label {
+    display: block;
+    font-size: .78rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); line-height: 1.25;
+  }
+  .form-input, .form-select {
+    width: 100%; box-sizing: border-box;
+    min-height: 44px; padding: .55rem .75rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    font-family: var(--font-b); font-size: 1rem; line-height: 1.3;
+    background: var(--bg); color: var(--text);
+    transition: border-color var(--trans);
+  }
+  .form-select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: 2rem;
+  }
+  .form-input:focus, .form-select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .form-hint { font-size: .85rem; color: var(--muted); margin: .2rem 0 0; line-height: 1.4; }
+  .form-hint a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .form-hint a:hover { color: var(--accent-h); }
+  .form-hint a.is-muted { color: var(--muted); font-weight: 500; }
+  .form-error { font-size: .85rem; color: #b00020; margin: .2rem 0 0; }
+  .form-errors {
+    margin-bottom: .85rem; padding: .75rem .9rem;
+    border-radius: var(--r); border: 1px solid var(--border);
+    background: color-mix(in srgb, #b00020 8%, var(--surface));
+    color: var(--text); font-size: .95rem;
+  }
+  .propose-types {
+    display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .25rem;
+  }
+  .propose-type {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 1 1 calc(50% - .4rem); min-height: 44px; padding: .5rem .7rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-b); font-weight: 600; font-size: .9rem;
+    cursor: pointer; transition: background var(--trans), border-color var(--trans), color var(--trans);
+  }
+  .propose-type:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .propose-type.is-active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .propose-type:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .propose-type-select { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--r);
+    padding: 1.5rem 1rem; text-align: center; cursor: pointer;
+    background: var(--bg);
+    transition: border-color var(--trans), background var(--trans);
+    min-height: 7rem; display: flex; align-items: center; justify-content: center;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  }
+  .drop-zone input[type=file] { display: none; }
+  .drop-zone__title { color: var(--text); font-size: .95rem; font-weight: 600; margin: 0 0 .25rem; }
+  .drop-zone__hint { color: var(--muted); font-size: .82rem; margin: 0; line-height: 1.35; }
+  .file-preview { display: flex; flex-direction: column; gap: .65rem; margin-top: .85rem; }
+  .file-preview-item {
+    display: flex; align-items: center; gap: .75rem;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--r); padding: .55rem .65rem;
+  }
+  .file-thumb {
+    width: 72px; height: 54px; object-fit: cover;
+    border-radius: var(--r); border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .file-preview-meta { flex: 1; min-width: 0; font-size: .82rem; color: var(--muted); }
+  .file-preview-meta strong {
+    display: block; color: var(--text); font-size: .88rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .file-preview-item .btn {
+    flex-shrink: 0; font-size: .75rem; padding: .4rem .7rem; min-height: 40px;
+  }
+  .file-field {
+    width: 100%; box-sizing: border-box;
+    padding: .65rem .75rem; min-height: 44px;
+    border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-b); font-size: .9rem;
+  }
+  .file-field::file-selector-button {
+    margin-right: .75rem; padding: .45rem .75rem;
+    border: 1px solid var(--border); border-radius: var(--r);
+    background: var(--surface); color: var(--text);
+    font-family: var(--font-b); font-size: .85rem; font-weight: 600;
+    cursor: pointer;
+  }
+  .propose-actions { margin-top: .35rem; }
+  .propose-submit { min-height: 48px; width: 100%; }
+  .propose-submit:disabled { opacity: .65; cursor: wait; }
+  [x-cloak] { display: none !important; }
+  @media (min-width: 640px) {
+    .section:has(.propose-page) { padding: 3.5rem 0 4rem; }
+    .propose-page .section-title { margin-bottom: 1.25rem; }
+    .propose-form { padding: 1.75rem 2rem; }
+    .propose-section { margin-bottom: 1.5rem; }
+    .propose-section-title { font-size: 1.15rem; margin: 0 0 .85rem; padding-bottom: .4rem; }
+    .form-row { grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { gap: .4rem; margin-bottom: 1rem; }
+    .form-label { font-size: .85rem; }
+    .form-input, .form-select { padding: .65rem .9rem; }
+    .propose-type { flex: 1 1 auto; padding: .55rem .9rem; font-size: .95rem; }
+    .drop-zone { padding: 2rem 1.25rem; min-height: 8rem; }
+    .propose-submit { width: auto; min-width: 12rem; }
+  }
 </style>
 {% endblock %}
 {% block content %}
 <section class="section">
-  <div class="container">
+  <div class="container propose-page">
+    <a href="{% url 'medias' %}" class="propose-back">← Galerie médias</a>
     <h1 class="section-title">Proposer un média</h1>
-    {% if planning_event %}
-    <p style="background:rgba(42,107,60,.08);border:1px solid rgba(42,107,60,.28);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:1.25rem;color:var(--text);max-width:55ch">
-      Merci de partager vos photos et vidéos de
-      <strong>{{ planning_event.titre }}</strong>
-      ({{ planning_event.date_debut|date:"j F Y" }}).
-      L’événement est déjà sélectionné ci-dessous — il ne reste qu’à envoyer vos fichiers.
-    </p>
-    {% else %}
     {% page_lead "core.proposer_media" %}
-      Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max : 1 Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.
+      Partagez vos photos, vidéos, enregistrements ou PDF. Chaque soumission est examinée avant publication. Taille max&nbsp;: 1&nbsp;Go par fichier. Vous pouvez améliorer les photos (recadrage, horizon, colorimétrie) avant l’envoi.
     {% endpage_lead %}
+
+    {% if planning_event %}
+    <p class="propose-event-hint">
+      <span>Événement prérempli&nbsp;:</span>
+      <strong>{{ planning_event.titre }}</strong>
+      <span class="propose-event-hint__meta">{{ planning_event.date_debut|date:"j F Y" }}</span>
+    </p>
     {% endif %}
 
-    <form class="upload-form" method="post" enctype="multipart/form-data" id="media-submit-form"
+    <form class="propose-form" method="post" enctype="multipart/form-data" id="media-submit-form"
       x-data="proposerPhotos()"
       @submit="onSubmit($event)">
 
@@ -51,100 +188,128 @@
       {% if planning_event %}<input type="hidden" name="event" value="{{ planning_event.pk }}">{% endif %}
 
       {% if form.non_field_errors %}
-      <div style="background:rgba(201,79,58,.08);border:1px solid rgba(201,79,58,.3);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:1.5rem;color:var(--accent);font-size:.9rem;">
+      <div class="form-errors" role="alert">
         {% for e in form.non_field_errors %}{{ e }}{% endfor %}
       </div>
       {% endif %}
 
-      <div class="form-group">
-        <label class="form-label">{{ form.type.label }}</label>
-        {{ form.type }}
+      <div class="propose-section">
+        <h2 class="propose-section-title">Type de média</h2>
+        <div class="propose-types" role="group" aria-label="Type de média">
+          <button type="button" class="propose-type" :class="type === 'photo' && 'is-active'"
+            @click="type = 'photo'" :aria-pressed="type === 'photo'">Photo</button>
+          <button type="button" class="propose-type" :class="type === 'video' && 'is-active'"
+            @click="type = 'video'" :aria-pressed="type === 'video'">Vidéo</button>
+          <button type="button" class="propose-type" :class="type === 'audio' && 'is-active'"
+            @click="type = 'audio'" :aria-pressed="type === 'audio'">Audio</button>
+          <button type="button" class="propose-type" :class="type === 'pdf' && 'is-active'"
+            @click="type = 'pdf'" :aria-pressed="type === 'pdf'">PDF</button>
+        </div>
+        <div class="propose-type-select">{{ form.type }}</div>
+        {% if form.type.errors %}<p class="form-error">{{ form.type.errors.0 }}</p>{% endif %}
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Événement associé</label>
-        <div x-show="!nouvel_ev">
+      <div class="propose-section">
+        <h2 class="propose-section-title">Événement associé</h2>
+        <div class="form-group" x-show="!nouvel_ev">
+          <label class="form-label" for="{{ form.evenement_existant.id_for_label }}">Événement existant</label>
           {{ form.evenement_existant }}
           <p class="form-hint">
-            <a href="#" style="color:var(--accent);font-size:.8rem" @click.prevent="nouvel_ev=true">
-              + Créer un nouvel événement
-            </a>
+            <a href="#" @click.prevent="nouvel_ev=true">+ Créer un nouvel événement</a>
           </p>
         </div>
         <div x-show="nouvel_ev" x-cloak>
-          {{ form.evenement_nouveau }}
-          <div style="margin-top:.75rem">
-            <label class="form-label">{{ form.evenement_date.label }}</label>
+          <div class="form-group">
+            <label class="form-label" for="{{ form.evenement_nouveau.id_for_label }}">{{ form.evenement_nouveau.label }}</label>
+            {{ form.evenement_nouveau }}
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="{{ form.evenement_date.id_for_label }}">{{ form.evenement_date.label }}</label>
             {{ form.evenement_date }}
           </div>
           <p class="form-hint">
-            <a href="#" style="color:var(--muted);font-size:.8rem" @click.prevent="nouvel_ev=false">
-              ← Choisir un événement existant
-            </a>
+            <a href="#" class="is-muted" @click.prevent="nouvel_ev=false">← Choisir un événement existant</a>
           </p>
         </div>
         {% if form.evenement_existant.errors %}<p class="form-error">{{ form.evenement_existant.errors.0 }}</p>{% endif %}
         {% if form.evenement_nouveau.errors %}<p class="form-error">{{ form.evenement_nouveau.errors.0 }}</p>{% endif %}
       </div>
 
-      <div class="form-group" x-show="type === 'photo'" x-cloak>
-        <label class="form-label">{{ form.fichiers_multiples.label }}</label>
-        <div class="drop-zone"
-          @click="$refs.photos.click()"
-          @dragover.prevent="$el.classList.add('drag-over')"
-          @dragleave="$el.classList.remove('drag-over')"
-          @drop.prevent="$el.classList.remove('drag-over'); handleFiles($event.dataTransfer.files)">
-          <input type="file" name="fichiers_multiples" accept="image/*" multiple x-ref="photos"
-            @change="handleFiles($event.target.files)">
-          <div style="color:var(--muted);font-size:.9rem">
-            Cliquez ou glissez-déposez vos photos ici<br>
-            <span style="font-size:.8rem">JPG, PNG, WebP — sélection multiple possible</span>
+      <div class="propose-section" x-show="type === 'photo'" x-cloak>
+        <h2 class="propose-section-title">Photos</h2>
+        <div class="form-group">
+          <label class="form-label">{{ form.fichiers_multiples.label }}</label>
+          <div class="drop-zone"
+            @click="$refs.photos.click()"
+            @dragover.prevent="$el.classList.add('drag-over')"
+            @dragleave="$el.classList.remove('drag-over')"
+            @drop.prevent="$el.classList.remove('drag-over'); handleFiles($event.dataTransfer.files)">
+            <input type="file" name="fichiers_multiples" accept="image/*" multiple x-ref="photos"
+              @change="handleFiles($event.target.files)">
+            <div>
+              <p class="drop-zone__title">Cliquez ou glissez-déposez vos photos</p>
+              <p class="drop-zone__hint">JPG, PNG, WebP — sélection multiple possible</p>
+            </div>
+          </div>
+          <div class="file-preview" x-show="items.length > 0">
+            <template x-for="(item, idx) in items" :key="item.key">
+              <div class="file-preview-item">
+                <img :src="item.preview" class="file-thumb" alt="">
+                <div class="file-preview-meta">
+                  <strong x-text="item.name"></strong>
+                  <span x-text="item.edited ? 'Version améliorée prête' : 'Original'"></span>
+                </div>
+                <button type="button" class="btn btn-outline" @click.stop="editPhoto(idx)">Améliorer</button>
+              </div>
+            </template>
+          </div>
+          {% if form.fichiers_multiples.errors %}<p class="form-error">{{ form.fichiers_multiples.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div class="propose-section" x-show="type !== 'photo'" x-cloak>
+        <h2 class="propose-section-title"
+          x-text="type === 'video' ? 'Vidéo' : (type === 'audio' ? 'Audio' : 'PDF')"></h2>
+        <div class="form-group" x-show="type === 'video'">
+          <label class="form-label" for="{{ form.url_externe.id_for_label }}">{{ form.url_externe.label }}</label>
+          {{ form.url_externe }}
+          {% if form.url_externe.errors %}<p class="form-error">{{ form.url_externe.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ form.fichier.id_for_label }}">
+            <span x-show="type === 'video'">Ou fichier vidéo</span>
+            <span x-show="type !== 'video'" x-text="type === 'audio' ? 'Fichier audio' : 'Fichier PDF'"></span>
+          </label>
+          {{ form.fichier }}
+          <p class="form-hint" x-show="type === 'video'">MP4, MOV, MKV — max 1&nbsp;Go</p>
+          <p class="form-hint" x-show="type === 'audio'">MP3, WAV, FLAC, M4A — max 1&nbsp;Go</p>
+          <p class="form-hint" x-show="type === 'pdf'">PDF — max 1&nbsp;Go</p>
+          {% if form.fichier.errors %}<p class="form-error">{{ form.fichier.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div class="propose-section">
+        <h2 class="propose-section-title">Vos coordonnées</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="{{ form.soumis_par_nom.id_for_label }}">{{ form.soumis_par_nom.label }}</label>
+            {{ form.soumis_par_nom }}
+            {% if form.soumis_par_nom.errors %}<p class="form-error">{{ form.soumis_par_nom.errors.0 }}</p>{% endif %}
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="{{ form.soumis_par_email.id_for_label }}">{{ form.soumis_par_email.label }}</label>
+            {{ form.soumis_par_email }}
+            {% if form.soumis_par_email.errors %}<p class="form-error">{{ form.soumis_par_email.errors.0 }}</p>{% endif %}
           </div>
         </div>
-        <div class="file-preview" x-show="items.length > 0">
-          <template x-for="(item, idx) in items" :key="item.key">
-            <div class="file-preview-item">
-              <img :src="item.preview" class="file-thumb" alt="">
-              <div class="file-preview-meta">
-                <strong x-text="item.name"></strong>
-                <span x-text="item.edited ? 'Version améliorée prête' : 'Original'"></span>
-              </div>
-              <button type="button" class="btn btn-outline" @click.stop="editPhoto(idx)">Améliorer</button>
-            </div>
-          </template>
-        </div>
-        {% if form.fichiers_multiples.errors %}<p class="form-error">{{ form.fichiers_multiples.errors.0 }}</p>{% endif %}
       </div>
 
-      <div class="form-group" x-show="type === 'video'" x-cloak>
-        <label class="form-label">{{ form.url_externe.label }}</label>
-        {{ form.url_externe }}
-        <p class="form-hint">Ou déposez un fichier vidéo ci-dessous (MP4, MOV, MKV)</p>
-        {{ form.fichier }}
-        {% if form.url_externe.errors %}<p class="form-error">{{ form.url_externe.errors.0 }}</p>{% endif %}
+      <div class="propose-actions">
+        <button type="submit" class="btn btn-primary propose-submit" :disabled="uploading">
+          <span x-show="!uploading">Envoyer</span>
+          <span x-show="uploading" x-cloak>Envoi en cours…</span>
+        </button>
       </div>
-
-      <div class="form-group" x-show="type === 'audio' || type === 'pdf'" x-cloak>
-        <label class="form-label">{{ form.fichier.label }}</label>
-        {{ form.fichier }}
-        <p class="form-hint" x-show="type==='audio'">MP3, WAV, FLAC, M4A — max 1 Go</p>
-        <p class="form-hint" x-show="type==='pdf'">PDF — max 1 Go</p>
-        {% if form.fichier.errors %}<p class="form-error">{{ form.fichier.errors.0 }}</p>{% endif %}
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">{{ form.soumis_par_nom.label }}</label>
-        {{ form.soumis_par_nom }}
-      </div>
-      <div class="form-group">
-        <label class="form-label">{{ form.soumis_par_email.label }}</label>
-        {{ form.soumis_par_email }}
-      </div>
-
-      <button type="submit" class="btn btn-primary" :disabled="uploading">
-        <span x-show="!uploading">Envoyer</span>
-        <span x-show="uploading">Envoi en cours…</span>
-      </button>
     </form>
   </div>
 </section>
@@ -167,7 +332,6 @@ function proposerPhotos() {
         edited: null,
         preview: URL.createObjectURL(file),
       }));
-      // Resync input for progressive enhancement / non-JS fallbacks
       if (this.$refs.photos) {
         const dt = new DataTransfer();
         files.forEach(f => dt.items.add(f));

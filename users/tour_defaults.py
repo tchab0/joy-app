@@ -76,10 +76,10 @@ MUSICIAN_STEPS = [
     {
         "order": 7,
         "anchor": "repertoire-filter",
-        "title": "Filtrer votre poste",
+        "title": "Filtrer le répertoire",
         "body": (
-            "Choisissez votre poste pour n’afficher que vos parties, "
-            "puis ouvrez le PDF ou la fiche du morceau."
+            "Choisissez votre poste, une setlist et/ou tapez quelques lettres "
+            "du titre pour isoler un morceau, puis ouvrez le PDF ou la fiche."
         ),
         "page_path": "/repertoire/",
         "open_mobile_nav": False,

@@ -2501,7 +2501,67 @@ class EventPhotosRequestTests(TestCase):
         self.assertContains(r, "Soirée jazz")
         self.assertContains(r, f'value="{media_ev.pk}"')
         self.assertContains(r, 'name="event"')
-        self.assertContains(r, "sélectionné")
+
+    def test_media_submit_defaults_to_latest_started_concert(self):
+        from datetime import datetime, time
+
+        from core.models import EvenementMedia
+        from events.models import EventType
+
+        festival = EventType.objects.create(nom="Festival", is_rehearsal=False)
+        yesterday = timezone.make_aware(
+            datetime.combine(timezone.localdate() - timedelta(days=1), time(18, 30))
+        )
+        today = timezone.make_aware(
+            datetime.combine(timezone.localdate(), time(20, 0))
+        )
+        future = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=30), time(20, 0))
+        )
+        older = Event.objects.create(
+            titre="Concert d’hier",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=yesterday,
+            statut=Event.Statut.CONFIRME,
+        )
+        Event.objects.create(
+            titre="Festival demain",
+            type=festival,
+            venue=self.venue,
+            date_debut=yesterday,
+            statut=Event.Statut.CONFIRME,
+        )
+        Event.objects.create(
+            titre="Concert futur",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=future,
+            statut=Event.Statut.CONFIRME,
+        )
+
+        # Sans concert aujourd’hui → défaut = hier.
+        r = self.client.get(reverse("proposer_media"))
+        self.assertEqual(r.status_code, 200)
+        media_old = EvenementMedia.objects.get(nom="Concert d’hier")
+        self.assertEqual(r.context["planning_event"], older)
+        self.assertEqual(r.context["prefilled_media_event"], media_old)
+        self.assertContains(r, f'value="{media_old.pk}" selected')
+        self.assertNotContains(r, "Festival demain")
+
+        # Concert du jour → prend le relais.
+        newer = Event.objects.create(
+            titre="Concert du jour",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=today,
+            statut=Event.Statut.CONFIRME,
+        )
+        r2 = self.client.get(reverse("proposer_media"))
+        media_new = EvenementMedia.objects.get(nom="Concert du jour")
+        self.assertEqual(r2.context["planning_event"], newer)
+        self.assertEqual(r2.context["prefilled_media_event"], media_new)
+        self.assertContains(r2, f'value="{media_new.pk}" selected')
 
 
 class EventMorningReminderTests(TestCase):

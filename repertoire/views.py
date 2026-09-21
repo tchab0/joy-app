@@ -7,6 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib import messages
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Case, IntegerField, When
 from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
@@ -30,7 +31,7 @@ from repertoire.forms import (
     SetlistDuplicateForm,
     SetlistForm,
 )
-from repertoire.models import Part, PartPoste, Piece, Setlist, part_sort_order
+from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem, part_sort_order
 from repertoire.pdf_utils import (
     extract_pdf_pages_bytes,
     images_to_pdf_bytes,
@@ -89,6 +90,23 @@ def _save_part_pdf(piece: Piece, poste: str, data: bytes, filename: str, source_
 # ---------------------------------------------------------------------------
 
 
+def _setlist_filter_choices():
+    """Setlists utilisables comme filtre (au moins un morceau publié)."""
+    return (
+        Setlist.objects.filter(items__piece__is_published=True)
+        .select_related("event")
+        .distinct()
+        .order_by("-updated_at")
+    )
+
+
+def _parse_setlist_id(raw: str) -> int | None:
+    raw = (raw or "").strip()
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
 class PieceListView(MusicianRequiredMixin, ListView):
     template_name = "repertoire/piece_list.html"
     context_object_name = "pieces"
@@ -99,8 +117,36 @@ class PieceListView(MusicianRequiredMixin, ListView):
         if poste == "":
             poste = _user_default_poste(self.request.user)
         self._poste = poste
+        self._search_q = self.request.GET.get("q", "").strip()
+        setlist_id = _parse_setlist_id(self.request.GET.get("setlist", ""))
+        self._setlist_id = setlist_id
+        self._setlist_ordered_ids: list[int] = []
+
+        if setlist_id is not None:
+            if not Setlist.objects.filter(pk=setlist_id).exists():
+                self._setlist_id = None
+            else:
+                ordered_ids = list(
+                    SetlistItem.objects.filter(setlist_id=setlist_id)
+                    .order_by("position", "id")
+                    .values_list("piece_id", flat=True)
+                )
+                self._setlist_ordered_ids = ordered_ids
+                qs = qs.filter(pk__in=ordered_ids)
+
         if poste and poste != "all":
             qs = qs.filter(parts__poste=poste).distinct()
+
+        # Ordre setlist (position) si filtrée ; sinon titre (Meta Piece).
+        if self._setlist_id and self._setlist_ordered_ids:
+            whens = [
+                When(pk=pk, then=pos)
+                for pos, pk in enumerate(self._setlist_ordered_ids)
+            ]
+            qs = qs.annotate(
+                _setlist_pos=Case(*whens, output_field=IntegerField())
+            ).order_by("_setlist_pos", "title")
+
         return qs
 
     def get_context_data(self, **kwargs):
@@ -110,6 +156,9 @@ class PieceListView(MusicianRequiredMixin, ListView):
         ctx["poste_choices"] = _poste_filter_choices(self.request.user)
         ctx["user_postes"] = _user_postes(self.request.user)
         ctx["is_planning_staff"] = self.request.user.is_staff or self.request.user.is_superuser
+        ctx["search_q"] = getattr(self, "_search_q", "") or ""
+        ctx["selected_setlist"] = getattr(self, "_setlist_id", None)
+        ctx["setlist_choices"] = _setlist_filter_choices()
         # Annotate matching part for current filter
         parts_by_piece = {}
         if poste and poste != "all":
@@ -176,13 +225,14 @@ class PartDownloadView(MusicianRequiredMixin, View):
         # Ouvrir via le chemin disque (pas FieldFile) : flux fiable sous gunicorn.
         # Téléchargement en octet-stream : Chrome crée parfois un PDF vide avec
         # Content-Disposition: attachment + Content-Type: application/pdf.
+        # Le stockage média est un UUID ; le nom proposé au navigateur = morceau-poste.
         path = Path(part.file.path)
         if not path.is_file():
             raise Http404
         response = FileResponse(
             path.open("rb"),
             as_attachment=not inline,
-            filename=path.name,
+            filename=part.download_filename(),
             content_type="application/pdf" if inline else "application/octet-stream",
         )
         response["X-Content-Type-Options"] = "nosniff"

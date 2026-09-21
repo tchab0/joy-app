@@ -6,8 +6,12 @@
   }
 
   .rep-filter {
-    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+    display: flex; flex-direction: column; gap: .65rem;
     margin-bottom: 1.25rem;
+  }
+  .rep-filter__field {
+    display: flex; flex-direction: column; gap: .3rem;
+    min-width: 0;
   }
   .rep-filter label {
     font-size: .75rem; font-weight: 600; letter-spacing: .04em;
@@ -19,7 +23,14 @@
     border-radius: var(--r); background: var(--surface);
     min-height: 44px; width: 100%; max-width: 100%;
   }
-  .rep-filter select { max-width: 18rem; }
+  @media (min-width: 720px) {
+    .rep-filter {
+      flex-direction: row; flex-wrap: wrap; align-items: flex-end;
+      gap: .65rem .75rem;
+    }
+    .rep-filter__field { flex: 1 1 11rem; max-width: 16rem; }
+    .rep-filter__field--grow { flex: 1 1 14rem; max-width: 22rem; }
+  }
   .rep-block {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--r); padding: 1rem 1.1rem; margin-bottom: 1rem;
@@ -43,8 +54,8 @@
   }
   .rep-alert-dot { background: var(--accent); }
   .rep-solo-dot { background: var(--ok); }
-  /* Liste morceaux : titre cliquable + salon (si ouvert) / PDF.
-     Les icônes restent à droite tant que le titre tient en entier ;
+  /* Liste morceaux : titre + salon (si ouvert) / PDF / Fiche.
+     Les actions restent à droite tant que le titre tient en entier ;
      sinon elles passent à la ligne pour ne jamais le tronquer. */
   .rep-piece-row {
     flex-direction: row;
@@ -67,7 +78,9 @@
     overflow-wrap: break-word;
     padding-top: .45rem;
     padding-bottom: .45rem;
+    color: var(--accent);
   }
+  .rep-piece-row .pl-row__title:hover { color: var(--accent-h); }
   .rep-piece-row > .pl-row__actions {
     order: 2;
     flex: 0 0 auto;

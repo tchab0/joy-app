@@ -13,7 +13,7 @@ TOUR_ANCHORS: list[tuple[str, str]] = [
     ("module-chat", "Coulisses — Salons"),
     ("module-staff", "Coulisses — Groupe Staff"),
     ("rsvp-actions", "Mes dates — Réponses RSVP"),
-    ("repertoire-filter", "Répertoire — Filtre poste"),
+    ("repertoire-filter", "Répertoire — Filtres"),
     ("chat-list", "Chat — Liste des salons"),
     ("staff-admin", "Staff — Admin planning"),
     ("staff-musiciens", "Staff — Musiciens"),

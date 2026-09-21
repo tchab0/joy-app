@@ -309,6 +309,48 @@ class MusicianViewsTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, "Route 66")
 
+    def test_list_filter_setlist_and_text_ui(self):
+        """Setlist réduit le queryset ; le texte est filtré en live (Alpine)."""
+        other = Piece.objects.create(title="Take Five", is_published=True)
+        Part.objects.create(
+            piece=other,
+            poste=PartPoste.BASSE,
+            file=SimpleUploadedFile("b2.pdf", b"%PDF-1.4\n%", content_type="application/pdf"),
+        )
+        unpublished = Piece.objects.create(title="Hidden", is_published=False)
+        sl = Setlist.objects.create(title="Bal d’été")
+        SetlistItem.objects.create(setlist=sl, piece=self.piece, position=1)
+        SetlistItem.objects.create(setlist=sl, piece=other, position=2)
+        SetlistItem.objects.create(setlist=sl, piece=unpublished, position=3)
+
+        self.client.login(username="player", password="x")
+        r = self.client.get(
+            reverse("repertoire:list"),
+            {"poste": "all", "setlist": sl.pk, "q": "rou"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Route 66")
+        self.assertContains(r, "Take Five")  # serveur : setlist seule ; texte côté Alpine
+        self.assertContains(r, 'name="q"')
+        self.assertContains(r, "repertoireListFilters")
+        self.assertContains(r, "Bal d’été")
+        self.assertNotContains(r, "Hidden")
+
+        r_empty = self.client.get(
+            reverse("repertoire:list"),
+            {"poste": "all", "setlist": 99999},
+        )
+        self.assertEqual(r_empty.status_code, 200)
+        # id invalide → pas de filtre setlist, morceaux publiés visibles
+        self.assertContains(r_empty, "Route 66")
+
+        r_only = self.client.get(
+            reverse("repertoire:list"),
+            {"poste": "all", "setlist": sl.pk},
+        )
+        titles = [p.title for p in r_only.context["pieces"]]
+        self.assertEqual(titles, ["Route 66", "Take Five"])
+
     def test_list_shows_salon_icon(self):
         self.client.login(username="player", password="x")
         r = self.client.get(reverse("repertoire:list"), {"poste": "basse"})
@@ -317,7 +359,7 @@ class MusicianViewsTests(TestCase):
         self.assertNotContains(r, reverse("repertoire:create_salon", args=[self.piece.slug]))
         detail = reverse("repertoire:detail", args=[self.piece.slug])
         self.assertContains(r, f'href="{detail}?poste=basse"')
-        self.assertNotContains(r, ">Fiche<")
+        self.assertContains(r, ">Fiche<")
         self.assertNotContains(r, 'class="pl-btn pl-btn--icon rep-pdf-preview')
         self.assertContains(r, ">PDF<")
         room = ensure_piece_room(self.piece)
@@ -332,9 +374,15 @@ class MusicianViewsTests(TestCase):
         self.client.login(username="player", password="x")
         part = self.piece.parts.get()
         url = reverse("repertoire:part_pdf", args=[part.pk])
+        expected_name = "route-66-basse.pdf"
+        self.assertEqual(part.download_filename(), expected_name)
         dl = self.client.get(url)
         self.assertEqual(dl.status_code, 200)
-        self.assertIn("attachment", dl.get("Content-Disposition", ""))
+        disp = dl.get("Content-Disposition", "")
+        self.assertIn("attachment", disp)
+        self.assertIn(expected_name, disp)
+        # Pas le hash UUID du stockage média.
+        self.assertNotRegex(disp, r"[0-9a-f]{32}\.pdf")
         # octet-stream évite les téléchargements PDF vides sous Chrome.
         self.assertEqual(dl.get("Content-Type"), "application/octet-stream")
         dl_body = b"".join(dl.streaming_content) if dl.streaming else dl.content
@@ -342,7 +390,9 @@ class MusicianViewsTests(TestCase):
         self.assertGreater(len(dl_body), 0)
         preview = self.client.get(url, {"inline": "1"})
         self.assertEqual(preview.status_code, 200)
-        self.assertIn("inline", preview.get("Content-Disposition", ""))
+        preview_disp = preview.get("Content-Disposition", "")
+        self.assertIn("inline", preview_disp)
+        self.assertIn(expected_name, preview_disp)
         self.assertEqual(preview.get("Content-Type"), "application/pdf")
         self.assertEqual(preview.get("X-Frame-Options"), "SAMEORIGIN")
         prev_body = (

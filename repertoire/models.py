@@ -292,6 +292,12 @@ class Part(models.Model):
             kwargs["update_fields"] = set(update_fields) | {"sort_order"}
         super().save(*args, **kwargs)
 
+    def download_filename(self) -> str:
+        """Nom lisible pour Content-Disposition (stockage disque = UUID)."""
+        base = self.piece.slug or slugify(self.piece.title) or "morceau"
+        poste = slugify(self.poste) or "poste"
+        return f"{base}-{poste}.pdf"
+
     def __str__(self) -> str:
         return f"{self.piece.title} — {self.get_poste_display()}"
 

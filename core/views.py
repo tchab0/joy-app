@@ -320,7 +320,10 @@ def medias(request):
 def proposer_media(request):
     from events.models import Event
 
-    from core.media_events import ensure_evenement_media_for_event
+    from core.media_events import (
+        default_concert_media_event,
+        ensure_evenement_media_for_event,
+    )
 
     planning_event = None
     prefilled_media_event = None
@@ -334,6 +337,9 @@ def proposer_media(request):
         )
         if planning_event is not None:
             prefilled_media_event = ensure_evenement_media_for_event(planning_event)
+    elif request.method == "GET":
+        # Dernier concert déjà commencé → défaut jusqu’au prochain.
+        planning_event, prefilled_media_event = default_concert_media_event()
 
     if request.method == "POST":
         form = MediaSoumissionForm(request.POST, request.FILES)
