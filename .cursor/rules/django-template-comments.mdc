@@ -1,0 +1,31 @@
+---
+description: Django 6 — commentaires {# #} uniquement sur une ligne
+globs: templates/**/*.html
+alwaysApply: false
+---
+
+# Commentaires templates Django 6
+
+Le projet tourne sous **Django 6** (`tag_re` **sans** `re.DOTALL`). Un commentaire `{# … #}` **multi-lignes** n’est **pas** reconnu : le texte brut `{# … #}` s’affiche dans le HTML.
+
+## À faire
+
+- `{# … #}` : **toujours sur une seule ligne**.
+- Pour un bloc multi-lignes : `{% comment %}…{% endcomment %}`.
+
+```django
+{# ✅ OK — une ligne #}
+{# Pastilles sous le menu : point + qty ; solo = contenu. #}
+
+{# ❌ BAD — multi-lignes → fuite à l’écran #}
+{# Ligne 1
+   Ligne 2 #}
+
+{% comment %}
+  ✅ OK — multi-lignes via comment/endcomment
+{% endcomment %}
+```
+
+## Symptôme
+
+Texte visible du type `{# Pastilles Coulisses… #}` juste sous le menu Coulisses / planning → chercher un `{#` multi-lignes dans le partial inclus.
