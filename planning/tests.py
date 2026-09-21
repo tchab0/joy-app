@@ -2748,17 +2748,12 @@ class MaybeRemindTests(PlanningBaseTestCase):
         self.assertContains(r, "non lus")
         self.assertContains(r, reverse("chat:room", args=[room.pk]))
 
-    def test_event_setlist_pdf_columns_titulaire_remplacant(self):
-        import tempfile
+    def test_event_setlist_shows_titles_and_order_only(self):
+        from repertoire.models import Piece, Setlist, SetlistItem
 
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.test import override_settings
-
-        from repertoire.models import Part, PartPoste, Piece, Setlist, SetlistItem
-
-        concert_type = EventType.objects.create(nom="Concert setlist PDF")
+        concert_type = EventType.objects.create(nom="Concert setlist")
         concert = Event.objects.create(
-            titre="Bal PDF",
+            titre="Bal setlist",
             type=concert_type,
             venue=self.venue,
             date_debut=timezone.now() + timedelta(days=14),
@@ -2768,47 +2763,25 @@ class MaybeRemindTests(PlanningBaseTestCase):
         from planning.services import invite_musician_to_event
 
         invite_musician_to_event(concert, self.musician, send_notification=False)
-        profile = self.musician.musician_profile
-        profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_1
-        profile.poste_remplacant = MusicianProfile.Poste.TROMPETTE_2
-        profile.save()
 
-        piece = Piece.objects.create(title="Take the A Train", is_published=True)
-        pdf = lambda name: SimpleUploadedFile(
-            name, b"%PDF-1.4\n%", content_type="application/pdf"
+        a = Piece.objects.create(title="Take the A Train", is_published=True)
+        b = Piece.objects.create(title="Satin Doll", is_published=True)
+        sl = Setlist.objects.create(title="Programme", event=concert, is_active=True)
+        SetlistItem.objects.create(
+            setlist=sl, piece=a, position=1, note="note-interne-setlist-xyz"
         )
-        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
-            part_tit = Part.objects.create(
-                piece=piece, poste=PartPoste.TROMPETTE_1, file=pdf("tp1.pdf")
-            )
-            part_remp = Part.objects.create(
-                piece=piece, poste=PartPoste.TROMPETTE_2, file=pdf("tp2.pdf")
-            )
-            piano = Part.objects.create(
-                piece=piece, poste=PartPoste.PIANO, file=pdf("piano.pdf")
-            )
+        SetlistItem.objects.create(setlist=sl, piece=b, position=2)
 
-            sl = Setlist.objects.create(
-                title="Programme", event=concert, is_active=True
-            )
-            SetlistItem.objects.create(setlist=sl, piece=piece, position=1)
-
-            self.client.login(username="musi", password="pass12345")
-            url = reverse("planning:event_detail", args=[concert.pk])
-            r = self.client.get(url)
-            self.assertEqual(r.status_code, 200)
-            self.assertContains(r, "Take the A Train")
-            self.assertContains(r, 'name="poste_tit"')
-            self.assertContains(r, 'name="poste_remp"')
-            self.assertContains(r, reverse("repertoire:part_pdf", args=[part_tit.pk]))
-            self.assertContains(r, reverse("repertoire:part_pdf", args=[part_remp.pk]))
-
-            r2 = self.client.get(
-                url, {"poste_tit": "piano", "poste_remp": "trompette_1"}
-            )
-            self.assertEqual(r2.status_code, 200)
-            self.assertContains(r2, reverse("repertoire:part_pdf", args=[piano.pk]))
-            self.assertContains(r2, reverse("repertoire:part_pdf", args=[part_tit.pk]))
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:event_detail", args=[concert.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Take the A Train")
+        self.assertContains(r, "Satin Doll")
+        self.assertContains(r, reverse("repertoire:detail", args=[a.slug]))
+        self.assertNotContains(r, 'name="poste_tit"')
+        self.assertNotContains(r, 'name="poste_remp"')
+        self.assertNotContains(r, "note-interne-setlist-xyz")
+        self.assertNotContains(r, "part_pdf")
 
 
 class ActionNotifyVisibilityTests(PlanningBaseTestCase):

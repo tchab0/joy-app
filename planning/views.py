@@ -773,7 +773,7 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 .order_by("-updated_at")[:80]
             )
 
-        setlist_pdf = _setlist_pdf_context(self.request, user, participation, setlist)
+        setlist_items = list(setlist.items.all()) if setlist else []
         roadmap = get_roadmap(event)
         attach_calendar_summaries([event])
 
@@ -794,9 +794,9 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
                 "chat_link": chat_link,
                 "is_planning_staff": is_staff,
                 "setlist": setlist,
+                "setlist_items": setlist_items,
                 "attachable_setlists": attachable_setlists,
                 "roadmap": roadmap,
-                **setlist_pdf,
             }
         )
         return context
@@ -807,69 +807,10 @@ def _active_setlist_for_event(event):
 
     return (
         Setlist.objects.filter(event=event, is_active=True)
-        .prefetch_related("items__piece__parts")
+        .prefetch_related("items__piece")
         .order_by("-updated_at")
         .first()
     )
-
-
-def _profile_poste_defaults(user) -> tuple[str, str]:
-    """(poste_titulaire, 1er poste_remplacant) du profil, sinon vides."""
-    try:
-        profile = user.musician_profile
-    except MusicianProfile.DoesNotExist:
-        return "", ""
-    remps = profile.postes_remplacant
-    return profile.poste_titulaire or "", (remps[0] if remps else "")
-
-
-def _setlist_pdf_context(request, user, participation, setlist) -> dict:
-    """Colonnes PDF titulaire / remplaçant + choix manuels de poste (GET)."""
-    from repertoire.models import PartPoste
-    from repertoire.views import _poste_filter_choices, _user_postes
-
-    valid = {c.value for c in PartPoste}
-    default_tit, default_remp = _profile_poste_defaults(user)
-    if participation and participation.poste:
-        if (
-            participation.role_kind == EventParticipation.RoleKind.TITULAIRE
-            and not default_tit
-        ):
-            default_tit = participation.poste
-        elif (
-            participation.role_kind == EventParticipation.RoleKind.REMPLACANT
-            and not default_remp
-        ):
-            default_remp = participation.poste
-
-    raw_tit = request.GET.get("poste_tit")
-    raw_remp = request.GET.get("poste_remp")
-    if raw_tit is None:
-        poste_tit = default_tit
-    else:
-        cleaned = raw_tit.strip()
-        poste_tit = cleaned if cleaned in valid else ""
-    if raw_remp is None:
-        poste_remp = default_remp
-    else:
-        cleaned = raw_remp.strip()
-        poste_remp = cleaned if cleaned in valid else ""
-
-    setlist_items = []
-    if setlist:
-        for item in setlist.items.all():
-            by_poste = {p.poste: p for p in item.piece.parts.all()}
-            item.part_titulaire = by_poste.get(poste_tit) if poste_tit else None
-            item.part_remplacant = by_poste.get(poste_remp) if poste_remp else None
-            setlist_items.append(item)
-
-    return {
-        "setlist_items": setlist_items,
-        "poste_tit": poste_tit,
-        "poste_remp": poste_remp,
-        "poste_choices": _poste_filter_choices(user),
-        "user_postes": _user_postes(user),
-    }
 
 
 class PollDetailView(MusicianRequiredMixin, TemplateView):
