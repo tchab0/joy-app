@@ -1,10 +1,11 @@
 {% comment %}
-  Icône salon du morceau — à gauche de l’aperçu PDF.
+  Icône salon du morceau — uniquement si le salon est déjà ouvert.
   Attendu : piece avec chat_stats {room_id, unread, total}.
 {% endcomment %}
 {% with s=piece.chat_stats %}
+{% if s.room_id %}
 <a class="pl-btn pl-btn--icon rep-salon-icon{% if s.unread %} rep-salon-icon--unread{% endif %}"
-   href="{% if s.room_id %}{% url 'chat:room' s.room_id %}{% else %}{% url 'repertoire:create_salon' piece.slug %}{% endif %}"
+   href="{% url 'chat:room' s.room_id %}"
    title="Salon · {{ s.unread }} non lu{{ s.unread|pluralize }} · {{ s.total }} message{{ s.total|pluralize }}"
    aria-label="Salon du morceau, {{ s.unread }} non lu{{ s.unread|pluralize }}, {{ s.total }} message{{ s.total|pluralize }}">
   <svg class="rep-salon-icon__bubble" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -17,4 +18,5 @@
     <span class="rep-salon-icon__total">{{ s.total }}</span>
   </span>
 </a>
+{% endif %}
 {% endwith %}

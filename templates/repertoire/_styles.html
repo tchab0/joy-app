@@ -43,39 +43,40 @@
   }
   .rep-alert-dot { background: var(--accent); }
   .rep-solo-dot { background: var(--ok); }
-  /* Liste morceaux : titre + salon / aperçu / PDF / fiche (mobile portrait) */
-  @media (max-width: 639px) and (orientation: portrait) {
-    .rep-piece-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas:
-        "title actions"
-        "meta meta";
-      column-gap: .5rem;
-      row-gap: .35rem;
-      align-items: center;
-    }
-    .rep-piece-row .pl-row__main { display: contents; }
-    .rep-piece-row .pl-row__title {
-      grid-area: title;
-      order: unset;
-      align-self: center;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 100%;
-    }
-    .rep-piece-row > .pl-row__actions {
-      grid-area: actions;
-      order: unset;
-      flex-wrap: nowrap;
-      flex-shrink: 0;
-    }
-    .rep-piece-row .pl-row__meta {
-      grid-area: meta;
-      order: unset;
-    }
+  /* Liste morceaux : titre cliquable + salon (si ouvert) / PDF.
+     Les icônes restent à droite tant que le titre tient en entier ;
+     sinon elles passent à la ligne pour ne jamais le tronquer. */
+  .rep-piece-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: .5rem;
+    row-gap: .25rem;
+  }
+  .rep-piece-row .pl-row__main { display: contents; }
+  .rep-piece-row .pl-row__title {
+    order: 1;
+    flex: 1 0 max-content;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    align-self: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: break-word;
+    padding-top: .45rem;
+    padding-bottom: .45rem;
+  }
+  .rep-piece-row > .pl-row__actions {
+    order: 2;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+  .rep-piece-row .pl-row__meta {
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
   }
   .rep-alert-meta { color: var(--accent); font-weight: 600; }
   .rep-missing-alert {
@@ -111,7 +112,7 @@
   }
   .pl-btn--icon:hover { color: var(--accent-h); border-color: var(--accent); }
   .rep-pdf-preview__icon { display: block; flex-shrink: 0; }
-  /* Salon morceau : bulle + non-lus / total, à gauche de l’aperçu */
+  /* Salon morceau : bulle + non-lus / total, à gauche du PDF */
   .rep-salon-icon {
     width: auto; min-width: 44px; padding: 0 .4rem; gap: .2rem;
     color: var(--muted);

@@ -55,14 +55,16 @@
           {% endif %}
         </p>
       </div>
+      {% if piece.chat_stats.room_id or piece.matching_part %}
       <div class="pl-row__actions">
+        {% if piece.chat_stats.room_id %}
         {% include "repertoire/_piece_salon_icon.html" with piece=piece %}
+        {% endif %}
         {% if piece.matching_part %}
-        {% include "repertoire/_pdf_preview_icon.html" with part=piece.matching_part title="Aperçu PDF" %}
         <a class="pl-btn pl-btn--primary" href="{% url 'repertoire:part_pdf' piece.matching_part.pk %}">PDF</a>
         {% endif %}
-        <a class="pl-btn" href="{% url 'repertoire:detail' piece.slug %}{% if selected_poste and selected_poste != 'all' %}?poste={{ selected_poste }}{% endif %}">Fiche</a>
       </div>
+      {% endif %}
     </div>
     {% endwith %}
     {% endfor %}
