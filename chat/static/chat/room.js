@@ -98,6 +98,7 @@ function chatRoom(cfg) {
     _wsPendingStatus: null,
     _wsRetryMs: 1000,
     _vvHandler: null,
+    _winResize: null,
     _visHandler: null,
     _scrollHandler: null,
     _jumpRaf: null,
@@ -2165,6 +2166,15 @@ function chatRoom(cfg) {
         document.removeEventListener('keydown', this._archiveEscHandler);
         this._archiveEscHandler = null;
       }
+      if (this._vvHandler && window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this._vvHandler);
+        window.visualViewport.removeEventListener('scroll', this._vvHandler);
+        this._vvHandler = null;
+      }
+      if (this._winResize) {
+        window.removeEventListener('resize', this._winResize);
+        this._winResize = null;
+      }
       if (this.ws) {
         try {
           this.ws.onclose = null;
@@ -2211,10 +2221,15 @@ function chatRoom(cfg) {
       document.addEventListener('visibilitychange', this._visHandler);
     },
     bindViewport() {
-      if (this.embedded || !window.visualViewport) return;
-      this._vvHandler = () => this.adaptToKeyboard();
-      window.visualViewport.addEventListener('resize', this._vvHandler);
-      window.visualViewport.addEventListener('scroll', this._vvHandler);
+      if (!this.embedded && window.visualViewport) {
+        this._vvHandler = () => this.adaptToKeyboard();
+        window.visualViewport.addEventListener('resize', this._vvHandler);
+        window.visualViewport.addEventListener('scroll', this._vvHandler);
+      }
+      if (!this.embedded) {
+        this._winResize = () => this.autoGrow();
+        window.addEventListener('resize', this._winResize);
+      }
     },
     adaptToKeyboard() {
       if (this.embedded) return;
@@ -2225,7 +2240,7 @@ function chatRoom(cfg) {
       const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       composer.style.bottom = inset + 'px';
       if (room) room.style.setProperty('--keyboard-inset', inset + 'px');
-      this.measureComposer();
+      this.autoGrow();
       if (inset > 40) this.scrollBottom(false);
     },
     measureComposer() {
@@ -2242,7 +2257,7 @@ function chatRoom(cfg) {
         this._composerBlurTimer = null;
       }
       this.composerToolsOpen = true;
-      this.$nextTick(() => this.measureComposer());
+      this.$nextTick(() => this.autoGrow());
     },
     onComposerFocusOut(ev) {
       const form = this.$refs.composer;
@@ -2260,7 +2275,7 @@ function chatRoom(cfg) {
           return;
         }
         this.composerToolsOpen = false;
-        this.$nextTick(() => this.measureComposer());
+        this.$nextTick(() => this.autoGrow());
       }, 120);
     },
     onFocus() {
@@ -2271,19 +2286,65 @@ function chatRoom(cfg) {
         if (this.$refs.input) {
           this.$refs.input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-        this.measureComposer();
+        this.autoGrow();
       });
       if (!this.embedded) {
         setTimeout(() => { this.adaptToKeyboard(); this.scrollBottom(false); }, 350);
       }
     },
+    editorHeightCap(el) {
+      /* Salon embarqué : la page défile, le champ suit tout le texte. */
+      if (this.embedded) return 100000;
+      const vv = window.visualViewport;
+      const viewTop = vv ? vv.offsetTop : 0;
+      const viewH = (vv && vv.height) ? vv.height : window.innerHeight;
+      const viewBottom = viewTop + viewH;
+      const room = this.$el;
+      const bar = room && room.querySelector('.chat-room__bar');
+      const barBottom = bar
+        ? bar.getBoundingClientRect().bottom
+        : (room ? room.getBoundingClientRect().top : viewTop);
+      const composer = this.$refs.composer;
+      let chrome = 0;
+      if (composer) {
+        const cs = getComputedStyle(composer);
+        chrome += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const inner = composer.querySelector('.chat-composer__inner');
+        if (inner) {
+          const gap = parseFloat(getComputedStyle(inner).rowGap) || 0;
+          let n = 0;
+          inner.querySelectorAll(':scope > *').forEach((node) => {
+            if (el && node.contains(el)) return;
+            const h = node.offsetHeight;
+            if (!h) return;
+            chrome += h;
+            n += 1;
+          });
+          if (n) chrome += gap * n;
+        }
+      }
+      /* Tout l’espace sous la barre du salon, au-dessus du clavier. */
+      const available = viewBottom - Math.max(barBottom, viewTop) - chrome - 8;
+      return Math.max(44, Math.floor(available));
+    },
     autoGrow() {
       const el = this.$refs.input;
       if (!el) return;
-      /* max-height CSS uses min() — compute px cap here */
-      const maxH = Math.min(Math.round(window.innerHeight * 0.5), 320);
+      el.style.maxHeight = 'none';
       el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+      const borderY = (parseFloat(getComputedStyle(el).borderTopWidth) || 0)
+        + (parseFloat(getComputedStyle(el).borderBottomWidth) || 0);
+      let contentH = el.scrollHeight + borderY;
+      el.style.height = contentH + 'px';
+      if (el.scrollHeight > el.clientHeight) {
+        contentH += el.scrollHeight - el.clientHeight;
+        el.style.height = contentH + 'px';
+      }
+      const cap = this.editorHeightCap(el);
+      const next = Math.max(44, Math.min(contentH, cap));
+      el.style.maxHeight = cap + 'px';
+      el.style.height = next + 'px';
+      el.style.overflowY = contentH > cap + 1 ? 'auto' : 'hidden';
       this.measureComposer();
     },
     formatFileSize(bytes) {

@@ -1138,8 +1138,9 @@
   .chat-composer__editor {
     width: 100%;
     min-height: 44px;
-    /* Auto-grow : assez haut pour lire tout le texte (scroll au-delà) */
-    max-height: min(50dvh, 20rem);
+    /* Grandit avec le texte. Le JS aligne la hauteur sur le contenu
+       et ne plafonne qu’à la zone visible (barre du salon + clavier). */
+    max-height: calc(100dvh - var(--keyboard-inset, 0px) - 6.5rem);
     resize: none;
     border: 1px solid var(--border);
     border-radius: var(--r);
