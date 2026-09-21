@@ -77,6 +77,8 @@ function chatRoom(cfg) {
     editingId: null,
     editPreview: '',
     composerToolsOpen: false,
+    keyboardOpen: false,
+    keyboardInset: 0,
     _composerBlurTimer: null,
     _enterHandled: false,
     mentionOpen: false,
@@ -129,6 +131,8 @@ function chatRoom(cfg) {
       return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.displayStatus] || '';
     },
     get composerToolsVisible() {
+      /* Vrai clavier virtuel : la saisie passe avant la barre d’outils. */
+      if (this.keyboardInset > 120 && !this._isWideComposer()) return false;
       if (this._isWideComposer()) return true;
       return !!(
         this.composerToolsOpen
@@ -152,12 +156,19 @@ function chatRoom(cfg) {
         return false;
       }
     },
+    _isImeComposing(ev) {
+      return !!(ev && (ev.isComposing || ev.keyCode === 229));
+    },
     _enterSendsMessage(ev) {
-      // Mobile / tactile : Entrée envoie (le bouton n’est pas toujours visible).
-      // Ordi : Entrée = nouvelle ligne ; Ctrl/Cmd+Entrée = envoyer.
-      if (ev && (ev.ctrlKey || ev.metaKey)) return true;
-      if (ev && ev.shiftKey) return false;
-      return !this._isDesktopKeyboard();
+      /* Entrée = nouvelle ligne partout (mobile inclus).
+         Envoi : bouton Envoyer, ou Ctrl/Cmd+Entrée sur clavier. */
+      return !!(ev && (ev.ctrlKey || ev.metaKey) && !this._isImeComposing(ev));
+    },
+    onComposerSubmit(ev) {
+      /* Ignore la soumission implicite (Entrée clavier mobile). */
+      const btn = ev && ev.submitter;
+      if (!btn || !btn.classList || !btn.classList.contains('chat-send')) return;
+      this.send();
     },
     setStatus(next) {
       if (!next) return;
@@ -1457,9 +1468,14 @@ function chatRoom(cfg) {
       this.measureComposer();
     },
     onEditorBeforeInput(ev) {
-      // Filet de sécurité : certains navigateurs créent un nouveau bloc
-      // (insertParagraph) malgré preventDefault sur keydown.
-      if (ev.inputType !== 'insertParagraph') return;
+      /* insertParagraph / insertLineBreak : clavier mobile « Envoyer »
+         ou Entrée. On force une nouvelle ligne, jamais l’envoi. */
+      const type = ev.inputType || '';
+      const isBreak = type === 'insertParagraph'
+        || type === 'insertLineBreak'
+        || (type === 'insertText' && ev.data != null && /[\r\n]/.test(ev.data));
+      if (!isBreak) return;
+      if (this._isImeComposing(ev)) return;
       if (this.mentionOpen && this.mentionSuggestions.length) {
         ev.preventDefault();
         return;
@@ -1499,6 +1515,7 @@ function chatRoom(cfg) {
       }
       const isEnter = ev.key === 'Enter' || ev.code === 'Enter' || ev.code === 'NumpadEnter';
       if (isEnter) {
+        if (this._isImeComposing(ev)) return;
         ev.preventDefault();
         this._enterHandled = true;
         queueMicrotask(() => { this._enterHandled = false; });
@@ -2117,6 +2134,7 @@ function chatRoom(cfg) {
       this.bindArchiveEsc();
       this.$nextTick(() => {
         this.bindThreadScroll();
+        this.autoGrow();
         this.measureComposer();
         this.scrollToInitialPosition();
         this.updateJumpBottom();
@@ -2175,6 +2193,9 @@ function chatRoom(cfg) {
         window.removeEventListener('resize', this._winResize);
         this._winResize = null;
       }
+      this.keyboardOpen = false;
+      this.keyboardInset = 0;
+      this._syncKeyboardClass();
       if (this.ws) {
         try {
           this.ws.onclose = null;
@@ -2231,16 +2252,45 @@ function chatRoom(cfg) {
         window.addEventListener('resize', this._winResize);
       }
     },
+    _keyboardInset() {
+      const vv = window.visualViewport;
+      if (!vv) return 0;
+      return Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    },
+    _editorFocused() {
+      const el = this.$refs.input;
+      const active = document.activeElement;
+      return !!(el && active && (el === active || el.contains(active)));
+    },
+    _shouldPrioritizeComposer() {
+      if (this.embedded) return false;
+      if (this._keyboardInset() > 120) return true;
+      return !!(!this._isWideComposer() && this._editorFocused());
+    },
+    _syncKeyboardClass() {
+      const on = !this.embedded && this.keyboardOpen;
+      try {
+        document.documentElement.classList.toggle('chat-kb-open', on);
+        document.body.classList.toggle('chat-kb-open', on);
+      } catch (_) {}
+      if (this.$el && this.$el.classList) {
+        this.$el.classList.toggle('chat-kb-open', on);
+      }
+    },
     adaptToKeyboard() {
       if (this.embedded) return;
-      const vv = window.visualViewport;
       const composer = this.$refs.composer;
       const room = this.$el;
-      if (!vv || !composer) return;
-      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      composer.style.bottom = inset + 'px';
+      const inset = this._keyboardInset();
+      this.keyboardInset = inset;
+      if (composer) composer.style.bottom = inset + 'px';
       if (room) room.style.setProperty('--keyboard-inset', inset + 'px');
-      this.autoGrow();
+      const next = this._shouldPrioritizeComposer();
+      const changed = next !== this.keyboardOpen;
+      this.keyboardOpen = next;
+      this._syncKeyboardClass();
+      if (changed) this.$nextTick(() => this.autoGrow());
+      else this.autoGrow();
       if (inset > 40) this.scrollBottom(false);
     },
     measureComposer() {
@@ -2257,7 +2307,10 @@ function chatRoom(cfg) {
         this._composerBlurTimer = null;
       }
       this.composerToolsOpen = true;
-      this.$nextTick(() => this.autoGrow());
+      this.$nextTick(() => {
+        this.adaptToKeyboard();
+        this.autoGrow();
+      });
     },
     onComposerFocusOut(ev) {
       const form = this.$refs.composer;
@@ -2275,6 +2328,12 @@ function chatRoom(cfg) {
           return;
         }
         this.composerToolsOpen = false;
+        const inset = this._keyboardInset();
+        this.keyboardInset = inset;
+        if (inset <= 120) {
+          this.keyboardOpen = false;
+          this._syncKeyboardClass();
+        }
         this.$nextTick(() => this.autoGrow());
       }, 120);
     },
@@ -2292,6 +2351,28 @@ function chatRoom(cfg) {
         setTimeout(() => { this.adaptToKeyboard(); this.scrollBottom(false); }, 350);
       }
     },
+    _composerChromeHeight(el) {
+      const composer = this.$refs.composer;
+      if (!composer) return 0;
+      const cs = getComputedStyle(composer);
+      let chrome = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const inner = composer.querySelector('.chat-composer__inner');
+      if (!inner) return chrome;
+      const gap = parseFloat(getComputedStyle(inner).rowGap)
+        || parseFloat(getComputedStyle(inner).gap)
+        || 0;
+      let n = 0;
+      inner.querySelectorAll(':scope > *').forEach((node) => {
+        if (el && node.contains(el)) return;
+        if (node.offsetParent === null && getComputedStyle(node).display === 'none') return;
+        const h = node.offsetHeight;
+        if (!h) return;
+        chrome += h;
+        n += 1;
+      });
+      if (n) chrome += gap * n;
+      return chrome;
+    },
     editorHeightCap(el) {
       /* Salon embarqué : la page défile, le champ suit tout le texte. */
       if (this.embedded) return 100000;
@@ -2299,47 +2380,36 @@ function chatRoom(cfg) {
       const viewTop = vv ? vv.offsetTop : 0;
       const viewH = (vv && vv.height) ? vv.height : window.innerHeight;
       const viewBottom = viewTop + viewH;
-      const room = this.$el;
-      const bar = room && room.querySelector('.chat-room__bar');
-      const barBottom = bar
-        ? bar.getBoundingClientRect().bottom
-        : (room ? room.getBoundingClientRect().top : viewTop);
-      const composer = this.$refs.composer;
-      let chrome = 0;
-      if (composer) {
-        const cs = getComputedStyle(composer);
-        chrome += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-        const inner = composer.querySelector('.chat-composer__inner');
-        if (inner) {
-          const gap = parseFloat(getComputedStyle(inner).rowGap) || 0;
-          let n = 0;
-          inner.querySelectorAll(':scope > *').forEach((node) => {
-            if (el && node.contains(el)) return;
-            const h = node.offsetHeight;
-            if (!h) return;
-            chrome += h;
-            n += 1;
-          });
-          if (n) chrome += gap * n;
+      let reservedTop = viewTop;
+      /* Clavier ouvert : tout le viewport visuel est pour la saisie. */
+      if (!this.keyboardOpen) {
+        const room = this.$el;
+        const bar = room && room.querySelector('.chat-room__bar');
+        if (bar && bar.offsetParent !== null) {
+          reservedTop = Math.max(reservedTop, bar.getBoundingClientRect().bottom);
+        } else if (room) {
+          reservedTop = Math.max(reservedTop, room.getBoundingClientRect().top);
         }
       }
-      /* Tout l’espace sous la barre du salon, au-dessus du clavier. */
-      const available = viewBottom - Math.max(barBottom, viewTop) - chrome - 8;
+      const chrome = this._composerChromeHeight(el);
+      const available = viewBottom - reservedTop - chrome - 8;
       return Math.max(44, Math.floor(available));
     },
     autoGrow() {
       const el = this.$refs.input;
       if (!el) return;
+      const cs = getComputedStyle(el);
+      const borderY = (parseFloat(cs.borderTopWidth) || 0)
+        + (parseFloat(cs.borderBottomWidth) || 0);
+      /* Contenteditable + overflow:auto : height:auto / scrollHeight
+         renvoie souvent la boîte actuelle, pas le texte. On collapse. */
       el.style.maxHeight = 'none';
-      el.style.height = 'auto';
-      const borderY = (parseFloat(getComputedStyle(el).borderTopWidth) || 0)
-        + (parseFloat(getComputedStyle(el).borderBottomWidth) || 0);
-      let contentH = el.scrollHeight + borderY;
-      el.style.height = contentH + 'px';
-      if (el.scrollHeight > el.clientHeight) {
-        contentH += el.scrollHeight - el.clientHeight;
-        el.style.height = contentH + 'px';
-      }
+      el.style.minHeight = '0';
+      el.style.overflowY = 'hidden';
+      el.style.height = '0px';
+      void el.offsetHeight;
+      const contentH = el.scrollHeight + borderY;
+      el.style.minHeight = '';
       const cap = this.editorHeightCap(el);
       const next = Math.max(44, Math.min(contentH, cap));
       el.style.maxHeight = cap + 'px';

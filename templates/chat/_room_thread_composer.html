@@ -267,7 +267,7 @@
       x-ref="composer"
       x-show="!archiveOpen"
       :class="{ 'is-dragover': dragOver }"
-      @submit.prevent="send()"
+      @submit.prevent="onComposerSubmit($event)"
       @focusin="onComposerFocusIn()"
       @focusout="onComposerFocusOut($event)"
       @dragenter.prevent="onComposerDragEnter($event)"
@@ -366,7 +366,7 @@
            contenteditable="true"
            role="textbox"
            aria-multiline="true"
-           :enterkeyhint="_isDesktopKeyboard() ? 'enter' : 'send'"
+           enterkeyhint="enter"
            autocomplete="off"
            x-ref="input"
            :data-placeholder="editingId ? 'Modifier le message…' : composerPlaceholder"
@@ -377,8 +377,9 @@
            @beforeinput="onEditorBeforeInput($event)"
            @paste="onEditorPaste($event)"></div>
     </div>
-    <div class="chat-composer__row" x-show="composerToolsVisible" x-cloak>
-      <div class="chat-composer__tools" role="toolbar" aria-label="Formatage et pièces jointes">
+    <div class="chat-composer__row">
+      <div class="chat-composer__tools" role="toolbar" aria-label="Formatage et pièces jointes"
+           x-show="composerToolsVisible" x-cloak>
         <div class="chat-emoji" @click.outside="emojiOpen = false">
           <button type="button" class="chat-attach chat-emoji__btn"
                   @click="emojiOpen = !emojiOpen; closeMention()"

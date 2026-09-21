@@ -57,6 +57,26 @@
     }
   }
 
+  /* Clavier / saisie mobile : le champ d’écriture passe avant tout le chrome. */
+  body.chat-kb-open > nav,
+  body.chat-kb-open footer,
+  body.chat-kb-open > main > .pl-nav,
+  body.chat-kb-open > main > .pl-poll-banner,
+  body.chat-kb-open > main > .pl-notif-banner {
+    display: none !important;
+  }
+  .chat-room.chat-kb-open .chat-room__bar,
+  .chat-room.chat-kb-open .chat-status,
+  .chat-room.chat-kb-open .chat-setlist-tip,
+  .chat-room.chat-kb-open .chat-leave-hint,
+  .chat-room.chat-kb-open .chat-staff-panel,
+  .chat-room.chat-kb-open .chat-jump-bottom {
+    display: none !important;
+  }
+  .chat-room.chat-kb-open .chat-composer {
+    z-index: 40;
+  }
+
   .chat-room {
     --composer-h: 7.5rem;
     --keyboard-inset: 0px;
@@ -1138,9 +1158,10 @@
   .chat-composer__editor {
     width: 100%;
     min-height: 44px;
-    /* Grandit avec le texte. Le JS aligne la hauteur sur le contenu
-       et ne plafonne qu’à la zone visible (barre du salon + clavier). */
-    max-height: calc(100dvh - var(--keyboard-inset, 0px) - 6.5rem);
+    height: auto;
+    /* Fallback si le JS n’a pas encore posé le cap. Le JS collapse
+       la boîte pour mesurer le texte, puis pose height + max-height. */
+    max-height: min(70dvh, calc(100svh - var(--keyboard-inset, 0px) - 7rem));
     resize: none;
     border: 1px solid var(--border);
     border-radius: var(--r);
@@ -1150,6 +1171,12 @@
     color: var(--text);
     background: var(--bg);
     line-height: 1.35;
+    overflow-x: hidden;
+    field-sizing: content;
+  }
+  .chat-kb-open .chat-composer textarea,
+  .chat-kb-open .chat-composer__editor {
+    max-height: calc(100svh - var(--keyboard-inset, 0px) - 2.5rem);
   }
   .chat-composer__editor {
     overflow-y: auto;
@@ -1432,7 +1459,7 @@
   .chat-pending-atts__remove:focus-visible { color: var(--accent); }
   .chat-send {
     flex-shrink: 0;
-    margin-left: 0;
+    margin-left: auto;
     min-width: 5.5rem;
     min-height: 44px;
     padding: 0 .9rem;
