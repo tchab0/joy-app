@@ -1,9 +1,12 @@
 from django.test import RequestFactory, TestCase, override_settings
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from core.media_pending import invalidate_pending_media_count
-from core.models import MediaItem
+from core.models import EvenementMedia, MediaItem
 from core.views import _notifier_admin
 from users.models import User, UserNotification
 
@@ -78,3 +81,77 @@ class PendingMediaStaffTests(TestCase):
         )
         done = self.client.get(reverse("admin_hub"))
         self.assertNotContains(done, 'aria-label="Médias,')
+
+
+class MediasEventFilterTests(TestCase):
+    def setUp(self):
+        self.ev_a = EvenementMedia.objects.create(
+            nom="Concert A", date=timezone.localdate() - timedelta(days=30)
+        )
+        self.ev_b = EvenementMedia.objects.create(
+            nom="Concert B", date=timezone.localdate() - timedelta(days=10)
+        )
+        tiny = b"\xff\xd8\xff\xd9"  # minimal JPEG
+
+        def photo(titre, evenement, **kwargs):
+            data = {
+                "type": "photo",
+                "titre": titre,
+                "publie": True,
+                "statut": "publie",
+                "evenement": evenement,
+                "fichier": SimpleUploadedFile(
+                    f"{titre}.jpg", tiny, content_type="image/jpeg"
+                ),
+            }
+            data.update(kwargs)
+            return MediaItem.objects.create(**data)
+
+        photo("Photo A", self.ev_a)
+        photo("Photo B1", self.ev_b)
+        photo("Photo B2", self.ev_b)
+        # Non publié → hors filtre / galerie.
+        photo("Draft", self.ev_a, publie=False, statut="en_attente")
+
+    def test_lists_all_event_groups_by_default(self):
+        r = self.client.get(reverse("medias"), {"tri": "evenements"})
+        self.assertEqual(r.status_code, 200)
+        groupes = r.context["groupes_photos"]
+        self.assertEqual([g["evenement"].pk for g in groupes], [self.ev_b.pk, self.ev_a.pk])
+        self.assertIsNone(r.context["evenement_actif"])
+        self.assertEqual(
+            [ev.pk for ev in r.context["evenements_filtre"]],
+            [self.ev_b.pk, self.ev_a.pk],
+        )
+        self.assertContains(r, 'id="media-evenement"')
+        self.assertContains(r, "Tous les événements")
+
+    def test_filters_photos_to_selected_event(self):
+        r = self.client.get(
+            reverse("medias"),
+            {"tri": "evenements", "evenement": str(self.ev_a.pk)},
+        )
+        self.assertEqual(r.status_code, 200)
+        groupes = r.context["groupes_photos"]
+        self.assertEqual(len(groupes), 1)
+        self.assertEqual(groupes[0]["evenement"], self.ev_a)
+        self.assertEqual(len(groupes[0]["photos"]), 1)
+        self.assertEqual(r.context["evenement_actif"], self.ev_a)
+        self.assertContains(r, f'value="{self.ev_a.pk}" selected')
+        self.assertEqual([g["evenement"].nom for g in groupes], ["Concert A"])
+
+    def test_invalid_event_id_shows_all(self):
+        r = self.client.get(
+            reverse("medias"),
+            {"tri": "evenements", "evenement": "999999"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.context["evenement_actif"])
+        self.assertEqual(len(r.context["groupes_photos"]), 2)
+
+    def test_votes_tab_hides_event_filter(self):
+        r = self.client.get(reverse("medias"), {"tri": "votes"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.context["evenement_actif"])
+        self.assertEqual(len(r.context["photos_votes"]), 3)
+        self.assertNotContains(r, 'id="media-evenement"')

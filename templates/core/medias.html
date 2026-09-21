@@ -11,6 +11,7 @@
 .media-groupe-titre { font-family:var(--font-d); font-style:italic; font-size:1.2rem; color:var(--text); margin-bottom:1rem; padding-bottom:.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
 .media-photos-head { display:flex; flex-direction:column; gap:1rem; margin-bottom:1.5rem; }
 .media-photos-head h2 { font-family:var(--font-d); font-style:italic; font-size:1.3rem; margin:0; color:var(--text); }
+.media-photos-controls { display:flex; flex-direction:column; gap:.75rem; width:100%; }
 .media-tri { display:flex; gap:.35rem; flex-wrap:wrap; width:100%; }
 .media-tri a,
 .media-tri button {
@@ -32,6 +33,33 @@
 }
 .media-tri a:focus-visible,
 .media-tri button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.media-event-filter {
+  display:flex; flex-direction:column; gap:.35rem; width:100%;
+}
+.media-event-filter label {
+  font-family:var(--font-b); font-size:.72rem; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+}
+.media-event-filter select {
+  width:100%; box-sizing:border-box; min-height:44px;
+  padding:.55rem .75rem; padding-right:2rem;
+  border:1px solid var(--border); border-radius:var(--r);
+  background:var(--surface); color:var(--text);
+  font-family:var(--font-b); font-size:1rem; line-height:1.3;
+  appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+.media-event-filter select:focus {
+  outline:none; border-color:var(--accent);
+}
+.media-event-filter select:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px;
+}
 .media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.75rem; }
 .video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; margin-top:1rem; }
 .video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
@@ -106,10 +134,12 @@
 .lightbox-vote:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 @media (min-width: 640px) {
-  .media-photos-head { flex-direction:row; align-items:center; justify-content:space-between; }
+  .media-photos-head { flex-direction:row; align-items:flex-start; justify-content:space-between; }
+  .media-photos-controls { width:auto; max-width:min(100%, 28rem); align-items:stretch; }
   .media-tri { width:auto; flex-wrap:nowrap; }
   .media-tri a,
   .media-tri button { flex:0 0 auto; }
+  .media-event-filter { min-width:16rem; }
   .media-grid { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
   .video-grid { grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
   .lightbox-inner { padding:4rem 5rem; }
@@ -155,14 +185,30 @@
     </div>
     {% endif %}
 
-    {% if groupes_photos or photos_votes %}
+    {% if groupes_photos or photos_votes or evenements_filtre %}
     <div class="media-photos-head">
       <h2>Photos</h2>
-      <nav class="media-tri" aria-label="Tri des photos">
-        <a href="?tri=evenements" class="{% if tri != 'votes' %}is-active{% endif %}" {% if tri != 'votes' %}aria-current="page"{% endif %}>Par événement</a>
-        <a href="?tri=votes" class="{% if tri == 'votes' %}is-active{% endif %}" {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
-        <button type="button" onclick="openLightbox('{% if tri == "votes" %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
-      </nav>
+      <div class="media-photos-controls">
+        <nav class="media-tri" aria-label="Tri des photos">
+          <a href="?tri=evenements{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}" class="{% if tri != 'votes' %}is-active{% endif %}" {% if tri != 'votes' %}aria-current="page"{% endif %}>Par événement</a>
+          <a href="?tri=votes" class="{% if tri == 'votes' %}is-active{% endif %}" {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
+          <button type="button" onclick="openLightbox('{% if tri == "votes" %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
+        </nav>
+        {% if tri != 'votes' and evenements_filtre %}
+        <form class="media-event-filter" method="get" action="{% url 'medias' %}">
+          <input type="hidden" name="tri" value="evenements">
+          <label for="media-evenement">Événement</label>
+          <select id="media-evenement" name="evenement" onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();" aria-label="Filtrer les photos par événement">
+            <option value="">Tous les événements</option>
+            {% for ev in evenements_filtre %}
+            <option value="{{ ev.pk }}" {% if evenement_actif and evenement_actif.pk == ev.pk %}selected{% endif %}>
+              {{ ev.nom }}{% if ev.date %} — {{ ev.date|date:"d/m/Y" }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+      </div>
     </div>
 
     {% if tri == 'votes' %}
@@ -201,7 +247,7 @@
         {% endfor %}
       </div>
     </div>
-    {% else %}
+    {% elif groupes_photos %}
     {% for groupe in groupes_photos %}
     <div class="media-groupe">
       <div class="media-groupe-titre">
@@ -240,6 +286,8 @@
       </div>
     </div>
     {% endfor %}
+    {% else %}
+    <p style="color:var(--muted);font-style:italic;margin:0 0 2rem">Aucune photo pour cet événement.</p>
     {% endif %}
     {% endif %}
 

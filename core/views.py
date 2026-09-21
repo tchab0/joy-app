@@ -256,6 +256,25 @@ def medias(request):
         ).select_related("evenement")
     )
 
+    # Événements ayant au moins une photo publiée (pour le sélecteur).
+    evenements_filtre = list(
+        EvenementMedia.objects.filter(
+            items__type="photo", items__publie=True
+        )
+        .distinct()
+        .order_by(F("date").desc(nulls_last=True), "nom", "pk")
+    )
+
+    evenement_actif = None
+    evenement_raw = (request.GET.get("evenement") or "").strip()
+    if tri == "evenements" and evenement_raw.isdigit():
+        evenement_id = int(evenement_raw)
+        evenement_actif = next(
+            (ev for ev in evenements_filtre if ev.pk == evenement_id), None
+        )
+        if evenement_actif is not None:
+            photos_qs = photos_qs.filter(evenement_id=evenement_actif.pk)
+
     groupes_photos = []
     photos_votes = []
 
@@ -290,6 +309,8 @@ def medias(request):
         "groupes_photos": groupes_photos,
         "photos_votes": photos_votes,
         "tri": tri,
+        "evenements_filtre": evenements_filtre,
+        "evenement_actif": evenement_actif,
         "videos": videos,
         "audios": audios,
         "pdfs": pdfs,
