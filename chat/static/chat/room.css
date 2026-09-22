@@ -1300,48 +1300,6 @@
   }
   .chat-reply-bar__cancel:hover,
   .chat-reply-bar__cancel:focus-visible { color: var(--accent); }
-  .chat-emoji {
-    position: relative;
-    flex-shrink: 0;
-  }
-  .chat-emoji__btn { overflow: visible; }
-  .chat-emoji__panel {
-    position: absolute;
-    left: 0;
-    bottom: calc(100% + .35rem);
-    width: min(17.5rem, calc(100vw - 2rem));
-    max-height: 11.5rem;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: .15rem;
-    padding: .4rem;
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    box-shadow: 0 8px 24px rgba(26, 23, 20, .12);
-    z-index: 40;
-  }
-  .chat-emoji__item {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
-    border: 0;
-    border-radius: calc(var(--r) - 2px);
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    font-size: 1.35rem;
-    line-height: 1;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .chat-emoji__item:active,
-  .chat-emoji__item:hover { background: rgba(var(--accent-rgb), .1); }
   .chat-attach {
     flex-shrink: 0;
     display: inline-flex;
@@ -1460,9 +1418,13 @@
   .chat-send {
     flex-shrink: 0;
     margin-left: auto;
-    min-width: 5.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
     min-height: 44px;
-    padding: 0 .9rem;
+    padding: 0;
     border-radius: var(--r);
     border: 1px solid var(--accent);
     background: var(--accent);
@@ -1471,6 +1433,7 @@
     font-weight: 600;
     cursor: pointer;
   }
+  .chat-send__icon { display: block; }
   .chat-send:disabled { opacity: .55; }
 
   .visually-hidden {
@@ -1984,8 +1947,8 @@
       gap: .45rem;
     }
     .chat-composer__tools {
-      overflow-x: visible;
-      flex-wrap: wrap;
+      overflow-x: auto;
+      flex-wrap: nowrap;
     }
     .chat-send {
       margin-left: auto;
@@ -2038,7 +2001,8 @@
     flex: 0 0 auto;
   }
   .chat-room--embedded.chat-room--compact .chat-composer__tools {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
   body:has(.chat-room--embedded):not(:has(.chat-room:not(.chat-room--embedded))) footer { display: revert; }
   body:has(.chat-room--embedded):not(:has(.chat-room:not(.chat-room--embedded))) main { padding: revert; }

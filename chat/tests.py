@@ -486,6 +486,31 @@ class ChatCoreTests(TestCase):
         self.assertContains(r, "Voir le détail planning")
         self.assertContains(r, reverse("planning:event_detail", args=[event.pk]))
 
+    def test_composer_send_stays_visible_when_tools_hide(self):
+        """Envoyer reste hors x-show des outils (clavier / mobile)."""
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        tools_at = html.find("chat-composer__tools")
+        send_at = html.find('class="chat-send"')
+        self.assertGreater(tools_at, 0)
+        self.assertGreater(send_at, tools_at)
+        tools_chunk = html[tools_at:tools_at + 220]
+        self.assertIn('x-show="composerToolsVisible"', tools_chunk)
+        row_at = html.find("chat-composer__row")
+        row_chunk = html[row_at:row_at + 80]
+        self.assertNotIn("x-show=", row_chunk)
+        self.assertNotIn("Insérer un emoji", html)
+        self.assertIn(":aria-label=\"editingId ? 'Enregistrer' : 'Envoyer'\"", html)
+        self.assertIn("chat-send__icon", html)
+        from pathlib import Path
+        js = (Path(__file__).resolve().parent / "static" / "chat" / "room.js").read_text()
+        self.assertNotIn("keyboardInset > 120", js)
+
     def test_room_detail_does_not_leak_history_as_flash(self):
         """Collision django.contrib.messages : l’historique ne doit pas s’afficher en haut."""
         from django.contrib.messages.storage.fallback import FallbackStorage

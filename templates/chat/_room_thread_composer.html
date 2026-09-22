@@ -380,21 +380,6 @@
     <div class="chat-composer__row">
       <div class="chat-composer__tools" role="toolbar" aria-label="Formatage et pièces jointes"
            x-show="composerToolsVisible" x-cloak>
-        <div class="chat-emoji" @click.outside="emojiOpen = false">
-          <button type="button" class="chat-attach chat-emoji__btn"
-                  @click="emojiOpen = !emojiOpen; closeMention()"
-                  :aria-expanded="emojiOpen.toString()"
-                  aria-label="Insérer un emoji"
-                  title="Emoji">
-            😊
-          </button>
-          <div class="chat-emoji__panel" x-show="emojiOpen" x-cloak role="listbox" aria-label="Émojis">
-            <template x-for="em in emojis" :key="em">
-              <button type="button" class="chat-emoji__item" @click="insertEmoji(em)"
-                      :aria-label="'Insérer ' + em" x-text="em"></button>
-            </template>
-          </div>
-        </div>
         <button type="button" class="chat-attach chat-fmt"
                 @mousedown.prevent
                 @click="applyRichFormat('bold')"
@@ -453,8 +438,19 @@
         </label>
       </div>
       <button type="submit" class="chat-send" :disabled="busy"
-              :title="_isDesktopKeyboard() ? 'Ctrl+Entrée' : ''"
-              x-text="editingId ? 'Enregistrer' : 'Envoyer'"></button>
+              :aria-label="editingId ? 'Enregistrer' : 'Envoyer'"
+              :title="editingId ? 'Enregistrer' : (_isDesktopKeyboard() ? 'Envoyer (Ctrl+Entrée)' : 'Envoyer')">
+        <svg x-show="!editingId" class="chat-send__icon" width="20" height="20" viewBox="0 0 24 24"
+             aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+        <svg x-show="editingId" x-cloak class="chat-send__icon" width="20" height="20" viewBox="0 0 24 24"
+             aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>
+      </button>
     </div>
   </div>
 </form>

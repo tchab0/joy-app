@@ -107,13 +107,6 @@ function chatRoom(cfg) {
     _readTimer: null,
     _lastReadSentAt: 0,
     _memberByUser: null,
-    emojis: [
-      '😀','😂','😅','😊','🙂','😉','😍','🤩','😎','🤔',
-      '😴','😮','😢','😭','😤','🙄','👍','👎','👏','🙌',
-      '💪','✌️','🤝','❤️','🔥','✨','🎉','✅','❌','⭐',
-      '👀','🙏','💯','🍀','☕','🍻','🎂','🎵','🎶','🎷',
-      '🎺','🥁','🎹','🎸','🎤','🎻','🎼','🎧','📢','💬'
-    ],
     get threadList() {
       return this.archiveOpen ? this.archiveMessages : this.messages;
     },
@@ -131,9 +124,9 @@ function chatRoom(cfg) {
       return { live: 'is-live', error: 'is-err', offline: 'is-err' }[this.displayStatus] || '';
     },
     get composerToolsVisible() {
-      /* Vrai clavier virtuel : la saisie passe avant la barre d’outils. */
-      if (this.keyboardInset > 120 && !this._isWideComposer()) return false;
+      /* Barre toujours là clavier ouvert : une ligne, scroll si ça dépasse. */
       if (this._isWideComposer()) return true;
+      if (this.keyboardInset > 80) return true;
       return !!(
         this.composerToolsOpen
         || this.replyTo
@@ -767,7 +760,6 @@ function chatRoom(cfg) {
       });
     },
     applyRichFormat(cmd) {
-      this.emojiOpen = false;
       this.closeMention();
       const el = this.$refs.input;
       if (el) el.focus();
@@ -794,7 +786,6 @@ function chatRoom(cfg) {
       this.measureComposer();
     },
     insertLink() {
-      this.emojiOpen = false;
       this.closeMention();
       const el = this.$refs.input;
       if (el) el.focus();
@@ -964,7 +955,6 @@ function chatRoom(cfg) {
       this.replyTo = msg;
       if (this.archiveOpen) this.closeArchive();
       this.composerToolsOpen = true;
-      this.emojiOpen = false;
       this.closeMention();
       let handle = '';
       const authorId = msg.author_id;
@@ -994,7 +984,6 @@ function chatRoom(cfg) {
       if (this.archiveOpen) this.closeArchive();
       this.replyTo = null;
       this.composerToolsOpen = true;
-      this.emojiOpen = false;
       this.closeMention();
       this.editingId = msg.id;
       this.editPreview = this.replyPreview(msg);
@@ -1186,7 +1175,6 @@ function chatRoom(cfg) {
       this.replaceMarkdownRange(start, end, insert);
     },
     async startMentionPicker() {
-      this.emojiOpen = false;
       if (!this.membersLoaded || !(this.members && this.members.length)) {
         await this.loadMembers();
       }
@@ -1334,7 +1322,6 @@ function chatRoom(cfg) {
       return true;
     },
     applyQuote() {
-      this.emojiOpen = false;
       this.closeMention();
       const el = this.$refs.input;
       if (!el) return;
@@ -1399,7 +1386,6 @@ function chatRoom(cfg) {
       return null;
     },
     applyBulletList() {
-      this.emojiOpen = false;
       this.closeMention();
       const el = this.$refs.input;
       if (!el) return;
@@ -2010,7 +1996,6 @@ function chatRoom(cfg) {
       }, partial || {});
     },
     openPollComposer() {
-      this.emojiOpen = false;
       this.closeMention();
       this.pollError = '';
       this.pollBusy = false;
@@ -2119,10 +2104,7 @@ function chatRoom(cfg) {
     insertEmoji(em) {
       const el = this.$refs.input;
       this.emojiOpen = false;
-      if (!el) {
-        this.body = (this.body || '') + em;
-        return;
-      }
+      if (!el || !em) return;
       el.focus();
       this.insertTextAtCaret(em);
       this.autoGrow();
@@ -2622,7 +2604,6 @@ function chatRoom(cfg) {
       this.editPreview = '';
       this.editingAttachments = [];
       this.composerToolsOpen = false;
-      this.emojiOpen = false;
       this.closeMention();
       this.clearPendingFiles();
       this.hideAttZoom();
@@ -2686,7 +2667,6 @@ function chatRoom(cfg) {
       if (!text && !pending.length) return;
       this.busy = true;
       this.menuOpen = false;
-      this.emojiOpen = false;
       this.closeMention();
       const replyId = this.replyTo && this.replyTo.id ? this.replyTo.id : null;
       // Toujours HTTP : le message est ajouté dès la réponse (ingestMessage).
