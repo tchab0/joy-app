@@ -3,7 +3,6 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
@@ -46,8 +45,10 @@ def _admin_denied():
     return HttpResponseForbidden("Action réservée aux administrateurs.")
 
 
-@staff_member_required
+@login_required
 def admin_feedback(request):
+    if not can_manage_page_feedback(request.user):
+        return _admin_denied()
     context = build_page_feedback_admin_context(
         sort=request.GET.get("feedback_sort"),
         view=request.GET.get("feedback_view"),

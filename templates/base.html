@@ -486,7 +486,9 @@
         <span>Éditeur</span>
       </a>
       <a href="{% url 'admin_hub' %}">Tableau de bord</a>
+      {% if request.user.is_superuser %}
       <a href="{% url 'admin_feedback' %}">Retours</a>
+      {% endif %}
       <a href="{% url 'admin_concerts' %}">CMS concerts</a>
       <a href="{% url 'planning:admin' %}">Admin planning</a>
       <a href="{% url 'repertoire:staff_list' %}">Atelier partitions</a>

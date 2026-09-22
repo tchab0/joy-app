@@ -116,7 +116,7 @@ TYPE_CATALOG: tuple[NotifyTypeSpec, ...] = (
     NotifyTypeSpec(
         TYPE_FEEDBACK,
         "Retours utilisateurs",
-        "Nouveaux retours (staff) et réponses du staff sur vos propres retours.",
+        "Nouveaux retours (administrateur) et réponses sur vos propres retours.",
     ),
     NotifyTypeSpec(
         TYPE_CHAT,

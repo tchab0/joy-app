@@ -515,7 +515,7 @@ SLIDES: list[PresentationSlide] = [
             "Sur n'importe quelle page : bouton « Retour » ou icône en bas de page",
             "Choisir le type : bug, confort, idée",
             "Décrire le problème ou la suggestion",
-            "Le staff traite dans Administration → Retours ; vous pouvez échanger des messages sur un retour, ou voter sur les idées ouvertes",
+            "L'administrateur traite dans Administration → Retours ; vous pouvez échanger des messages sur un retour, ou voter sur les idées ouvertes",
         ],
         url_path="/compte/",
         demo_label="Ouvrir Mon compte",

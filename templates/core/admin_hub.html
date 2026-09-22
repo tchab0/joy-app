@@ -148,12 +148,14 @@
           <span>Diaporama pour présenter le site aux musiciens</span>
         </a>
       </li>
+      {% if request.user.is_superuser %}
       <li>
         <a href="{% url 'admin_feedback' %}">
           <strong>Retours</strong>
           <span>Commentaires, votes et échanges avec les émetteurs</span>
         </a>
       </li>
+      {% endif %}
       <li>
         <a href="{% url 'stats:dashboard' %}">
           <strong>Statistiques</strong>

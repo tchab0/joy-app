@@ -282,8 +282,18 @@ def build_page_feedback_footer_context(
 
 
 def can_manage_page_feedback(user, **_kwargs) -> bool:
-    """Retours admin : réservé au staff JOY."""
-    return bool(getattr(user, 'is_authenticated', False) and getattr(user, 'is_staff', False))
+    """Retours admin : réservé à l'administrateur, pas au reste du staff."""
+    return bool(
+        getattr(user, 'is_authenticated', False)
+        and getattr(user, 'is_superuser', False)
+    )
+
+
+def feedback_admin_recipients():
+    """Comptes qui reçoivent les alertes de retours (administrateurs actifs)."""
+    from users.models import User
+
+    return User.objects.filter(is_active=True, is_superuser=True)
 
 
 def parse_feedback_sort(sort_key: str | None) -> str:
@@ -954,9 +964,8 @@ def create_page_feedback(
 
 
 def _notify_new_page_feedback(feedback: PageFeedback) -> None:
-    """Alerte le staff (ex. Thierry) dès qu'un nouveau retour est soumis."""
+    """Alerte l'administrateur dès qu'un nouveau retour est soumis."""
     try:
-        from users.models import User
         from users.notify import notify_users
     except Exception:
         return
@@ -965,7 +974,7 @@ def _notify_new_page_feedback(feedback: PageFeedback) -> None:
     author_name = _sender_display_name(feedback.author)
     preview = (feedback.message or '')[:160]
     body = f'{author_name} · {category} : {preview}'
-    recipients = User.objects.filter(is_active=True, is_staff=True)
+    recipients = feedback_admin_recipients()
     if feedback.author_id:
         recipients = recipients.exclude(pk=feedback.author_id)
     try:
@@ -1328,7 +1337,6 @@ def post_page_feedback_message(*, feedback_id: int, sender, body: str) -> PageFe
 
 def _notify_feedback_thread(feedback: PageFeedback, message: PageFeedbackMessage) -> None:
     try:
-        from users.models import User
         from users.notify import notify_users
     except Exception:
         logger.exception('Notification fil retour indisponible')
@@ -1348,10 +1356,10 @@ def _notify_feedback_thread(feedback: PageFeedback, message: PageFeedbackMessage
                 force_immediate=True,
             )
             return
-        staff = User.objects.filter(is_active=True, is_staff=True).exclude(pk=message.sender_id)
+        admins = feedback_admin_recipients().exclude(pk=message.sender_id)
         author_name = _sender_display_name(feedback.author)
         notify_users(
-            staff,
+            admins,
             title='JOY — Réponse sur un retour',
             body=f'{author_name} : {preview}',
             url=admin_feedback_focus_url(feedback),

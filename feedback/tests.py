@@ -31,8 +31,16 @@ class NewFeedbackNotifyTests(TestCase):
             is_staff=True,
             is_superuser=True,
         )
+        self.staff = User.objects.create_user(
+            username="staff-joy",
+            email="staff-joy@example.com",
+            password="x",
+            first_name="Camille",
+            last_name="Staff",
+            is_staff=True,
+        )
 
-    def test_create_page_feedback_notifies_staff(self):
+    def test_create_page_feedback_notifies_admin_only(self):
         feedback = create_page_feedback(
             author=self.author,
             category=PageFeedback.CATEGORY_BUG,
@@ -48,6 +56,9 @@ class NewFeedbackNotifyTests(TestCase):
         self.assertIn(f"feedback_focus={feedback.pk}", notif.url)
         self.assertFalse(
             UserNotification.objects.filter(user=self.author, related_type="feedback").exists()
+        )
+        self.assertFalse(
+            UserNotification.objects.filter(user=self.staff, related_type="feedback").exists()
         )
 
 
@@ -71,6 +82,15 @@ class FeedbackThreadTests(TestCase):
             password="x",
             first_name="Admin",
             last_name="JOY",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.staff = User.objects.create_user(
+            username="staff-joy",
+            email="staff-joy@example.com",
+            password="x",
+            first_name="Camille",
+            last_name="Staff",
             is_staff=True,
         )
         self.other = User.objects.create_user(
@@ -114,6 +134,9 @@ class FeedbackThreadTests(TestCase):
         staff_inbox = UserNotification.objects.filter(user=self.admin, related_type="feedback")
         self.assertEqual(staff_inbox.count(), 1)
         self.assertIn("feedback_focus=", staff_inbox.get().url)
+        self.assertFalse(
+            UserNotification.objects.filter(user=self.staff, related_type="feedback").exists()
+        )
 
     def test_message_on_treated_feedback_notifies_recipient(self):
         from django.core import mail
@@ -174,3 +197,10 @@ class FeedbackThreadTests(TestCase):
         r = self.client.get(reverse("admin_feedback"))
         self.assertContains(r, "Demander un détail, préciser une correction")
         self.assertContains(r, reverse("post_page_feedback_message", args=[self.feedback.pk]))
+
+    def test_staff_cannot_open_admin_feedback(self):
+        self.client.force_login(self.staff)
+        r = self.client.get(reverse("admin_feedback"))
+        self.assertEqual(r.status_code, 403)
+        hub = self.client.get(reverse("admin_hub"))
+        self.assertNotContains(hub, reverse("admin_feedback"))
