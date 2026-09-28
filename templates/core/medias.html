@@ -9,8 +9,10 @@
 <style>
 .media-groupe { margin-bottom: 3rem; }
 .media-groupe-titre { font-family:var(--font-d); font-style:italic; font-size:1.2rem; color:var(--text); margin-bottom:1rem; padding-bottom:.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
-.media-photos-head { display:flex; flex-direction:column; gap:1rem; margin-bottom:1.5rem; }
-.media-photos-head h2 { font-family:var(--font-d); font-style:italic; font-size:1.3rem; margin:0; color:var(--text); }
+.media-gallery-head { display:flex; flex-direction:column; gap:1rem; margin-bottom:1.5rem; }
+.media-gallery-head h1 { margin-bottom:0; }
+.media-section-title { font-family:var(--font-d); font-style:italic; font-size:1.3rem; margin:0 0 1rem; color:var(--text); }
+.media-type-block { margin-bottom:2.5rem; }
 .media-tri { display:flex; gap:.35rem; flex-wrap:wrap; width:100%; align-items:stretch; }
 .media-tri a,
 .media-tri button,
@@ -64,7 +66,7 @@
 }
 .media-event-filter select:focus { outline:none; border-color:var(--accent); }
 .media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.75rem; }
-.video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; margin-top:1rem; }
+.video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; }
 .video-grid iframe,
 .video-grid video { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); background:#111; display:block; }
 .media-yt {
@@ -92,11 +94,11 @@
 .media-yt__title {
   margin-top:.45rem; font-size:.85rem; font-weight:600; color:var(--text);
 }
-.audio-list { display:flex; flex-direction:column; gap:.75rem; margin-top:1rem; }
+.audio-list { display:flex; flex-direction:column; gap:.75rem; margin-top:.25rem; }
 .audio-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1rem; }
 .audio-item audio { width:100%; margin-top:.5rem; }
-.pdf-list { display:flex; flex-direction:column; gap:.5rem; margin-top:1rem; }
-.pdf-item { display:flex; align-items:center; gap:.75rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:.75rem 1rem; text-decoration:none; color:var(--text); transition:border-color var(--trans); }
+.pdf-list { display:flex; flex-direction:column; gap:.5rem; margin-top:.25rem; }
+.pdf-item { display:flex; align-items:center; gap:.75rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:.75rem 1rem; text-decoration:none; color:var(--text); transition:border-color var(--trans); min-height:44px; }
 .pdf-item:hover { border-color:var(--accent); }
 
 .photo-wrap { position:relative; display:block; overflow:hidden; border-radius:var(--r); background:var(--surface); }
@@ -138,11 +140,11 @@
 .lightbox-vote:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 @media (min-width: 640px) {
-  .media-photos-head { flex-direction:row; align-items:center; justify-content:space-between; }
-  .media-tri { width:auto; flex-wrap:nowrap; }
+  .media-gallery-head { flex-direction:row; align-items:center; justify-content:space-between; }
+  .media-tri { width:auto; flex-wrap:wrap; justify-content:flex-end; }
   .media-tri a,
   .media-tri button { flex:0 0 auto; }
-  .media-event-filter { flex:0 1 14rem; max-width:16rem; }
+  .media-event-filter { flex:0 1 12rem; max-width:14rem; }
   .media-grid { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
   .video-grid { grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
   .lightbox-inner { padding:4rem 5rem; }
@@ -156,70 +158,14 @@
 {% block content %}
 <section class="section">
   <div class="container">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:2rem">
-      <h1 class="section-title" style="margin-bottom:0">Médias</h1>
+    <div class="media-gallery-head">
+      <h1 class="section-title">Médias</h1>
       <a href="{% url 'proposer_media' %}" class="btn btn-outline">+ Proposer un média</a>
     </div>
 
-    {% if videos %}
-    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin-bottom:1rem">Vidéos</h2>
-    <div class="video-grid" style="margin-bottom:3rem">
-      {% for v in videos %}
-      {% if v.youtube_id %}
-      <div>
-        <div class="media-yt" data-yt-embed="{{ v.youtube_embed_url }}">
-          <button type="button" class="media-yt__facade" aria-label="Lire {{ v.titre|default:'la vidéo' }}">
-            <img class="media-yt__thumb"
-                 src="{{ v.youtube_thumb_url }}"
-                 alt="{% if v.titre %}Aperçu vidéo — {{ v.titre }}{% else %}Aperçu vidéo — Jazz Orchestra Yonnais{% endif %}"
-                 width="480"
-                 height="360"
-                 loading="lazy"
-                 decoding="async">
-            <span class="media-yt__play" aria-hidden="true"></span>
-          </button>
-        </div>
-        {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
-      </div>
-      {% elif v.url_affichage %}
-      <div>
-        <video controls playsinline preload="metadata"
-               {% if v.miniature %}poster="{{ v.url_miniature }}"{% endif %}
-               src="{{ v.url_affichage }}">
-          <a href="{{ v.url_affichage }}">{{ v.titre|default:"Vidéo" }}</a>
-        </video>
-        {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
-      </div>
-      {% elif v.url_externe %}
-      <iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
-      {% endif %}
-      {% endfor %}
-    </div>
+    {% if evenements_filtre or videos or photos or audios or pdfs or photos_votes or groupes %}
+    {% include "includes/_media_controls.html" with show_votes=True show_diaporama=show_diaporama %}
     {% endif %}
-
-    {% if groupes_photos or photos_votes or evenements_filtre %}
-    <div class="media-photos-head">
-      <h2>Photos</h2>
-      <nav class="media-tri" aria-label="Tri des photos">
-        <a href="?tri=evenements{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}" class="{% if tri != 'votes' %}is-active{% endif %}" {% if tri != 'votes' %}aria-current="page"{% endif %}>Par événement</a>
-        {% if tri != 'votes' and evenements_filtre %}
-        <form class="media-event-filter" method="get" action="{% url 'medias' %}">
-          <input type="hidden" name="tri" value="evenements">
-          <label for="media-evenement">Événement</label>
-          <select id="media-evenement" name="evenement" class="{% if evenement_actif %}is-active{% endif %}" onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();" aria-label="Filtrer les photos par événement">
-            <option value="">Tous les événements</option>
-            {% for ev in evenements_filtre %}
-            <option value="{{ ev.pk }}" {% if evenement_actif and evenement_actif.pk == ev.pk %}selected{% endif %}>
-              {{ ev.nom }}{% if ev.date %} — {{ ev.date|date:"d/m/Y" }}{% endif %}
-            </option>
-            {% endfor %}
-          </select>
-        </form>
-        {% endif %}
-        <a href="?tri=votes" class="{% if tri == 'votes' %}is-active{% endif %}" {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
-        <button type="button" onclick="openLightbox('{% if tri == "votes" %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
-      </nav>
-    </div>
 
     {% if tri == 'votes' %}
     <div class="media-groupe">
@@ -227,106 +173,31 @@
         <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Classement par cœurs</span>
         <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ photos_votes|length }} photo{{ photos_votes|length|pluralize }}</span>
       </div>
+      {% if photos_votes %}
       <div class="media-grid">
         {% for p in photos_votes %}
-        <div class="photo-wrap">
-          <a href="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}" onclick="openLightbox('favoris', {{ forloop.counter0 }}); return false;">
-            <img src="{{ p.url_miniature|default:p.display_url|default:p.url_affichage }}"
-                 srcset="{% if p.miniature %}{{ p.url_miniature }} 400w, {% endif %}{{ p.display_url|default:p.url_affichage }} 1280w"
-                 sizes="(max-width:640px) 50vw, 220px"
-                 alt="{{ p.titre }}"
-                 width="400"
-                 height="300"
-                 loading="lazy"
-                 decoding="async">
-          </a>
-          {% if p.evenement %}
-          <div class="photo-caption">{{ p.evenement.nom }}{% if p.evenement.date %} · {{ p.evenement.date|date:"Y" }}{% endif %}</div>
-          {% endif %}
-          <button
-            class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
-            type="button"
-            data-media-id="{{ p.pk }}"
-            data-vote-url="{% url 'media_vote' p.pk %}"
-            data-csrf="{{ csrf_token }}"
-            onclick="toggleVote(this)">
-            <span class="photo-vote-icon">{% if p.user_a_vote %}❤️{% else %}🤍{% endif %}</span>
-            <span class="photo-vote-count">{% if p.nb_votes %}{{ p.nb_votes }}{% endif %}</span>
-          </button>
-        </div>
+        {% include "includes/_media_photo.html" with p=p lightbox_group="favoris" lightbox_index=forloop.counter0 show_caption=True show_vote=True %}
         {% endfor %}
       </div>
+      {% else %}
+      <p style="color:var(--muted);font-style:italic;margin:0 0 2rem">Aucune photo pour ces filtres.</p>
+      {% endif %}
     </div>
-    {% elif groupes_photos %}
-    {% for groupe in groupes_photos %}
-    <div class="media-groupe">
-      <div class="media-groupe-titre">
-        <span style="font-family:var(--font-d);font-style:italic;font-size:1.2rem;color:var(--text)">{{ groupe.evenement.nom }}</span>
-        {% if groupe.evenement.date %}
-        <span style="font-family:var(--font-b);font-style:normal;font-size:.78rem;font-weight:400;color:var(--muted)">{{ groupe.evenement.date|date:"d F Y" }}</span>
-        {% endif %}
-        <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ groupe.photos|length }} photo{{ groupe.photos|length|pluralize }}</span>
-      </div>
 
-      <div class="media-grid">
-        {% for p in groupe.photos %}
-        <div class="photo-wrap">
-          <a href="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}" onclick="openLightbox('groupe_{{ forloop.parentloop.counter0 }}', {{ forloop.counter0 }}); return false;">
-            <img src="{{ p.url_miniature|default:p.display_url|default:p.url_affichage }}"
-                 srcset="{% if p.miniature %}{{ p.url_miniature }} 400w, {% endif %}{{ p.display_url|default:p.url_affichage }} 1280w"
-                 sizes="(max-width:640px) 50vw, 220px"
-                 alt="{{ p.titre }}"
-                 width="400"
-                 height="300"
-                 loading="lazy"
-                 decoding="async">
-          </a>
-          <button
-            class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
-            type="button"
-            data-media-id="{{ p.pk }}"
-            data-vote-url="{% url 'media_vote' p.pk %}"
-            data-csrf="{{ csrf_token }}"
-            onclick="toggleVote(this)">
-            <span class="photo-vote-icon">{% if p.user_a_vote %}❤️{% else %}🤍{% endif %}</span>
-            <span class="photo-vote-count">{% if p.nb_votes %}{{ p.nb_votes }}{% endif %}</span>
-          </button>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
+    {% elif tri == 'types' %}
+    {% include "includes/_media_by_type.html" with photo_vote=True lightbox_prefix="toutes" %}
+    {% if not videos and not photos and not audios and not pdfs %}
+    <p style="color:var(--muted);font-style:italic;margin:0 0 2rem">Aucun média pour ces filtres.</p>
+    {% endif %}
+
     {% else %}
-    <p style="color:var(--muted);font-style:italic;margin:0 0 2rem">Aucune photo pour cet événement.</p>
+    {% include "includes/_media_by_event.html" with photo_vote=True %}
+    {% if not groupes %}
+    <p style="color:var(--muted);font-style:italic;margin:0 0 2rem">Aucun média pour ces filtres.</p>
     {% endif %}
     {% endif %}
 
-    {% if audios %}
-    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Audio</h2>
-    <div class="audio-list">
-      {% for a in audios %}
-      <div class="audio-item">
-        <div style="font-weight:600;font-size:.95rem">{{ a.titre|default:"Enregistrement" }}</div>
-        <audio controls src="{{ a.fichier.url }}"></audio>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if pdfs %}
-    <h2 style="font-family:var(--font-d);font-style:italic;font-size:1.3rem;margin:2rem 0 1rem">Documents</h2>
-    <div class="pdf-list">
-      {% for p in pdfs %}
-      <a class="pdf-item" href="{{ p.fichier.url }}" target="_blank" rel="noopener">
-        <span style="font-size:1.4rem">📄</span>
-        <span>{{ p.titre|default:"Document PDF" }}</span>
-        <span style="margin-left:auto;font-size:.8rem;color:var(--muted)">Ouvrir ↗</span>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if not groupes_photos and not photos_votes and not videos and not audios and not pdfs %}
+    {% if not has_any_media and not evenements_filtre %}
     <p style="color:var(--muted);font-style:italic">Galerie en cours de construction.</p>
     {% endif %}
   </div>
@@ -372,20 +243,18 @@ const MEDIA_GROUPS = {
   ]
   {% else %}
   "toutes": [
-    {% for groupe in groupes_photos %}
-    {% for p in groupe.photos %}
+    {% for p in photos %}
     {
       id: {{ p.pk }},
       url: "{{ p.display_url|default:p.url_affichage|default:p.fichier.url|escapejs }}",
-      titre: "{{ p.titre|default:groupe.evenement.nom|escapejs }}{% if groupe.evenement.date %} ({{ groupe.evenement.date|date:'d/m/Y' }}){% endif %}",
+      titre: "{{ p.titre|default:p.evenement.nom|escapejs }}{% if p.evenement.date %} ({{ p.evenement.date|date:'d/m/Y' }}){% endif %}",
       votes: {{ p.nb_votes|default:0 }},
       voted: {% if p.user_a_vote %}true{% else %}false{% endif %},
       voteUrl: "{% url 'media_vote' p.pk %}"
-    }{% if not forloop.last or not forloop.parentloop.last %},{% endif %}
-    {% endfor %}
+    }{% if not forloop.last %},{% endif %}
     {% endfor %}
   ],
-  {% for groupe in groupes_photos %}
+  {% for groupe in groupes %}
   "groupe_{{ forloop.counter0 }}": [
     {% for p in groupe.photos %}
     {

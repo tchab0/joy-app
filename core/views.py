@@ -187,15 +187,11 @@ def concert_detail(request, slug):
     concert_medias = None
     raw = published_media_for_past_event(event)
     if raw is not None:
-        # Pas de cache pour les variantes de filtres : reconstruit si query présente.
-        if not request.session.session_key:
-            request.session.create()
         tri, type_filtre, evenement_raw = parse_media_query(request.GET)
-        # Sur la fiche : pas de mode « votes » global — types | evenements.
         if tri == "votes":
             tri = "evenements"
         gallery = build_media_gallery(
-            session_key=request.session.session_key,
+            session_key=request.session.session_key or "",
             tri=tri,
             type_filtre=type_filtre,
             evenement_raw=evenement_raw or str(raw["evenement"].pk),

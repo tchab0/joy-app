@@ -12,7 +12,11 @@
     {% else %}
     <span style="font-family:var(--font-d);font-style:italic;font-size:1.2rem;color:var(--text)">Autres médias</span>
     {% endif %}
-    <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ gphotos|length|add:gvideos|length|add:gaudios|length|add:gpdfs|length }} média{{ gphotos|length|add:gvideos|length|add:gaudios|length|add:gpdfs|length|pluralize }}</span>
+    {% with nv=gvideos|length na=gaudios|length np=gpdfs|length %}
+    {% with total=gphotos|length|add:nv|add:na|add:np %}
+    <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ total }} média{{ total|pluralize }}</span>
+    {% endwith %}
+    {% endwith %}
   </div>
 
   {% if gvideos %}

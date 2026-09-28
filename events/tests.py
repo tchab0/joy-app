@@ -184,3 +184,27 @@ class PastConcertMediaTests(TestCase):
         r = self.client.get(reverse("concert_detail", args=[other.slug]))
         self.assertNotContains(r, "event-medias")
         self.assertEqual(EvenementMedia.objects.count(), before)
+
+    def test_concert_type_filter_and_sort_controls(self):
+        self._photo()
+        MediaItem.objects.create(
+            type="video",
+            titre="Vidéo du concert",
+            fichier=SimpleUploadedFile("c.mp4", b"fake", content_type="video/mp4"),
+            evenement=self.media_event,
+            publie=True,
+            statut="publie",
+        )
+        r = self.client.get(
+            reverse("concert_detail", args=[self.past.slug]),
+            {"tri": "types", "type": "video"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Par type")
+        self.assertContains(r, "Par événement")
+        self.assertContains(r, 'id="media-type"')
+        self.assertContains(r, "Vidéo du concert")
+        self.assertNotContains(r, "Photo du concert")
+        self.assertContains(r, "tri=types")
+        self.assertContains(r, "type=video")
+        self.assertContains(r, f"evenement={self.media_event.pk}")

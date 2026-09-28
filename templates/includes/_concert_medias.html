@@ -1,252 +1,182 @@
-{# Médias publiés d’un concert passé, sous la carte. #}
+{# Médias publiés d’un concert passé — mêmes tris/filtres que /medias/. #}
 <style>
 .event-medias { margin-top: 1.75rem; color: var(--text); }
+.event-medias__head {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+  margin-bottom: 1rem;
+}
 .event-medias__title {
   font-family: var(--font-d);
   font-style: italic;
   font-size: 1.25rem;
-  margin: 0 0 .85rem;
+  margin: 0;
   color: var(--text);
 }
-.event-medias__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .5rem;
-}
-.event-medias__photo {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r);
-  overflow: hidden;
-  background: var(--surface);
-  cursor: pointer;
-  min-height: 44px;
-}
-.event-medias__photo img {
-  width: 100%;
-  aspect-ratio: 4/3;
-  object-fit: cover;
-  display: block;
-}
-.event-medias__photo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.event-medias__videos,
-.event-medias__audios { display: flex; flex-direction: column; gap: .85rem; margin-top: 1rem; }
-.event-medias video,
-.event-medias audio { width: 100%; border-radius: var(--r); }
+.event-medias .media-tri { margin-bottom: 0; }
+.event-medias .media-section-title { font-size: 1.15rem; }
+.event-medias .media-groupe { margin-bottom: 1.5rem; }
+.event-medias .media-groupe-titre { font-size: 1.05rem; }
+.event-medias .video-grid { margin-top: 0; }
+.event-medias .media-grid { margin-top: 0; }
 .event-medias video { background: #111; display: block; }
-.event-medias__caption { margin: .35rem 0 0; font-size: .85rem; font-weight: 600; color: var(--text); }
-.event-medias__audio {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: .85rem;
+.event-medias__more { margin: 1.25rem 0 0; }
+.event-medias__more a { color: var(--accent); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+
+.media-tri { display:flex; gap:.35rem; flex-wrap:wrap; width:100%; align-items:stretch; }
+.media-tri a,
+.media-tri button,
+.media-tri .media-event-filter select {
+  flex:1 1 auto; min-height:44px; min-width:7rem;
+  display:inline-flex; align-items:center; justify-content:center; gap:.35rem;
+  padding:.45rem .7rem; border:1px solid var(--border); border-radius:var(--r);
+  background-color:var(--surface); color:var(--text); text-decoration:none;
+  font-family:var(--font-b); font-size:.85rem; font-weight:600;
+  cursor:pointer; box-sizing:border-box;
 }
-.event-medias__pdfs { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
-.event-medias__pdfs a {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: .65rem .85rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  color: var(--accent);
-  font-weight: 600;
-  text-decoration: none;
+.media-tri button {
+  text-transform:uppercase; letter-spacing:.04em;
+  border-color:var(--accent); color:var(--accent);
 }
-.event-medias__more { margin: 1rem 0 0; }
-.event-medias__more a { color: var(--accent); font-weight: 600; }
-.event-medias__yt {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16/9;
-  border-radius: var(--r);
-  overflow: hidden;
-  background: #111;
+.media-tri a.is-active,
+.media-tri .media-event-filter select.is-active {
+  border-color:var(--accent);
+  background-color:color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color:var(--accent);
 }
-.event-medias__yt-btn {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  cursor: pointer;
-  background: #111;
-  min-height: 44px;
+.media-event-filter {
+  flex:1 1 11rem; min-width:0; margin:0; display:flex;
 }
-.event-medias__yt-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.event-medias__yt-play {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 50%;
-  background: rgba(0,0,0,.45);
-  border: 1.5px solid rgba(255,255,255,.7);
-  pointer-events: none;
+.media-event-filter label {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
 }
-.event-medias__yt-play::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-40%, -50%);
-  border-style: solid;
-  border-width: .55rem 0 .55rem .9rem;
-  border-color: transparent transparent transparent #fff;
+.media-event-filter select {
+  width:100%;
+  justify-content:flex-start;
+  appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right:1.6rem;
+  text-align:left;
 }
-.event-medias__yt iframe { display: block; width: 100%; height: 100%; border: none; }
+.media-event-filter select.is-active {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+}
+.media-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.5rem; }
+.video-grid { display:grid; grid-template-columns:1fr; gap:1rem; }
+.video-grid iframe,
+.video-grid video { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); background:#111; display:block; }
+.media-yt {
+  position:relative; width:100%; aspect-ratio:16/9; border-radius:var(--r);
+  overflow:hidden; background:#111; color:#fff;
+}
+.media-yt__facade {
+  display:block; position:relative; width:100%; height:100%;
+  padding:0; border:0; cursor:pointer; background:#111; color:#fff; min-height:44px;
+}
+.media-yt__thumb { display:block; width:100%; height:100%; object-fit:cover; }
+.media-yt__play {
+  position:absolute; inset:0; margin:auto; width:3.25rem; height:3.25rem;
+  border-radius:50%; background:rgba(0,0,0,.45);
+  border:1.5px solid rgba(255,255,255,.7); pointer-events:none;
+}
+.media-yt__play::before {
+  content:""; position:absolute; left:50%; top:50%;
+  transform:translate(-40%, -50%);
+  border-style:solid; border-width:.55rem 0 .55rem .9rem;
+  border-color:transparent transparent transparent #fff;
+}
+.media-yt iframe { display:block; width:100%; height:100%; border:none; }
+.media-yt__title { margin-top:.45rem; font-size:.85rem; font-weight:600; color:var(--text); }
+.audio-list { display:flex; flex-direction:column; gap:.75rem; }
+.audio-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:1rem; }
+.audio-item audio { width:100%; margin-top:.5rem; }
+.pdf-list { display:flex; flex-direction:column; gap:.5rem; }
+.pdf-item {
+  display:flex; align-items:center; gap:.75rem; min-height:44px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  padding:.75rem 1rem; text-decoration:none; color:var(--text);
+}
+.photo-wrap { position:relative; display:block; overflow:hidden; border-radius:var(--r); background:var(--surface); }
+.photo-wrap img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
+.media-groupe { margin-bottom: 2rem; }
+.media-groupe-titre {
+  font-family:var(--font-d); font-style:italic; font-size:1.1rem; color:var(--text);
+  margin-bottom:.75rem; padding-bottom:.45rem; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+}
+.media-section-title { font-family:var(--font-d); font-style:italic; font-size:1.2rem; margin:0 0 .85rem; color:var(--text); }
+.media-type-block { margin-bottom:1.75rem; }
+
 .event-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
+  position: fixed; inset: 0; z-index: 2000;
   background: rgba(0,0,0,.94);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
 }
 .event-lightbox[hidden] { display: none; }
 .event-lightbox__inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
   padding: 4rem 1rem 5rem;
 }
 .event-lightbox__image {
-  max-width: 100%;
-  max-height: min(100%, calc(100dvh - 9rem));
-  width: auto;
-  height: auto;
-  object-fit: contain;
+  max-width: 100%; max-height: min(100%, calc(100dvh - 9rem));
+  width: auto; height: auto; object-fit: contain;
 }
 .event-lightbox__close,
 .event-lightbox__nav {
-  position: absolute;
-  border: none;
-  color: #fff;
-  background: rgba(255,255,255,.12);
-  cursor: pointer;
-  border-radius: var(--r);
-  min-width: 44px;
-  min-height: 44px;
+  position: absolute; border: none; color: #fff;
+  background: rgba(255,255,255,.12); cursor: pointer;
+  border-radius: var(--r); min-width: 44px; min-height: 44px;
 }
 .event-lightbox__close { top: 1rem; right: 1rem; width: 44px; height: 44px; font-size: 1.2rem; }
 .event-lightbox__nav { top: 50%; transform: translateY(-50%); width: 44px; height: 56px; font-size: 1.5rem; }
 .event-lightbox__nav--prev { left: .5rem; }
 .event-lightbox__nav--next { right: .5rem; }
 .event-lightbox__caption {
-  position: absolute;
-  left: 50%;
-  bottom: 1rem;
-  transform: translateX(-50%);
-  margin: 0;
-  color: #fff;
-  text-align: center;
-  background: rgba(0,0,0,.35);
-  padding: .55rem .9rem;
-  border-radius: var(--r);
-  max-width: min(90vw, 28rem);
-  font-size: .95rem;
+  position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%);
+  margin: 0; color: #fff; text-align: center; background: rgba(0,0,0,.35);
+  padding: .55rem .9rem; border-radius: var(--r); max-width: min(90vw, 28rem); font-size: .95rem;
 }
 @media (min-width: 640px) {
-  .event-medias__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+  .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+  .video-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .media-tri a, .media-tri button { flex: 0 0 auto; }
+  .media-event-filter { flex: 0 1 12rem; max-width: 14rem; }
   .event-lightbox__inner { padding: 4rem 5rem; }
   .event-lightbox__nav--prev { left: 1rem; }
   .event-lightbox__nav--next { right: 1rem; }
 }
-@media (min-width: 960px) {
-  .event-medias__grid {
-    width: 200%;
-    max-width: calc(100vw - 4rem);
-    margin-left: 50%;
-    transform: translateX(-50%);
-  }
-}
 </style>
+
 <section class="event-medias" aria-label="Médias du concert">
-  <h2 class="event-medias__title">Médias</h2>
-
-  {% if concert_medias.photos %}
-  <div class="event-medias__grid">
-    {% for p in concert_medias.photos %}
-    <button
-      type="button"
-      class="event-medias__photo"
-      data-full="{{ p.display_url }}"
-      data-title="{{ p.titre }}"
-      aria-label="Agrandir {{ p.titre|default:'la photo' }}">
-      <img
-        src="{{ p.thumb_url|default:p.display_url }}"
-        {% if p.display_url and p.thumb_url and p.thumb_url != p.display_url %}srcset="{{ p.thumb_url }} 400w, {{ p.display_url }} 1280w" sizes="(min-width: 960px) 30vw, (min-width: 640px) 30vw, 50vw"{% endif %}
-        alt="{{ p.titre }}"
-        width="400"
-        height="300"
-        loading="lazy"
-        decoding="async">
-    </button>
-    {% endfor %}
+  <div class="event-medias__head">
+    <h2 class="event-medias__title">Médias</h2>
+    {% include "includes/_media_controls.html" with show_votes=False show_diaporama=concert_medias.show_diaporama tri=concert_medias.tri type_filtre=concert_medias.type_filtre evenements_filtre=concert_medias.evenements_filtre evenement_actif=concert_medias.evenement_actif form_action=concert_medias.form_action %}
   </div>
-  {% endif %}
 
-  {% if concert_medias.videos %}
-  <div class="event-medias__videos">
-    {% for v in concert_medias.videos %}
-    {% if v.youtube_id %}
-    <div>
-      <div class="event-medias__yt" data-yt-embed="{{ v.youtube_embed_url }}">
-        <button type="button" class="event-medias__yt-btn" aria-label="Lire {{ v.titre|default:'la vidéo' }}">
-          <img src="{{ v.youtube_thumb_url }}" alt="" width="480" height="270" loading="lazy" decoding="async">
-          <span class="event-medias__yt-play" aria-hidden="true"></span>
-        </button>
-      </div>
-      {% if v.titre %}<p class="event-medias__caption">{{ v.titre }}</p>{% endif %}
-    </div>
-    {% elif v.display_url %}
-    <div>
-      <video controls playsinline preload="metadata" src="{{ v.display_url }}">
-        <a href="{{ v.display_url }}">{{ v.titre|default:"Vidéo" }}</a>
-      </video>
-      {% if v.titre %}<p class="event-medias__caption">{{ v.titre }}</p>{% endif %}
-    </div>
-    {% endif %}
-    {% endfor %}
-  </div>
+  {% if concert_medias.tri == 'types' %}
+  {% include "includes/_media_by_type.html" with videos=concert_medias.videos photos=concert_medias.photos audios=concert_medias.audios pdfs=concert_medias.pdfs photo_vote=False lightbox_prefix="toutes" %}
+  {% if not concert_medias.videos and not concert_medias.photos and not concert_medias.audios and not concert_medias.pdfs %}
+  <p style="color:var(--muted);font-style:italic;margin:0">Aucun média pour ces filtres.</p>
   {% endif %}
-
-  {% if concert_medias.audios %}
-  <div class="event-medias__audios">
-    {% for a in concert_medias.audios %}
-    {% if a.display_url or a.fichier %}
-    <div class="event-medias__audio">
-      <p class="event-medias__caption">{{ a.titre|default:"Enregistrement" }}</p>
-      <audio controls src="{{ a.display_url|default:a.fichier.url }}"></audio>
-    </div>
-    {% endif %}
-    {% endfor %}
-  </div>
+  {% else %}
+  {% include "includes/_media_by_event.html" with groupes=concert_medias.groupes photo_vote=False %}
+  {% if not concert_medias.groupes %}
+  <p style="color:var(--muted);font-style:italic;margin:0">Aucun média pour ces filtres.</p>
   {% endif %}
-
-  {% if concert_medias.pdfs %}
-  <ul class="event-medias__pdfs">
-    {% for p in concert_medias.pdfs %}
-    {% if p.display_url or p.fichier %}
-    <li>
-      <a href="{{ p.display_url|default:p.fichier.url }}" target="_blank" rel="noopener">{{ p.titre|default:"Document PDF" }}</a>
-    </li>
-    {% endif %}
-    {% endfor %}
-  </ul>
   {% endif %}
 
   <p class="event-medias__more">
-    <a href="{% url 'medias' %}?tri=evenements&evenement={{ concert_medias.evenement.pk }}">Voir dans la galerie</a>
+    <a href="{% url 'medias' %}?{{ concert_medias.gallery_qs }}">Voir dans la galerie</a>
   </p>
 </section>
 
@@ -265,15 +195,18 @@
   var box = document.getElementById("concert-lightbox");
   var img = document.getElementById("concert-lightbox-image");
   var caption = document.getElementById("concert-lightbox-caption");
-  var buttons = Array.prototype.slice.call(document.querySelectorAll(".event-medias__photo"));
+  var urls = [
+    {% for p in concert_medias.photos %}
+    { url: "{{ p.display_url|escapejs }}", titre: "{{ p.titre|escapejs }}" }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
   var index = 0;
-  if (!box || !buttons.length) return;
+  if (!box || !urls.length) return;
 
   function show(i) {
-    index = (i + buttons.length) % buttons.length;
-    var btn = buttons[index];
-    img.src = btn.getAttribute("data-full") || "";
-    img.alt = btn.getAttribute("data-title") || "";
+    index = (i + urls.length) % urls.length;
+    img.src = urls[index].url;
+    img.alt = urls[index].titre || "";
     caption.textContent = img.alt;
     box.hidden = false;
     document.body.style.overflow = "hidden";
@@ -283,9 +216,10 @@
     img.removeAttribute("src");
     document.body.style.overflow = "";
   }
-  buttons.forEach(function (btn, i) {
-    btn.addEventListener("click", function () { show(i); });
-  });
+  function openLightbox(group, i) {
+    show(i || 0);
+  }
+  window.openLightbox = openLightbox;
   box.querySelector("[data-lightbox-close]").addEventListener("click", close);
   box.querySelector("[data-lightbox-prev]").addEventListener("click", function () { show(index - 1); });
   box.querySelector("[data-lightbox-next]").addEventListener("click", function () { show(index + 1); });
@@ -302,10 +236,9 @@
 </script>
 {% endif %}
 
-{% if concert_medias.videos %}
 <script>
-document.querySelectorAll(".event-medias__yt[data-yt-embed]").forEach(function (wrap) {
-  var btn = wrap.querySelector(".event-medias__yt-btn");
+document.querySelectorAll(".media-yt[data-yt-embed]").forEach(function (wrap) {
+  var btn = wrap.querySelector(".media-yt__facade");
   if (!btn) return;
   btn.addEventListener("click", function () {
     var embed = wrap.getAttribute("data-yt-embed");
@@ -322,4 +255,3 @@ document.querySelectorAll(".event-medias__yt[data-yt-embed]").forEach(function (
   });
 });
 </script>
-{% endif %}

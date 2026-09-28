@@ -297,12 +297,13 @@ class MediasEventFilterTests(TestCase):
         self.assertIsNone(r.context["evenement_actif"])
         self.assertEqual(len(r.context["groupes_photos"]), 2)
 
-    def test_votes_tab_hides_event_filter(self):
+    def test_votes_tab_keeps_event_filter(self):
         r = self.client.get(reverse("medias"), {"tri": "votes"})
         self.assertEqual(r.status_code, 200)
         self.assertIsNone(r.context["evenement_actif"])
         self.assertEqual(len(r.context["photos_votes"]), 3)
-        self.assertNotContains(r, 'id="media-evenement"')
+        self.assertContains(r, 'id="media-evenement"')
+        self.assertContains(r, 'id="media-type"')
 
     def test_file_video_renders_player(self):
         MediaItem.objects.create(
@@ -312,13 +313,80 @@ class MediasEventFilterTests(TestCase):
             statut="publie",
             fichier=SimpleUploadedFile("clip.mp4", b"fake-mp4", content_type="video/mp4"),
         )
-        r = self.client.get(reverse("medias"))
+        r = self.client.get(reverse("medias"), {"tri": "types"})
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "<video")
         self.assertContains(r, "Concert CYEL")
         self.assertContains(r, 'preload="metadata"')
         self.assertContains(r, ".mp4")
         self.assertNotContains(r, '<iframe src=""')
+
+    def test_type_filter_limits_to_videos(self):
+        MediaItem.objects.create(
+            type="video",
+            titre="Clip A",
+            publie=True,
+            statut="publie",
+            evenement=self.ev_a,
+            fichier=SimpleUploadedFile("a.mp4", b"fake", content_type="video/mp4"),
+        )
+        r = self.client.get(
+            reverse("medias"),
+            {"tri": "types", "type": "video"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.context["videos"]), 1)
+        self.assertEqual(len(r.context["photos"]), 0)
+        self.assertContains(r, "Clip A")
+        self.assertNotContains(r, "Photo A")
+
+    def test_event_filter_applies_to_videos(self):
+        MediaItem.objects.create(
+            type="video",
+            titre="Vidéo A",
+            publie=True,
+            statut="publie",
+            evenement=self.ev_a,
+            fichier=SimpleUploadedFile("a.mp4", b"fake", content_type="video/mp4"),
+        )
+        MediaItem.objects.create(
+            type="video",
+            titre="Vidéo B",
+            publie=True,
+            statut="publie",
+            evenement=self.ev_b,
+            fichier=SimpleUploadedFile("b.mp4", b"fake", content_type="video/mp4"),
+        )
+        r = self.client.get(
+            reverse("medias"),
+            {"tri": "evenements", "evenement": str(self.ev_a.pk)},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["evenement_actif"], self.ev_a)
+        self.assertEqual(len(r.context["groupes"]), 1)
+        self.assertEqual(len(r.context["groupes"][0]["videos"]), 1)
+        self.assertEqual(r.context["groupes"][0]["videos"][0].titre, "Vidéo A")
+        self.assertContains(r, "Vidéo A")
+        self.assertNotContains(r, "Vidéo B")
+
+    def test_sort_by_type_shows_type_sections(self):
+        MediaItem.objects.create(
+            type="video",
+            titre="Clip B",
+            publie=True,
+            statut="publie",
+            evenement=self.ev_b,
+            fichier=SimpleUploadedFile("b.mp4", b"fake", content_type="video/mp4"),
+        )
+        r = self.client.get(reverse("medias"), {"tri": "types"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["tri"], "types")
+        self.assertTrue(r.context["videos"])
+        self.assertTrue(r.context["photos"])
+        self.assertContains(r, 'aria-labelledby="media-h-videos"')
+        self.assertContains(r, 'aria-labelledby="media-h-photos"')
+        self.assertContains(r, "Par type")
+        self.assertContains(r, "Par événement")
 
 
 class CompressedSidecarUniquenessTests(TestCase):
