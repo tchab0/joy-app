@@ -70,6 +70,56 @@ class OTPTests(TestCase):
         self.assertTrue(verify_totp(secret, code))
         self.assertFalse(verify_totp(secret, "000000"))
 
+    @override_settings(EMAIL_SENDING_ENABLED=False)
+    def test_email_sending_disabled_surfaces_clear_message(self):
+        user = User.objects.create_user(
+            username="otp_off",
+            email="otp_off@example.com",
+            password="x",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            create_challenge(
+                user=user,
+                purpose=AuthChallenge.Purpose.LOGIN,
+                channel=AuthChallenge.Channel.EMAIL,
+            )
+        self.assertIn("temporairement désactivé", str(ctx.exception))
+        challenge = AuthChallenge.objects.get(user=user)
+        self.assertIsNotNone(challenge.consumed_at)
+
+    @override_settings(EMAIL_BACKEND="users.tests.BrokenEmailBackend")
+    def test_smtp_failure_uses_generic_message(self):
+        user = User.objects.create_user(
+            username="otp_fail",
+            email="otp_fail@example.com",
+            password="x",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            create_challenge(
+                user=user,
+                purpose=AuthChallenge.Purpose.LOGIN,
+                channel=AuthChallenge.Channel.EMAIL,
+            )
+        self.assertIn("Impossible d’envoyer le code", str(ctx.exception))
+        challenge = AuthChallenge.objects.get(user=user)
+        self.assertIsNotNone(challenge.consumed_at)
+
+
+class BrokenEmailBackend:
+    """Backend de test qui simule un échec SMTP."""
+
+    def __init__(self, fail_silently=False, **kwargs):
+        self.fail_silently = fail_silently
+
+    def open(self):
+        return True
+
+    def close(self):
+        pass
+
+    def send_messages(self, email_messages):
+        raise OSError("SMTP connection refused")
+
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",

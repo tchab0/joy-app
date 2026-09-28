@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 import struct
 import time
@@ -20,12 +21,19 @@ from .models import AuthChallenge, User
 from .phone import mask_destination, normalize_phone
 from .sms import send_sms
 
+logger = logging.getLogger(__name__)
+
 OTP_LENGTH = 6
 OTP_TTL_SECONDS = 10 * 60
 OTP_RATE_LIMIT_SECONDS = 60
 TOTP_PERIOD = 30
 TOTP_DIGITS = 6
 TOTP_WINDOW = 1
+
+# Message affiché quand la livraison e-mail/SMS échoue pour une raison technique.
+OTP_DELIVERY_FAILED_MESSAGE = (
+    "Impossible d’envoyer le code pour le moment. Réessayez plus tard."
+)
 
 
 def _pepper() -> str:
@@ -159,9 +167,17 @@ def create_challenge(
         except Exception as exc:
             challenge.consumed_at = timezone.now()
             challenge.save(update_fields=["consumed_at"])
-            raise ValueError(
-                "Impossible d’envoyer le code pour le moment. Réessayez plus tard."
-            ) from exc
+            logger.exception(
+                "Échec livraison OTP user_id=%s purpose=%s channel=%s destination=%s",
+                user.pk,
+                purpose,
+                channel,
+                challenge.destination,
+            )
+            # Messages déjà orientés utilisateur (kill-switch, canal SMS, etc.)
+            if isinstance(exc, ValueError) and str(exc).strip():
+                raise
+            raise ValueError(OTP_DELIVERY_FAILED_MESSAGE) from exc
         mark_otp_sent(user, purpose, channel)
 
     return challenge, code
@@ -170,9 +186,10 @@ def create_challenge(
 def _deliver_code(user: User, challenge: AuthChallenge, code: str) -> None:
     if challenge.channel == AuthChallenge.Channel.EMAIL:
         if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
-            raise RuntimeError(
+            raise ValueError(
                 "Envoi e-mail temporairement désactivé. "
-                "Réessayez plus tard ou utilisez un autre canal."
+                "Réessayez plus tard ou utilisez un autre canal "
+                "(mot de passe, ou notification si disponible)."
             )
         send_mail(
             subject="Votre code de connexion — Jazz Orchestra Yonnais",
