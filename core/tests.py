@@ -410,3 +410,88 @@ class CompressedSidecarUniquenessTests(TestCase):
         self.assertIsNotNone(dest)
         self.assertEqual(dest.name, f"{media.pk}_clip-src.mp4")
         self.assertEqual(cmd[-1], str(dest))
+
+
+class AdminMediaAttachChoicesTests(TestCase):
+    """Le menu « rattacher » ne propose que les événements galerie, une fois chacun."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            "staff_rattach", "staff-rattach@example.com", "x", is_staff=True
+        )
+        today = timezone.localdate()
+        self.ev = EvenementMedia.objects.create(nom="Groove Circle", date=today)
+        self.ev_other = EvenementMedia.objects.create(
+            nom="Festival Le Souffleur", date=today - timedelta(days=40)
+        )
+        # Photos dont le titre reprend le nom de l’événement : l’ancien menu
+        # les listait comme cibles, d’où les répétitions.
+        MediaItem.objects.create(
+            type="photo", titre=str(self.ev), statut="en_attente"
+        )
+        MediaItem.objects.create(
+            type="photo",
+            titre="Festival Le Souffleur aux Sables d'Olonne. Eté 2025",
+            statut="en_attente",
+        )
+        self.media = MediaItem.objects.create(
+            type="photo", titre="Photo orpheline", statut="en_attente"
+        )
+
+    def test_picker_lists_each_event_once(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse("admin_medias") + "?statut=en_attente")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertNotIn("Médias ›", html)
+        self.assertNotIn("core › evenementmedia", html)
+        self.assertIn("Rattacher à un événement", html)
+
+        import re
+
+        from django.contrib.contenttypes.models import ContentType
+
+        pairs = re.findall(r'value="(\d+)\|(\d+)"', html)
+        ct = ContentType.objects.get_for_model(EvenementMedia)
+        unique = {(int(ct_id), int(obj_id)) for ct_id, obj_id in pairs}
+        self.assertEqual(
+            unique,
+            {(ct.pk, self.ev.pk), (ct.pk, self.ev_other.pk)},
+        )
+        option_noms = re.findall(
+            r'<option value="\d+\|\d+"[^>]*>\s*([^<]+?)\s*</option>', html
+        )
+        cards = MediaItem.objects.filter(statut="en_attente").count()
+        self.assertEqual(option_noms.count(str(self.ev)), cards)
+        self.assertEqual(option_noms.count(str(self.ev_other)), cards)
+        self.assertNotIn(
+            "Festival Le Souffleur aux Sables d'Olonne. Eté 2025", option_noms
+        )
+
+    def test_rattacher_lie_levenement_galerie(self):
+        self.client.force_login(self.staff)
+        resp = self.client.post(
+            reverse("admin_media_action", args=[self.media.pk]),
+            {
+                "action": "rattacher",
+                "content_type_id": "999",
+                "object_id": str(self.ev.pk),
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.media.refresh_from_db()
+        self.assertEqual(self.media.evenement_id, self.ev.pk)
+
+    def test_rattacher_ignore_un_media_comme_cible(self):
+        self.client.force_login(self.staff)
+        other = MediaItem.objects.create(
+            pk=90001, type="photo", titre="Leurre", statut="en_attente"
+        )
+        self.assertFalse(EvenementMedia.objects.filter(pk=other.pk).exists())
+        resp = self.client.post(
+            reverse("admin_media_action", args=[self.media.pk]),
+            {"action": "rattacher", "object_id": str(other.pk)},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.media.refresh_from_db()
+        self.assertIsNone(self.media.evenement_id)
