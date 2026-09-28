@@ -292,6 +292,11 @@ def roadmap_recipients(event: Event):
 
 def notify_roadmap(event: Event, *, actor=None) -> int:
     """Envoie une notification avec lien direct vers la feuille de route."""
+    from planning.services.notify_dates import is_past_event
+
+    if is_past_event(event):
+        return 0
+
     roadmap = get_roadmap(event)
     if roadmap is None:
         return 0

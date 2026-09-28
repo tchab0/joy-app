@@ -146,7 +146,7 @@ def _collect_chat(drafts, users_by_id, *, now) -> None:
                 pk__gt=m.last_digested_message_id,
             )
             .exclude(author_id=user.pk)
-            .select_related("reply_to", "author", "room")
+            .select_related("reply_to", "author", "room", "room__event", "thread_event")
         )
         msgs = list(qs.order_by("pk"))
         draft = drafts[user.pk]
@@ -154,12 +154,16 @@ def _collect_chat(drafts, users_by_id, *, now) -> None:
         if not msgs:
             continue
         max_id = msgs[-1].pk
+        from planning.services.notify_dates import system_message_event_is_past
+
+        today = timezone.localdate(now)
         digest_msgs = [
             msg
             for msg in msgs
             if not message_targets_instant_notify(
                 msg, user.pk, username=user.username
             )
+            and not system_message_event_is_past(msg, today=today)
         ]
         draft.chat_updates.append((m, max_id))
         if digest_msgs:
@@ -189,6 +193,9 @@ def _collect_inbox(drafts, users_by_id, *, now) -> None:
     if not pending_by_user:
         return
 
+    from planning.services.notify_dates import past_notification_keys
+
+    past_keys = past_notification_keys(unread, today=timezone.localdate(now))
     type_prefs = _load_type_prefs(pending_by_user.keys())
 
     for user_id, items in pending_by_user.items():
@@ -238,6 +245,9 @@ def _collect_inbox(drafts, users_by_id, *, now) -> None:
             ):
                 continue
             if policy.last_sent_at and item.created_at <= policy.last_sent_at:
+                continue
+            related = (item.related_type or "").strip()
+            if item.related_id and (related, int(item.related_id)) in past_keys:
                 continue
             due_items.append(item)
 

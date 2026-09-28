@@ -201,8 +201,17 @@
                     <img :src="att.url" :alt="att.name" loading="lazy">
                   </a>
                 </template>
-                <template x-if="!att.is_image">
-                  <a :href="att.url" target="_blank" rel="noopener" x-text="att.name"></a>
+                <template x-if="att.is_pdf">
+                  <button type="button"
+                          class="chat-atts__pdf"
+                          @click="openPdfViewer(att)"
+                          :aria-label="'Ouvrir ' + (att.name || 'PDF')">
+                    <span class="chat-atts__pdf-badge" aria-hidden="true">PDF</span>
+                    <span class="chat-atts__pdf-name" x-text="att.name"></span>
+                  </button>
+                </template>
+                <template x-if="!att.is_image && !att.is_pdf">
+                  <a :href="att.url" download rel="noopener" x-text="att.name"></a>
                 </template>
               </li>
             </template>
@@ -464,6 +473,54 @@
   </div>
 </template>
 <template x-teleport="body">
+  <div class="chat-pdf-viewer"
+       x-show="pdfViewer"
+       x-cloak
+       @keydown.escape.window="pdfViewer && closePdfViewer()">
+    <div class="chat-pdf-viewer__backdrop" @click="closePdfViewer()"></div>
+    <div class="chat-pdf-viewer__panel"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="chat-pdf-title"
+         @click.stop>
+      <header class="chat-pdf-viewer__head">
+        <h2 id="chat-pdf-title" class="chat-pdf-viewer__title" x-text="pdfViewer ? pdfViewer.name : ''"></h2>
+        <button type="button"
+                class="chat-pdf-viewer__close"
+                @click="closePdfViewer()"
+                aria-label="Fermer">×</button>
+      </header>
+      <div class="chat-pdf-viewer__body">
+        <iframe class="chat-pdf-viewer__frame"
+                x-show="pdfViewer && pdfViewer.canPreview"
+                x-cloak
+                :src="pdfViewer && pdfViewer.canPreview ? pdfViewer.previewUrl : 'about:blank'"
+                :title="pdfViewer ? pdfViewer.name : 'PDF'"></iframe>
+        <p class="chat-pdf-viewer__hint"
+           x-show="pdfViewer && !pdfViewer.canPreview"
+           x-cloak>
+          Sur cet appareil, utilisez <strong>Envoyer</strong> ou <strong>Télécharger</strong>
+          pour ouvrir le PDF (aperçu intégré peu fiable).
+        </p>
+        <p class="chat-pdf-viewer__error" x-show="pdfShareError" x-text="pdfShareError" x-cloak></p>
+      </div>
+      <div class="chat-pdf-viewer__foot">
+        <button type="button"
+                class="chat-pdf-viewer__btn chat-pdf-viewer__btn--primary"
+                @click="sharePdf()"
+                :disabled="pdfShareBusy"
+                x-text="pdfShareBusy ? 'Envoi…' : 'Envoyer'"></button>
+        <a class="chat-pdf-viewer__btn"
+           :href="pdfViewer ? pdfViewer.downloadUrl : '#'"
+           :download="pdfViewer ? pdfViewer.name : null">Télécharger</a>
+        <button type="button"
+                class="chat-pdf-viewer__btn chat-pdf-viewer__btn--ghost"
+                @click="closePdfViewer()">Fermer</button>
+      </div>
+    </div>
+  </div>
+</template>
+<template x-teleport="body">
   <div class="chat-poll-modal"
        x-show="pollOpen"
        x-cloak
@@ -559,7 +616,7 @@
         <input id="chat-poll-deadline" type="date" class="chat-poll-modal__input"
                x-model="pollDeadline">
       </div>
-      <footer class="chat-poll-modal__foot">
+      <div class="chat-poll-modal__foot">
         <button type="button" class="chat-poll-modal__cancel" @click="closePollComposer()">
           Annuler
         </button>
@@ -568,7 +625,7 @@
                 @click="submitPoll()">
           <span x-text="pollBusy ? 'Lancement…' : 'Lancer le sondage'"></span>
         </button>
-      </footer>
+      </div>
     </div>
   </div>
 </template>

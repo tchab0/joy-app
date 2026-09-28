@@ -41,17 +41,14 @@ logger = logging.getLogger(__name__)
 
 def _attach_fichier_edite(media: MediaItem, uploaded) -> None:
     """Enregistre une version retouchée et relance la compression."""
-    from pathlib import Path
-
-    dest_dir = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
     # Ne pas effacer le compressé de la source (fichier) : c'est la base
-    # « originale » pour une future retouche / purge. On n'enlève que l'ancien
-    # sidecar de la version éditée précédente.
+    # « originale » pour une future retouche / purge. On n'enlève que
+    # le sidecar unique de la version éditée précédente (jamais le
+    # {stem}.webp historique, partagé par d'autres médias).
     if media.fichier_edite:
-        old_stem = Path(media.fichier_edite.name).stem
-        cand = dest_dir / f"{old_stem}.webp"
-        if cand.exists():
-            cand.unlink()
+        unique = media.compressed_sidecar_dest(media.fichier_edite)
+        if unique and unique.exists():
+            unique.unlink()
 
     if media.fichier_edite:
         media.fichier_edite.delete(save=False)

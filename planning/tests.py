@@ -2724,6 +2724,18 @@ class EventMorningReminderTests(TestCase):
         self.concert.save(update_fields=["morning_reminder_sent_at"])
         self.assertEqual(events_due_for_morning_reminder(), [])
 
+    @patch("planning.services.morning_reminders.notify_users", return_value=1)
+    def test_past_event_is_not_reminded(self, mock_notify):
+        from planning.services import send_event_morning_reminders
+
+        self.concert.date_debut = timezone.now() - timedelta(days=11)
+        self.concert.save(update_fields=["date_debut"])
+        sent = send_event_morning_reminders([self.concert])
+        self.assertEqual(sent, 0)
+        mock_notify.assert_not_called()
+        self.concert.refresh_from_db()
+        self.assertIsNone(self.concert.morning_reminder_sent_at)
+
 
 class MaybeRemindTests(PlanningBaseTestCase):
     @patch("planning.services.rsvp.notify_users", return_value=1)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, time
 
 from django.contrib import messages
@@ -15,7 +16,12 @@ from django.views.generic import TemplateView
 
 from events.models import Event
 from planning.models import EventParticipation, SubstituteRequest
-from planning.services import chat_link_for_event, get_participation_for
+from planning.services import (
+    attach_roster_substitutes,
+    chat_link_for_event,
+    get_participation_for,
+    roster_by_stage,
+)
 from planning.views import PlanningStaffRequiredMixin
 from repertoire.models import Piece
 from repetitions.forms import (
@@ -132,6 +138,36 @@ class RehearsalDetailView(MusicianRequiredMixin, TemplateView):
         attendance = attendance_for_event(event) if is_staff else None
         absent_rows = absent_with_eligible_subs(event) if is_staff else []
 
+        parts = list(
+            EventParticipation.objects.filter(event=event)
+            .select_related("user", "status", "user__musician_profile__section")
+            .order_by("user__last_name", "user__first_name")
+        )
+        by_section: dict[str, list] = defaultdict(list)
+        section_order: dict[str, int] = {}
+        for p in parts:
+            section = p.section_for_roster()
+            section_name = section.name if section else "Sans pupitre"
+            section_order.setdefault(
+                section_name, section.sort_order if section else 9999
+            )
+            by_section[section_name].append(p)
+        by_section = {
+            name: by_section[name]
+            for name in sorted(
+                by_section.keys(),
+                key=lambda n: (section_order.get(n, 9999), n),
+            )
+        }
+        stage = roster_by_stage(parts)
+        taken_ids = {
+            p.user_id
+            for p in parts
+            if getattr(getattr(p, "status", None), "code", None)
+            in ("confirmed", "invited", "maybe")
+        }
+        attach_roster_substitutes(stage, taken_user_ids=taken_ids)
+
         items = []
         if plan is not None:
             items = list(plan.items.select_related("piece").order_by("position", "id"))
@@ -162,6 +198,10 @@ class RehearsalDetailView(MusicianRequiredMixin, TemplateView):
                 "is_planning_staff": is_staff,
                 "attendance": attendance,
                 "absent_rows": absent_rows,
+                "by_section": by_section,
+                "roster_rows": stage["rows"],
+                "roster_extras": stage["extras"],
+                "roster_unassigned": stage["unassigned"],
             }
         )
         return context

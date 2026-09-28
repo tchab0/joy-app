@@ -511,6 +511,25 @@ class ChatCoreTests(TestCase):
         js = (Path(__file__).resolve().parent / "static" / "chat" / "room.js").read_text()
         self.assertNotIn("keyboardInset > 120", js)
 
+    def test_enter_inserts_newline_not_send(self):
+        """Entrée n’envoie plus : hint enter, JS sans envoi tactile, bouton Envoyer."""
+        from pathlib import Path
+
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('enterkeyhint="enter"', html)
+        self.assertNotIn("? 'enter' : 'send'", html)
+        self.assertIn('class="chat-send"', html)
+        js = (Path(__file__).resolve().parent / "static" / "chat" / "room.js").read_text()
+        self.assertNotIn("return !this._isDesktopKeyboard();", js)
+        self.assertIn("onComposerSubmit", js)
+        self.assertIn("ctrlKey || ev.metaKey", js)
+
     def test_room_detail_does_not_leak_history_as_flash(self):
         """Collision django.contrib.messages : l’historique ne doit pas s’afficher en haut."""
         from django.contrib.messages.storage.fallback import FallbackStorage
@@ -672,6 +691,35 @@ class ChatCoreTests(TestCase):
             room=room, author=self.musician, body="multi", files=[f2, f3]
         )
         self.assertEqual(msg3.attachments.count(), 2)
+
+    def test_pdf_attachment_download_vs_inline_preview(self):
+        """PDF chat : téléchargement octet-stream ; inline pour la modale."""
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        f = SimpleUploadedFile(
+            "Facture-JOY.pdf", b"%PDF-1.4 facture", content_type="application/pdf"
+        )
+        msg = post_message(room=room, author=self.musician, body="", files=[f])
+        att = msg.attachments.get()
+        self.assertTrue(att.is_pdf)
+        url = reverse("chat:attachment", args=[att.pk])
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        dl = client.get(url)
+        self.assertEqual(dl.status_code, 200)
+        disp = dl.get("Content-Disposition", "")
+        self.assertIn("attachment", disp)
+        self.assertIn("Facture-JOY.pdf", disp)
+        self.assertEqual(dl.get("Content-Type"), "application/octet-stream")
+        body = b"".join(dl.streaming_content) if dl.streaming else dl.content
+        self.assertTrue(body.startswith(b"%PDF"))
+        preview = client.get(url, {"inline": "1"})
+        self.assertEqual(preview.status_code, 200)
+        preview_disp = preview.get("Content-Disposition", "")
+        self.assertIn("inline", preview_disp)
+        self.assertEqual(preview.get("Content-Type"), "application/pdf")
+        self.assertEqual(preview.get("X-Frame-Options"), "SAMEORIGIN")
+        self.assertNotIn("Content-Security-Policy", preview)
 
     def test_edit_message_attachments(self):
         room = ensure_orchestra_room()
@@ -1164,6 +1212,75 @@ class ChatCoreTests(TestCase):
         self.assertGreater(
             membership.last_read_at, timezone.now() - timedelta(minutes=1)
         )
+
+    def test_opening_room_does_not_mark_read(self):
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        post_message(room=room, author=self.other, body="Pas encore lu")
+        ChatMembership.objects.filter(room=room, user=self.musician).update(
+            last_read_at=None
+        )
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        membership = ChatMembership.objects.get(room=room, user=self.musician)
+        self.assertIsNone(membership.last_read_at)
+        self.assertEqual(unread_count(membership), 1)
+
+    def test_api_read_advances_up_to_message_only(self):
+        from chat.services import mark_room_read
+
+        room = ensure_orchestra_room()
+        sync_musician_to_orchestra(self.musician)
+        sync_musician_to_orchestra(self.other)
+        first = post_message(room=room, author=self.other, body="Premier")
+        second = post_message(room=room, author=self.other, body="Deuxième")
+        t1 = timezone.now() - timedelta(minutes=2)
+        t2 = timezone.now() - timedelta(minutes=1)
+        ChatMessage.objects.filter(pk=first.pk).update(created_at=t1)
+        ChatMessage.objects.filter(pk=second.pk).update(created_at=t2)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        ChatMembership.objects.filter(room=room, user=self.musician).update(
+            last_read_at=None
+        )
+
+        client = Client()
+        client.login(username="chat_musi", password="pass")
+        r = client.post(
+            reverse("chat:api_read", args=[room.pk]),
+            {"message_id": first.pk},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        membership = ChatMembership.objects.get(room=room, user=self.musician)
+        self.assertEqual(membership.last_read_at, first.created_at)
+        self.assertEqual(unread_count(membership), 1)
+
+        r2 = client.post(
+            reverse("chat:api_read", args=[room.pk]),
+            {"message_id": second.pk},
+        )
+        self.assertEqual(r2.status_code, 200)
+        membership.refresh_from_db()
+        self.assertEqual(membership.last_read_at, second.created_at)
+        self.assertEqual(unread_count(membership), 0)
+
+        later = timezone.now()
+        ChatMembership.objects.filter(room=room, user=self.musician).update(
+            last_read_at=later
+        )
+        mark_room_read(room, self.musician, up_to=first.created_at)
+        membership.refresh_from_db()
+        self.assertEqual(membership.last_read_at, later)
+
+        bad = client.post(
+            reverse("chat:api_read", args=[room.pk]),
+            {"message_id": 999999},
+        )
+        self.assertEqual(bad.status_code, 400)
 
     def test_rehearsal_room_gets_setlist_tip_once(self):
         room = ensure_rehearsals_room()

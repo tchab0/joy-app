@@ -199,30 +199,61 @@
   {% endif %}
   {% endif %}
 
-  {% if is_planning_staff and attendance %}
-  <section class="rep-staff-block joy-staff-ui" aria-labelledby="staff-att-title">
-    <h2 id="staff-att-title">Présences</h2>
+  {% if roster_rows or roster_extras or roster_unassigned or by_section or attendance %}
+  <section class="pl-section" style="margin-top:1.25rem"
+           x-data="{ effectifView: '{% if roster_rows %}orchestre{% else %}liste{% endif %}' }">
+    <div class="pl-effectif__head">
+      <h2 class="pl-effectif__title">Effectif</h2>
+      {% if roster_rows or by_section %}
+      <div class="pl-mode-toggle pl-effectif__toggle" role="group" aria-label="Vue effectif">
+        <button type="button" class="pl-mode-toggle__btn"
+                :class="{ 'is-active': effectifView === 'liste' }"
+                :aria-pressed="effectifView === 'liste'"
+                @click="effectifView = 'liste'">Liste</button>
+        <button type="button" class="pl-mode-toggle__btn"
+                :class="{ 'is-active': effectifView === 'orchestre' }"
+                :aria-pressed="effectifView === 'orchestre'"
+                @click="effectifView = 'orchestre'">Orchestre</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if attendance %}
     <p class="pl-row__meta" style="margin-bottom:.75rem">
       {{ attendance.n_present }} présent{{ attendance.n_present|pluralize }} ·
       {{ attendance.n_absent }} absent{{ attendance.n_absent|pluralize }}
     </p>
-
-    {% for section, parts in attendance.by_section_present.items %}
-    <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:1rem 0 .35rem">{{ section }}</h3>
-    <ul style="list-style:none;margin:0;padding:0">
-      {% for p in parts %}
-      <li style="padding:.35rem 0;min-height:44px;display:flex;align-items:center;gap:.5rem">
-        <span>{{ p.user.get_full_name|default:p.user.username }}</span>
-        <span class="pl-row__meta">{{ p.poste_label }}</span>
-      </li>
+    {% endif %}
+    <div x-show="effectifView === 'liste'"{% if roster_rows %} x-cloak{% endif %}>
+      {% for section_name, parts in by_section.items %}
+      <div class="pl-gear-line" style="flex-direction:column;align-items:stretch;gap:.25rem">
+        <span class="pl-gear-line__name">{{ section_name }}</span>
+        <ul style="list-style:none;margin:0;padding:0">
+          {% for p in parts %}
+          <li class="pl-stage__person pl-stage__person--{{ p.status.code }}" style="margin:0 0 .2rem">
+            <div class="pl-stage__line">
+              <span class="pl-stage__name">{{ p.user.get_full_name|default:p.user.username }}</span>
+              {% if p.poste %}<span class="pl-stage__role">{{ p.poste_label }}</span>{% endif %}
+              {% if p.role_kind == "remplacant" %}<span class="pl-stage__role">remplaçant</span>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% empty %}
+      <p class="pl-empty">Aucun musicien inscrit.</p>
       {% endfor %}
-    </ul>
-    {% empty %}
-    <p class="pl-empty">Aucun présent pour l’instant.</p>
-    {% endfor %}
+    </div>
+    {% if roster_rows %}
+    <div class="pl-stage-scroll" x-show="effectifView === 'orchestre'">
+      {% include "planning/_stage_roster.html" with show_invites=False id_prefix="rep-detail" %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
 
-    {% if absent_rows %}
-    <h3 style="font-family:var(--font-d);font-size:1.05rem;margin:1.5rem 0 .5rem">Absents — notifier un remplaçant</h3>
+  {% if is_planning_staff and absent_rows %}
+  <section class="rep-staff-block joy-staff-ui" aria-labelledby="staff-absent-title">
+    <h2 id="staff-absent-title">Absents — notifier un remplaçant</h2>
     {% for row in absent_rows %}
     <div class="rep-absent-row" x-data="{ candidate: '', busy: false }">
       <div>
@@ -250,7 +281,6 @@
       {% endif %}
     </div>
     {% endfor %}
-    {% endif %}
   </section>
   {% endif %}
 

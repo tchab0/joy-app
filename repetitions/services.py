@@ -189,6 +189,10 @@ def confirm_titulaires_to_rehearsal(
 
 
 def notify_rehearsal_created(event: Event, users) -> int:
+    from planning.services.notify_dates import is_past_event
+
+    if is_past_event(event):
+        return 0
     users = list(users)
     if not users:
         return 0
@@ -294,7 +298,11 @@ def notify_substitute_for_absence(
     note: str = "",
 ) -> int:
     """Propose un remplaçant + notification (action staff manuelle)."""
-    req = propose_substitute(participation, candidate, note=note)
+    from planning.services.notify_dates import is_past_event
+
+    propose_substitute(participation, candidate, note=note)
+    if is_past_event(participation.event):
+        return 0
     local = timezone.localtime(participation.event.date_debut)
     date_label = local.strftime("%d/%m/%Y %H:%M")
     titulaire = participation.user.get_full_name() or participation.user.username

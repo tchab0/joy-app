@@ -163,7 +163,11 @@ def set_participation_response(
 
 def notify_maybe_remind(participation: EventParticipation) -> int:
     """Relance le musicien pour qu’il tranche Oui / Peut-être / Non."""
+    from planning.services.notify_dates import is_past_event
+
     event = participation.event
+    if is_past_event(event):
+        return 0
     local = timezone.localtime(event.date_debut)
     date_label = local.strftime("%d/%m/%Y %H:%M")
     poste = participation.poste_label
@@ -249,7 +253,11 @@ def notify_staff_presence_invalidated(
     new_code: str,
 ) -> int:
     """Alerte immédiate staff quand une présence confirmée est annulée / assouplie."""
+    from planning.services.notify_dates import is_past_event
+
     event = participation.event
+    if is_past_event(event):
+        return 0
     musician = participation.user
     name = musician.get_full_name() or musician.username
     local = timezone.localtime(event.date_debut)

@@ -18,6 +18,8 @@ from users.webpush import send_web_push, vapid_configured
 logger = logging.getLogger(__name__)
 
 _CHAT_ROOM_URL_RE = re.compile(r"^/chat/(\d+)/")
+_CHAT_MSG_RELATED = frozenset({"chat_msg", "chat_mention", "chat_reply"})
+_CHAT_DIGEST_RELATED = frozenset({"", "chat"})
 
 
 def notify_users(
@@ -539,29 +541,124 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
     }
 
 
-def mark_chat_room_notifications_read(user, room_id: int) -> int:
-    """Marque lues les notifications inbox qui pointent vers ce salon."""
+def _chat_msg_id_from_url(url: str) -> int | None:
+    """``?msg=`` dans l’URL d’une notif salon."""
+    raw = (url or "").strip()
+    if not raw or "msg=" not in raw:
+        return None
+    from urllib.parse import parse_qs, urlparse
+
+    try:
+        values = parse_qs(urlparse(raw).query).get("msg") or []
+        if not values:
+            return None
+        return int(values[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def mark_chat_notifications_covered_by_read(
+    user, room_id: int, *, up_to=None
+) -> int:
+    """
+    Marque lues les notifs inbox de ce salon déjà couvertes par le watermark.
+
+    ``up_to`` None : tout le salon. Sinon : seulement les messages dont
+    l’activité ≤ ``up_to``, plus les récaps salon une fois le fil à jour.
+    """
     if user is None or not getattr(user, "is_authenticated", False) or not room_id:
         return 0
     prefix = f"/chat/{int(room_id)}/"
     try:
         from users.models import UserNotification
 
-        updated = UserNotification.objects.filter(
+        qs = UserNotification.objects.filter(
             user=user,
             read_at__isnull=True,
             archived_at__isnull=True,
             url__startswith=prefix,
-        ).update(read_at=timezone.now())
+        )
+        if up_to is None:
+            updated = qs.update(read_at=timezone.now())
+        else:
+            updated = _mark_covered_chat_notifications(qs, room_id, user, up_to)
     except (ProgrammingError, OperationalError):
         logger.warning(
-            "mark_chat_room_notifications_read indisponible user_id=%s",
+            "mark_chat_notifications_covered_by_read indisponible user_id=%s",
             getattr(user, "pk", None),
         )
         return 0
     if updated:
         invalidate_nav_banner(user)
     return updated
+
+
+def _mark_covered_chat_notifications(qs, room_id: int, user, up_to) -> int:
+    notifs = list(qs.only("pk", "related_type", "related_id", "url", "created_at"))
+    if not notifs:
+        return 0
+
+    msg_ids: set[int] = set()
+    for item in notifs:
+        if item.related_id and (item.related_type or "") in _CHAT_MSG_RELATED:
+            msg_ids.add(int(item.related_id))
+        url_msg = _chat_msg_id_from_url(item.url)
+        if url_msg:
+            msg_ids.add(url_msg)
+
+    covered: set[int] = set()
+    if msg_ids:
+        from chat.models import ChatMessage
+
+        for pk, created_at, edited_at in ChatMessage.objects.filter(
+            pk__in=msg_ids, room_id=room_id
+        ).values_list("pk", "created_at", "edited_at"):
+            activity = edited_at or created_at
+            if activity is not None and activity <= up_to:
+                covered.add(pk)
+
+    room_caught_up = False
+    try:
+        from chat.models import ChatMembership
+        from chat.services import unread_count as room_unread_count
+
+        membership = ChatMembership.objects.filter(
+            room_id=room_id, user=user, left_at__isnull=True
+        ).first()
+        if membership is not None:
+            room_caught_up = room_unread_count(membership) == 0
+    except Exception:
+        logger.exception(
+            "unread salon indisponible pour notifs room_id=%s user_id=%s",
+            room_id,
+            getattr(user, "pk", None),
+        )
+
+    ids_to_mark: list[int] = []
+    for item in notifs:
+        related = (item.related_type or "").strip()
+        rid = int(item.related_id) if item.related_id else None
+        url_msg = _chat_msg_id_from_url(item.url)
+        if related in _CHAT_MSG_RELATED and rid:
+            if rid in covered:
+                ids_to_mark.append(item.pk)
+            continue
+        if url_msg and url_msg in covered:
+            ids_to_mark.append(item.pk)
+            continue
+        if related in _CHAT_DIGEST_RELATED:
+            created = item.created_at
+            if room_caught_up or (created is not None and created <= up_to):
+                ids_to_mark.append(item.pk)
+
+    if not ids_to_mark:
+        return 0
+    return qs.model.objects.filter(pk__in=ids_to_mark).update(read_at=timezone.now())
+
+
+def mark_chat_room_notifications_read(user, room_id: int) -> int:
+    """Marque lues toutes les notifications inbox qui pointent vers ce salon."""
+    return mark_chat_notifications_covered_by_read(user, room_id, up_to=None)
 
 
 def mark_notifications_responded(

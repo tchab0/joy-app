@@ -118,6 +118,15 @@
     return { ok: true };
   }
 
+  async function clearAppBadge() {
+    if (!("clearAppBadge" in navigator)) return;
+    try {
+      await navigator.clearAppBadge();
+    } catch (_e) {
+      /* ignore */
+    }
+  }
+
   async function disable() {
     if (!("serviceWorker" in navigator)) return { ok: true };
     let reg = null;
@@ -132,6 +141,7 @@
       await deleteSubscription(sub.endpoint);
       await sub.unsubscribe();
     }
+    await clearAppBadge();
     return { ok: true };
   }
 
@@ -192,5 +202,6 @@
     status,
     ensureServiceWorker,
     syncLocalToServer,
+    clearAppBadge,
   };
 })();

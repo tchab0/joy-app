@@ -39,6 +39,14 @@ class ServiceWorkerIconTests(SimpleTestCase):
         self.assertNotIn("__JOY_ICON_VERSION__", body)
         self.assertIn(f"icon-192.png?v={icon_content_version()}", body)
 
+    def test_service_worker_updates_home_screen_badge(self):
+        client = Client()
+        r = client.get(reverse("service_worker"))
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode("utf-8")
+        self.assertIn("setAppBadge", body)
+        self.assertIn("clearAppBadge", body)
+
     def test_manifest_icons_are_versioned(self):
         client = Client()
         r = client.get(reverse("web_manifest"))

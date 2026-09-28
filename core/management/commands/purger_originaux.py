@@ -67,13 +67,15 @@ class Command(BaseCommand):
         if edite_name and media.fichier.name == edite_name:
             return False
 
-        dest_dir = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
-        stem = Path(media.fichier.name).stem
-        # Compressé de la SOURCE (pas celui de l'édité, stem différent)
-        source_compress = dest_dir / f"{stem}.webp"
+        # Compressé de la SOURCE (pas celui de l'édité).
+        source_compress = None
+        for cand in media.compressed_sidecar_candidates(media.fichier):
+            if cand.exists():
+                source_compress = cand
+                break
         original_path = Path(media.fichier.path)
 
-        if not source_compress.exists():
+        if source_compress is None:
             return False
 
         if original_path.exists() and original_path.resolve() != source_compress.resolve():

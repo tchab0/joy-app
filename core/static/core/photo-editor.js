@@ -1357,7 +1357,8 @@
           after.toBlob(resolve, "image/jpeg", JPEG_QUALITY)
         );
         if (!beforeBlob || !afterBlob) throw new Error("export failed");
-        this._pendingFile = new File([afterBlob], "photo-editee.jpg", { type: "image/jpeg" });
+        const editName = `photo-editee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        this._pendingFile = new File([afterBlob], editName, { type: "image/jpeg" });
 
         if (this._afterObjectUrl) URL.revokeObjectURL(this._afterObjectUrl);
         if (this._beforeCompareUrl) URL.revokeObjectURL(this._beforeCompareUrl);

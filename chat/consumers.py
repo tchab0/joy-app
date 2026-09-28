@@ -36,8 +36,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.group_name = room.channel_group
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        # Accusé de lecture dès l’ouverture du salon live
-        await self._mark_read()
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
@@ -54,7 +52,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         msg_type = payload.get("type")
         if msg_type == "chat.read":
-            await self._mark_read()
+            await self._mark_read(payload.get("message_id"))
             return
 
         if msg_type != "chat.message":
@@ -142,8 +140,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return ensure_staff_membership(self.room, self.user)
 
     @database_sync_to_async
-    def _mark_read(self):
-        return mark_room_read(self.room, self.user, broadcast=True)
+    def _mark_read(self, message_id=None):
+        return mark_room_read(
+            self.room, self.user, broadcast=True, message_id=message_id
+        )
 
     @database_sync_to_async
     def _post(self, body: str, reply_to_id=None):

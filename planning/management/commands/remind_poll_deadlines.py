@@ -7,8 +7,8 @@ from planning.services import send_due_poll_deadline_reminders
 
 class Command(BaseCommand):
     help = (
-        "Relance les musiciens n’ayant pas répondu aux sondages OPEN "
-        "dont la date limite tombe dans une semaine."
+        "Relance J−7 les sondages liés à un événement encore à venir. "
+        "Pas de rappel pour une date dépassée, ni hors événement."
     )
 
     def add_arguments(self, parser):

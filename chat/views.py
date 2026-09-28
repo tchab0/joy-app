@@ -522,10 +522,6 @@ def room_detail(request: HttpRequest, room_id: int) -> HttpResponse:
     if membership is None and is_staff and not is_private:
         membership = ensure_staff_membership(room, request.user)
 
-    from users.notify import mark_chat_room_notifications_read
-
-    mark_chat_room_notifications_read(request.user, room.pk)
-
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "subscribe":
@@ -971,7 +967,17 @@ def api_read(request: HttpRequest, room_id: int) -> JsonResponse:
         else:
             return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
 
-    cursor = mark_room_read(room, request.user, broadcast=True)
+    raw_id = request.POST.get("message_id")
+    if raw_id not in (None, ""):
+        cursor = mark_room_read(
+            room, request.user, broadcast=True, message_id=raw_id
+        )
+        if cursor is None:
+            return JsonResponse(
+                {"ok": False, "error": "Message inconnu"}, status=400
+            )
+    else:
+        cursor = mark_room_read(room, request.user, broadcast=True)
     return JsonResponse({"ok": True, "cursor": cursor})
 
 
@@ -1056,13 +1062,32 @@ def attachment_download(request: HttpRequest, pk: int) -> HttpResponse:
     if not att.file:
         return HttpResponseForbidden("Fichier introuvable.")
 
-    as_attachment = not att.is_image
+    filename = att.original_name or "fichier"
+    # PDF inline = aperçu dans la modale chat ; sinon octet-stream (comme les
+    # partitions) pour éviter le viewer plein écran mobile/PWA sans sortie.
+    inline = att.is_pdf and request.GET.get("inline") in ("1", "true", "yes")
+    if att.is_image:
+        as_attachment = False
+        content_type = att.content_type or "application/octet-stream"
+    elif inline:
+        as_attachment = False
+        content_type = "application/pdf"
+    elif att.is_pdf:
+        as_attachment = True
+        content_type = "application/octet-stream"
+    else:
+        as_attachment = True
+        content_type = att.content_type or "application/octet-stream"
+
     response = FileResponse(
         att.file.open("rb"),
         as_attachment=as_attachment,
-        filename=att.original_name or "fichier",
-        content_type=att.content_type or "application/octet-stream",
+        filename=filename,
+        content_type=content_type,
     )
     response["X-Content-Type-Options"] = "nosniff"
-    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    if inline:
+        response["X-Frame-Options"] = "SAMEORIGIN"
+    else:
+        response["Content-Security-Policy"] = "default-src 'none'; sandbox"
     return response

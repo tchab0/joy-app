@@ -628,5 +628,25 @@ window.joyShareInstagram = async function (btn) {
   return false;
 };
 </script>
+{# Pastille icône PWA : clear à l’ouverture (iOS/Android standalone). #}
+<script>
+(function () {
+  function isStandalone() {
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true
+    );
+  }
+  function clearHomeBadge() {
+    if (!isStandalone()) return;
+    if (!("clearAppBadge" in navigator)) return;
+    navigator.clearAppBadge().catch(function () {});
+  }
+  clearHomeBadge();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") clearHomeBadge();
+  });
+})();
+</script>
 </body>
 </html>

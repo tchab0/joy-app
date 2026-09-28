@@ -1,7 +1,4 @@
 import subprocess
-from pathlib import Path
-
-from django.conf import settings
 
 
 def compresser_media(media_item):
@@ -17,18 +14,11 @@ def compresser_media(media_item):
         return
 
     src = str(src_path)
-    dest_dir = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    # Stem : version éditée si présente (sidecar d'affichage distinct),
-    # sinon source — pour ne pas écraser le compressé « original ».
-    if media_item.fichier_edite:
-        base_name = media_item.fichier_edite.name
-    else:
-        base_name = media_item.fichier.name if media_item.fichier else ""
-    if not base_name:
+    dest = media_item.compressed_sidecar_dest()
+    if dest is None:
         return
-    nom_base = Path(base_name).stem
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    nom_base = dest.stem
 
     prev_statut = media_item.statut
     prev_publie = bool(media_item.publie)
@@ -52,17 +42,18 @@ def compresser_media(media_item):
 
     try:
         if media_item.type == "video":
-            dest = dest_dir / f"{nom_base}.mp4"
+            # H.264 (+ yuv420p) : lecture navigateur fiable.
+            # HEVC/libx265 → souvent audio seul (Chrome/Firefox sans décodeur).
             subprocess.run([
                 "ffmpeg", "-y", "-i", src,
-                "-c:v", "libx265", "-crf", "28", "-preset", "fast",
+                "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+                "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
                 str(dest)
             ], check=True, capture_output=True)
 
         elif media_item.type == "audio":
-            dest = dest_dir / f"{nom_base}.m4a"
             subprocess.run([
                 "ffmpeg", "-y", "-i", src,
                 "-c:a", "aac", "-b:a", "128k",
@@ -75,7 +66,6 @@ def compresser_media(media_item):
             from django.core.files.base import ContentFile
             from PIL import Image
 
-            dest = dest_dir / f"{nom_base}.webp"
             img = Image.open(src)
             img = img.convert("RGB")
             max_dim = 1280
@@ -103,7 +93,6 @@ def compresser_media(media_item):
         elif media_item.type == "pdf":
             try:
                 import pikepdf
-                dest = dest_dir / f"{nom_base}.pdf"
                 with pikepdf.open(src) as pdf:
                     pdf.save(
                         str(dest),

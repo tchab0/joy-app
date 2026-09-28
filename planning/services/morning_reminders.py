@@ -218,6 +218,8 @@ def send_event_morning_reminders(
     ``mark_sent`` : horodater ``morning_reminder_sent_at`` (désactiver en essai).
     Retourne le nombre de notifications livrées (push/e-mail).
     """
+    from planning.services.notify_dates import is_past_event
+
     events = list(events)
     if not events:
         return 0
@@ -225,6 +227,12 @@ def send_event_morning_reminders(
     total = 0
     now = timezone.now()
     for event in events:
+        if is_past_event(event):
+            logger.info(
+                "Rappel matin sauté (date dépassée) event_id=%s",
+                event.pk,
+            )
+            continue
         try:
             roadmap = EventRoadmap.objects.filter(event=event).first()
         except (ProgrammingError, OperationalError):

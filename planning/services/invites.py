@@ -242,6 +242,14 @@ def notify_event_invite(event, users) -> int:
     """Notification d’invitation au salon / événement."""
     from chat.services import chat_room_url, ensure_event_room
     from events.models import Event
+    from planning.services.notify_dates import is_past_event
+
+    if is_past_event(event):
+        logger.info(
+            "Invitation ignorée (date dépassée) event_id=%s",
+            getattr(event, "pk", None),
+        )
+        return 0
 
     users = list(users)
     if not users:
@@ -287,6 +295,8 @@ def send_event_photos_requests(events, members) -> int:
     """
     Demande photos/vidéos aux membres pour chaque événement (J+7).
 
+    Exception à la règle « pas de notification pour une date dépassée » :
+    ce rappel est justement celui d’après le concert.
     Marque ``photos_request_sent_at`` même si 0 notif (évite de spammer au prochain run).
     Retourne le total de notifications envoyées.
     """

@@ -2346,29 +2346,82 @@ def broadcast_read(room: ChatRoom, cursor: dict) -> None:
     )
 
 
-def mark_room_read(room: ChatRoom, user, *, broadcast: bool = False) -> dict | None:
+def message_activity_at(message: ChatMessage):
+    """Horodatage d’activité utilisé pour le watermark de lecture."""
+    return message.edited_at or message.created_at
+
+
+def mark_room_read(
+    room: ChatRoom,
+    user,
+    *,
+    broadcast: bool = False,
+    up_to=None,
+    message_id=None,
+) -> dict | None:
     """
-    Avance le watermark de lecture du membre.
+    Avance le watermark de lecture du membre (jamais en arrière).
+
+    - ``message_id`` : jusqu’à l’activité de ce message (les suivants restent non lus).
+    - ``up_to`` : horodatage explicite (tests / interne).
+    - sans les deux : « maintenant » (tout le salon).
+
     Si broadcast=True, notifie le salon (accusés de lecture live).
-    Retourne le curseur sérialisé, ou None si pas de membership active.
+    Retourne le curseur sérialisé, ou None si pas de membership active
+    / message inconnu.
     """
     now = timezone.now()
-    updated = ChatMembership.objects.filter(
-        room=room, user=user, left_at__isnull=True
-    ).update(last_read_at=now)
-    if not updated:
-        return None
+    if message_id is not None and message_id != "":
+        try:
+            mid = int(message_id)
+        except (TypeError, ValueError):
+            return None
+        msg = (
+            ChatMessage.objects.filter(pk=mid, room=room)
+            .only("created_at", "edited_at")
+            .first()
+        )
+        if msg is None:
+            return None
+        up_to = message_activity_at(msg)
+    if up_to is None:
+        up_to = now
+    elif timezone.is_naive(up_to):
+        up_to = timezone.make_aware(up_to, timezone.get_current_timezone())
+    if up_to > now:
+        up_to = now
+
+    updated = (
+        ChatMembership.objects.filter(room=room, user=user, left_at__isnull=True)
+        .filter(Q(last_read_at__isnull=True) | Q(last_read_at__lt=up_to))
+        .update(last_read_at=up_to)
+    )
     try:
         membership = ChatMembership.objects.select_related("user").get(
             room=room, user=user, left_at__isnull=True
         )
     except ChatMembership.DoesNotExist:
         return None
-    # last_read_at vient d’être mis à jour via QuerySet.update — recharger
-    membership.last_read_at = now
+    if updated:
+        membership.last_read_at = up_to
     cursor = serialize_read_cursor(membership)
-    if broadcast and cursor is not None:
+    if updated and broadcast and cursor is not None:
         broadcast_read(room, cursor)
+    # Inbox Coulisses : une notif reste tant que le message n’est pas lu.
+    watermark = membership.last_read_at
+    if watermark is not None:
+        try:
+            from users.notify import mark_chat_notifications_covered_by_read
+
+            mark_chat_notifications_covered_by_read(
+                user, room.pk, up_to=watermark
+            )
+        except Exception:
+            logger.exception(
+                "Sync notifs lecture salon room_id=%s user_id=%s",
+                room.pk,
+                getattr(user, "pk", None),
+            )
     return cursor
 
 
@@ -2431,16 +2484,15 @@ def build_room_embed_context(
                 room, user
             )
 
-    # Curseur avant mark_room_read : 1er non-lu + archive Orchestre (par personne).
+    # Curseur à l’ouverture : 1er non-lu + archive Orchestre (par personne).
+    # Le salon n’est plus marqué lu ici — le client avance le watermark
+    # après ~5 s de visibilité réelle de chaque message.
     initial_last_read_dt = (
         membership.last_read_at if membership and membership.last_read_at else None
     )
     initial_last_read_at = (
         initial_last_read_dt.isoformat() if initial_last_read_dt else None
     )
-    # Liste des fils : ne pas marquer tout le salon lu (sinon badges fil inutiles).
-    if not threads_mode:
-        mark_room_read(room, user, broadcast=True)
 
     limit = history_limit if history_limit is not None else CHAT_HISTORY_LIMIT
     if compact and history_limit is None:

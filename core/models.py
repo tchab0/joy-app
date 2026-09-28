@@ -145,6 +145,13 @@ class MediaItem(models.Model):
             return actif.url
         return ""
 
+    _COMPRESSED_EXT = {
+        "photo": ".webp",
+        "video": ".mp4",
+        "audio": ".m4a",
+        "pdf": ".pdf",
+    }
+
     def source_compression(self):
         """Chemin disque à compresser (édité prioritaire)."""
         actif = self.fichier_actif
@@ -155,39 +162,59 @@ class MediaItem(models.Model):
         except (ValueError, OSError):
             return None
 
+    def compressed_source_field(self):
+        """Champ dont le stem sert au sidecar d’affichage (édité > original)."""
+        if self.fichier_edite:
+            return self.fichier_edite
+        return self.fichier
+
+    def compressed_sidecar_candidates(self, fieldfile=None):
+        """
+        Chemins sidecar possibles pour un fichier source.
+
+        Préfixe `{pk}_` pour éviter qu’un stem générique (ex. photo-editee)
+        écrase le WebP d’un autre média. Le nom historique `{stem}.ext`
+        reste en secours pour les fichiers déjà générés.
+        """
+        fieldfile = fieldfile if fieldfile is not None else self.compressed_source_field()
+        if not fieldfile or not getattr(fieldfile, "name", ""):
+            return []
+        name = fieldfile.name.replace("\\", "/")
+        root = Path(self._media_root())
+        if "/compresses/" in f"/{name}":
+            return [root / name]
+        ext = self._COMPRESSED_EXT.get(self.type)
+        if not ext:
+            return []
+        stem = Path(name).stem
+        dest_dir = root / "medias" / "compresses"
+        paths = []
+        if self.pk:
+            paths.append(dest_dir / f"{self.pk}_{stem}{ext}")
+        paths.append(dest_dir / f"{stem}{ext}")
+        return paths
+
+    def compressed_sidecar_dest(self, fieldfile=None):
+        """Chemin d’écriture du sidecar (toujours unique si le pk existe)."""
+        candidates = self.compressed_sidecar_candidates(fieldfile)
+        return candidates[0] if candidates else None
+
     def chemin_compresse(self):
         """Chemin absolu du fichier compressé sidecar, ou None."""
-        dest_dir = Path(self._media_root()) / "medias" / "compresses"
 
-        def _photo_candidate(fieldfile):
-            if not fieldfile:
-                return None
-            name = fieldfile.name.replace("\\", "/")
-            # Déjà basculé dans compresses/ (purge) : le fichier lui-même
-            if "/compresses/" in f"/{name}":
-                p = Path(self._media_root()) / name
-                return p if p.exists() else None
-            stem = Path(name).stem
-            if self.type == "photo":
-                return dest_dir / f"{stem}.webp"
-            if self.type == "video":
-                return dest_dir / f"{stem}.mp4"
-            if self.type == "audio":
-                return dest_dir / f"{stem}.m4a"
-            if self.type == "pdf":
-                return dest_dir / f"{stem}.pdf"
+        def _first_existing(fieldfile):
+            for cand in self.compressed_sidecar_candidates(fieldfile):
+                if cand.exists():
+                    return cand
             return None
 
         # Affichage public : compressé de l'édité s'il existe, sinon de la source
         if self.type == "photo" and self.fichier_edite:
-            cand = _photo_candidate(self.fichier_edite)
-            if cand and cand.exists():
+            cand = _first_existing(self.fichier_edite)
+            if cand:
                 return cand
 
-        cand = _photo_candidate(self.fichier) or _photo_candidate(self.fichier_edite)
-        if cand and cand.exists():
-            return cand
-        return None
+        return _first_existing(self.fichier) or _first_existing(self.fichier_edite)
 
     def chemin_compresse_relatif(self):
         abs_path = self.chemin_compresse()

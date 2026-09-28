@@ -1988,12 +1988,20 @@ class EventRoadmapEditView(PlanningStaffRequiredMixin, View):
             saved.save()
             messages.success(request, "Feuille de route enregistrée.")
             if request.POST.get("notify"):
-                n = notify_roadmap(self.event, actor=request.user)
-                messages.success(
-                    request,
-                    f"Notification envoyée à {n} participant"
-                    f"{'s' if n != 1 else ''}.",
-                )
+                from planning.services.notify_dates import is_past_event
+
+                if is_past_event(self.event):
+                    messages.warning(
+                        request,
+                        "Date dépassée — aucune notification envoyée.",
+                    )
+                else:
+                    n = notify_roadmap(self.event, actor=request.user)
+                    messages.success(
+                        request,
+                        f"Notification envoyée à {n} participant"
+                        f"{'s' if n != 1 else ''}.",
+                    )
             return redirect("planning:event_roadmap", pk=self.event.pk)
         return self._render(request, form, roadmap)
 
@@ -2028,9 +2036,16 @@ class EventRoadmapNotifyView(PlanningStaffRequiredMixin, View):
         if roadmap is None:
             messages.error(request, "Créez d’abord la feuille de route.")
             return redirect("planning:event_roadmap_edit", pk=event.pk)
-        n = notify_roadmap(event, actor=request.user)
-        messages.success(
-            request,
-            f"Notification envoyée à {n} participant{'s' if n != 1 else ''}.",
-        )
+        from planning.services.notify_dates import is_past_event
+
+        if is_past_event(event):
+            messages.warning(
+                request, "Date dépassée — aucune notification envoyée."
+            )
+        else:
+            n = notify_roadmap(event, actor=request.user)
+            messages.success(
+                request,
+                f"Notification envoyée à {n} participant{'s' if n != 1 else ''}.",
+            )
         return redirect("planning:event_roadmap", pk=event.pk)

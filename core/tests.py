@@ -1,8 +1,10 @@
+from pathlib import Path
+from datetime import timedelta
+
 from django.test import RequestFactory, TestCase, override_settings
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
-from datetime import timedelta
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from core.media_pending import invalidate_pending_media_count
@@ -155,3 +157,110 @@ class MediasEventFilterTests(TestCase):
         self.assertIsNone(r.context["evenement_actif"])
         self.assertEqual(len(r.context["photos_votes"]), 3)
         self.assertNotContains(r, 'id="media-evenement"')
+
+
+class CompressedSidecarUniquenessTests(TestCase):
+    """Deux photos éditées « photo-editee.jpg » ne doivent pas partager le WebP."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._media_override = override_settings(MEDIA_ROOT=self._tmp.name)
+        self._media_override.enable()
+        self.addCleanup(self._media_override.disable)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _jpeg(self, color):
+        from io import BytesIO
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (80, 60), color).save(buf, "JPEG")
+        return buf.getvalue()
+
+    def _place_edit(self, media, rel, color):
+        from django.conf import settings
+
+        path = Path(settings.MEDIA_ROOT) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self._jpeg(color))
+        media.fichier_edite.name = rel
+        media.save(update_fields=["fichier_edite"])
+        return media
+
+    def test_same_edit_stem_gets_distinct_display_urls(self):
+        from core.utils_compression import compresser_media
+
+        ev_a = EvenementMedia.objects.create(nom="Marché", date=timezone.localdate())
+        ev_b = EvenementMedia.objects.create(nom="Groove Circle", date=timezone.localdate())
+        a = MediaItem.objects.create(
+            type="photo", titre="Marché", publie=True, statut="publie", evenement=ev_a
+        )
+        b = MediaItem.objects.create(
+            type="photo", titre="Groove Circle", publie=True, statut="publie", evenement=ev_b
+        )
+        self._place_edit(a, "medias/edites/2026/07/photo-editee.jpg", (200, 40, 40))
+        self._place_edit(b, "medias/edites/2026/09/photo-editee.jpg", (20, 40, 200))
+
+        compresser_media(a)
+        compresser_media(b)
+        a.refresh_from_db()
+        b.refresh_from_db()
+
+        self.assertTrue(a.url_affichage)
+        self.assertTrue(b.url_affichage)
+        self.assertNotEqual(a.url_affichage, b.url_affichage)
+        self.assertIn(f"{a.pk}_photo-editee", a.url_affichage)
+        self.assertIn(f"{b.pk}_photo-editee", b.url_affichage)
+
+        dest_a = a.chemin_compresse()
+        dest_b = b.chemin_compresse()
+        self.assertIsNotNone(dest_a)
+        self.assertIsNotNone(dest_b)
+        self.assertNotEqual(dest_a.read_bytes(), dest_b.read_bytes())
+
+    def test_legacy_sidecar_still_found_if_unique_missing(self):
+        from django.conf import settings
+        from PIL import Image
+
+        media = MediaItem.objects.create(
+            type="photo", titre="Ancien", publie=True, statut="publie"
+        )
+        media.fichier.name = "medias/2026/01/legacy-stem.jpg"
+        media.save(update_fields=["fichier"])
+        dest = Path(settings.MEDIA_ROOT) / "medias" / "compresses"
+        dest.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (16, 16), (8, 8, 8)).save(dest / "legacy-stem.webp", "WEBP")
+        self.assertTrue(str(media.chemin_compresse()).endswith("legacy-stem.webp"))
+        self.assertIn("legacy-stem.webp", media.url_affichage)
+
+    def test_video_compression_uses_h264_not_hevc(self):
+        """H.264 web-compatible — HEVC often plays as audio-only in Chrome/Firefox."""
+        from unittest.mock import patch
+
+        from django.conf import settings
+
+        from core.utils_compression import compresser_media
+
+        media = MediaItem.objects.create(
+            type="video", titre="Clip", publie=True, statut="publie"
+        )
+        rel = "medias/2026/09/clip-src.mp4"
+        src = Path(settings.MEDIA_ROOT) / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_bytes(b"fake-video")
+        media.fichier.name = rel
+        media.save(update_fields=["fichier"])
+
+        with patch("core.utils_compression.subprocess.run") as run:
+            compresser_media(media)
+            run.assert_called_once()
+            cmd = run.call_args.args[0]
+        self.assertIn("libx264", cmd)
+        self.assertNotIn("libx265", cmd)
+        self.assertIn("yuv420p", cmd)
+        dest = media.compressed_sidecar_dest()
+        self.assertIsNotNone(dest)
+        self.assertEqual(dest.name, f"{media.pk}_clip-src.mp4")
+        self.assertEqual(cmd[-1], str(dest))

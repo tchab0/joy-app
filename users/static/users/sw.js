@@ -1,4 +1,28 @@
-/* Service worker JOY — Web Push */
+/* Service worker JOY — Web Push + badge icône (iOS/Android PWA) */
+
+async function setHomeBadge(count) {
+  if (!("setAppBadge" in self.navigator)) return;
+  try {
+    const n = Math.max(0, Number(count) || 0);
+    if (n > 0) {
+      await self.navigator.setAppBadge(n);
+    } else {
+      await self.navigator.clearAppBadge();
+    }
+  } catch (_) {
+    /* ignore — API absente / permission / contexte non installé */
+  }
+}
+
+async function clearHomeBadge() {
+  if (!("clearAppBadge" in self.navigator)) return;
+  try {
+    await self.navigator.clearAppBadge();
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 self.addEventListener("push", (event) => {
   let data = { title: "JOY", body: "", url: "/" };
   try {
@@ -21,7 +45,21 @@ self.addEventListener("push", (event) => {
     badge: data.badge || data.icon || defaultIcon,
     data: { url: data.url || "/" },
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(title, options);
+      let count = Number(data.badgeCount);
+      if (!Number.isFinite(count) || count < 1) {
+        try {
+          const notes = await self.registration.getNotifications();
+          count = Math.max(1, notes.length);
+        } catch (_) {
+          count = 1;
+        }
+      }
+      await setHomeBadge(count);
+    })()
+  );
 });
 
 function normalizeNotifUrl(raw) {
@@ -49,6 +87,7 @@ self.addEventListener("notificationclick", (event) => {
   );
   event.waitUntil(
     (async () => {
+      await clearHomeBadge();
       const list = await clients.matchAll({
         type: "window",
         includeUncontrolled: true,

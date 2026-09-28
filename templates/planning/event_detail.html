@@ -177,7 +177,7 @@
 
   {% if roster_rows or roster_extras or roster_unassigned or by_section or cal_summary %}
   <section class="pl-section" style="margin-top:1.25rem"
-           x-data="{ effectifView: 'liste' }">
+           x-data="{ effectifView: '{% if roster_rows %}orchestre{% else %}liste{% endif %}' }">
     <div class="pl-effectif__head">
       <h2 class="pl-effectif__title">Effectif</h2>
       {% if roster_rows or by_section %}
@@ -210,7 +210,7 @@
       {% endif %}
     </div>
     {% endif %}
-    <div x-show="effectifView === 'liste'">
+    <div x-show="effectifView === 'liste'"{% if roster_rows %} x-cloak{% endif %}>
       {% for section_name, parts in by_section.items %}
       <div class="pl-gear-line" style="flex-direction:column;align-items:stretch;gap:.25rem">
         <span class="pl-gear-line__name">{{ section_name }}</span>
@@ -231,7 +231,7 @@
       {% endfor %}
     </div>
     {% if roster_rows %}
-    <div class="pl-stage-scroll" x-show="effectifView === 'orchestre'" x-cloak>
+    <div class="pl-stage-scroll" x-show="effectifView === 'orchestre'">
       {% include "planning/_stage_roster.html" with show_invites=False id_prefix="detail" %}
     </div>
     {% endif %}

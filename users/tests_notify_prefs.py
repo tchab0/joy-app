@@ -268,6 +268,61 @@ class DigestCommandFrequencyTests(TestCase):
         self.musician.refresh_from_db()
         self.assertIsNotNone(self.musician.notify_digest_last_sent_at)
 
+    def test_digest_skips_notifications_for_past_events(self):
+        from events.models import Event, EventType, Venue
+
+        venue = Venue.objects.create(nom="Salle", ville="Yonne")
+        kind = EventType.objects.create(nom="Concert")
+        past = Event.objects.create(
+            titre="Concert du 14",
+            type=kind,
+            venue=venue,
+            date_debut=datetime(2026, 9, 14, 20, 0, tzinfo=PARIS),
+            statut=Event.Statut.CONFIRME,
+        )
+        notify_users(
+            [self.musician],
+            title="JOY — C’est le grand jour",
+            body="Aujourd’hui, c’est « Concert du 14 ».",
+            url="/planning/",
+            related_type="event",
+            related_id=past.pk,
+            notify_type="event",
+        )
+        evening = datetime(2026, 9, 25, 18, 20, tzinfo=PARIS)
+        sent = send_due_notification_digests(now=evening, dry_run=False)
+        self.assertEqual(sent, 0)
+        self.assertEqual(len(mail.outbox), 0)
+        self.musician.refresh_from_db()
+        self.assertIsNotNone(self.musician.notify_digest_last_sent_at)
+
+    def test_digest_keeps_photo_reminder_after_event(self):
+        from events.models import Event, EventType, Venue
+
+        venue = Venue.objects.create(nom="Salle photos", ville="Yonne")
+        kind = EventType.objects.create(nom="Concert photos")
+        past = Event.objects.create(
+            titre="Concert du 14",
+            type=kind,
+            venue=venue,
+            date_debut=datetime(2026, 9, 14, 20, 0, tzinfo=PARIS),
+            statut=Event.Statut.CONFIRME,
+        )
+        notify_users(
+            [self.musician],
+            title="Photos — Concert du 14",
+            body="Une semaine après « Concert du 14 » (14/09/2026).",
+            url="/medias/proposer/",
+            related_type="photos",
+            related_id=past.pk,
+            notify_type="photos",
+        )
+        evening = datetime(2026, 9, 25, 18, 20, tzinfo=PARIS)
+        sent = send_due_notification_digests(now=evening, dry_run=False)
+        self.assertEqual(sent, 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Photos", mail.outbox[0].subject)
+
     def test_failed_delivery_still_advances_chat_cursors(self):
         """Inbox créée + échec SMTP/push ne doit pas rejouer le même digest."""
         self.other.notify_frequency = FREQ_REALTIME

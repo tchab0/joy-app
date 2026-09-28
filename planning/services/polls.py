@@ -108,6 +108,14 @@ def _poll_notify_body(proposal: DateProposal, *, reminder: bool = False) -> str:
 
 def notify_availability_poll(proposal: DateProposal) -> int:
     """Envoie (ou renvoie) les notifications de sondage aux destinataires."""
+    from planning.services.notify_dates import proposal_has_only_past_dates
+
+    if proposal_has_only_past_dates(proposal):
+        logger.info(
+            "Sondage non notifié (dates dépassées) proposal_id=%s",
+            proposal.pk,
+        )
+        return 0
     users = poll_notification_recipients(proposal)
     poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
     return notify_users(
@@ -123,7 +131,21 @@ def notify_availability_poll(proposal: DateProposal) -> int:
 
 
 def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
-    """Rappel J−7 : notifie les destinataires qui n’ont pas encore répondu."""
+    """
+    Rappel J−7 avant la date limite.
+
+    Uniquement si le sondage est lié à un événement encore à venir.
+    Le rappel photos J+7, lui, part après le concert.
+    """
+    from planning.services.notify_dates import is_past_event
+
+    event = proposal.linked_event
+    if event is None or is_past_event(event):
+        logger.info(
+            "Rappel sondage ignoré (pas un événement à venir) proposal_id=%s",
+            proposal.pk,
+        )
+        return 0
     users = [
         u
         for u in poll_notification_recipients(proposal)
@@ -157,7 +179,8 @@ def send_due_poll_deadline_reminders(
     days_before: int = 7,
 ) -> tuple[int, int]:
     """
-    Relance les sondages OPEN dont la deadline tombe dans ``days_before`` jours.
+    Relance les sondages OPEN liés à un événement encore à venir,
+    dont la deadline tombe dans ``days_before`` jours.
 
     Retourne (nb sondages traités, nb notifications envoyées).
     Marque ``deadline_reminder_sent_at`` même si 0 destinataire (évite de

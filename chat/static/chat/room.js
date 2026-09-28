@@ -62,6 +62,9 @@ function chatRoom(cfg) {
     _dragDepth: 0,
     attZoom: null,
     attZoomStyle: '',
+    pdfViewer: null,
+    pdfShareBusy: false,
+    pdfShareError: '',
     emojiOpen: false,
     pollOpen: false,
     pollBusy: false,
@@ -106,6 +109,12 @@ function chatRoom(cfg) {
     _jumpRaf: null,
     _readTimer: null,
     _lastReadSentAt: 0,
+    _readIo: null,
+    _readMo: null,
+    _readObservedEls: null,
+    _readDwellTimers: null,
+    _queuedReadMsg: null,
+    READ_DWELL_MS: 5000,
     _memberByUser: null,
     get threadList() {
       return this.archiveOpen ? this.archiveMessages : this.messages;
@@ -918,28 +927,82 @@ function chatRoom(cfg) {
         this.readCursors = (this.readCursors || []).concat([cursor]);
       }
     },
-    scheduleMarkRead() {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        return;
-      }
-      if (this._readTimer) clearTimeout(this._readTimer);
+    messageIdFromEl(el) {
+      if (!el || !el.id) return null;
+      const m = /^chat-msg-(\d+)$/.exec(el.id);
+      return m ? parseInt(m[1], 10) : null;
+    },
+    isPageVisible() {
+      return typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    },
+    isMessageOnScreen(entry) {
+      if (!entry || !entry.isIntersecting) return false;
+      if (entry.intersectionRatio >= 0.35) return true;
+      return entry.intersectionRect && entry.intersectionRect.height >= 80;
+    },
+    clearReadDwell(id) {
+      if (!this._readDwellTimers) return;
+      const t = this._readDwellTimers[id];
+      if (t) clearTimeout(t);
+      delete this._readDwellTimers[id];
+    },
+    clearAllReadDwells() {
+      if (!this._readDwellTimers) return;
+      Object.keys(this._readDwellTimers).forEach((id) => this.clearReadDwell(id));
+    },
+    startReadDwell(id) {
+      if (!id || !this.isPageVisible()) return;
+      if (!this._readDwellTimers) this._readDwellTimers = Object.create(null);
+      if (this._readDwellTimers[id]) return;
+      const msg = this.findMessageById(id);
+      if (!msg || msg.deleted) return;
+      if (Number(msg.author_id) === Number(this.currentUserId)) return;
+      const act = Date.parse(this.messageActivityIso(msg));
+      const readMs = this.ownLastReadMs();
+      if (act && readMs != null && act <= readMs) return;
+      this._readDwellTimers[id] = setTimeout(() => {
+        if (this._readDwellTimers) delete this._readDwellTimers[id];
+        this.queueMarkMessageRead(id);
+      }, this.READ_DWELL_MS);
+    },
+    queueMarkMessageRead(id) {
+      const msg = this.findMessageById(id);
+      if (!msg || msg.deleted) return;
+      const ms = Date.parse(this.messageActivityIso(msg));
+      if (!ms) return;
+      const prev = this._queuedReadMsg;
+      const prevMs = prev ? Date.parse(this.messageActivityIso(prev)) || 0 : 0;
+      if (!prev || ms >= prevMs) this._queuedReadMsg = msg;
+      if (this._readTimer) return;
       this._readTimer = setTimeout(() => {
         this._readTimer = null;
-        this.markRead();
-      }, 400);
+        const next = this._queuedReadMsg;
+        this._queuedReadMsg = null;
+        if (next) this.markRead(next);
+      }, 80);
     },
-    markRead() {
-      const now = Date.now();
-      if (now - (this._lastReadSentAt || 0) < 1500) return;
-      this._lastReadSentAt = now;
+    markRead(msg) {
+      if (!msg || !msg.id) return;
+      if (!this.isPageVisible()) return;
+      const activityIso = this.messageActivityIso(msg);
+      const activityMs = Date.parse(activityIso);
+      if (!activityMs) return;
+      const already = this.ownLastReadMs();
+      if (already != null && already >= activityMs) return;
+      this._lastReadSentAt = Date.now();
+      this.applyReadCursor({
+        user_id: this.currentUserId,
+        last_read_at: activityIso,
+      });
       if (this.ws && this.ws.readyState === 1) {
         try {
-          this.ws.send(JSON.stringify({ type: 'chat.read' }));
+          this.ws.send(JSON.stringify({ type: 'chat.read', message_id: msg.id }));
           return;
         } catch (_) { /* fallback HTTP */ }
       }
       if (!this.apiReadUrl) return;
       const fd = new FormData();
+      fd.append('message_id', String(msg.id));
       fetch(this.apiReadUrl, {
         method: 'POST',
         headers: { 'X-CSRFToken': this.csrfToken },
@@ -948,6 +1011,74 @@ function chatRoom(cfg) {
       }).then((r) => r.json()).then((data) => {
         if (data && data.ok && data.cursor) this.applyReadCursor(data.cursor);
       }).catch(function () { /* ignore */ });
+    },
+    onReadIntersect(entries) {
+      if (this._dead || !this.isPageVisible()) return;
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const id = this.messageIdFromEl(entry.target);
+        if (!id) continue;
+        if (this.isMessageOnScreen(entry)) this.startReadDwell(id);
+        else this.clearReadDwell(id);
+      }
+    },
+    observeThreadMessages() {
+      if (!this._readIo) return;
+      const thread = this.$refs.thread;
+      if (!thread) return;
+      if (!this._readObservedEls) this._readObservedEls = new WeakSet();
+      const nodes = thread.querySelectorAll('.chat-msg[id^="chat-msg-"]');
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        if (this._readObservedEls.has(el)) continue;
+        this._readObservedEls.add(el);
+        this._readIo.observe(el);
+      }
+    },
+    bindReadObserver() {
+      if (this.threadsMode || this._readIo) return;
+      if (typeof IntersectionObserver === 'undefined') return;
+      const thread = this.$refs.thread;
+      if (!thread) return;
+      this._readDwellTimers = Object.create(null);
+      this._readObservedEls = new WeakSet();
+      this._readIo = new IntersectionObserver((entries) => this.onReadIntersect(entries), {
+        root: null,
+        threshold: [0, 0.2, 0.35, 0.5, 0.75, 1],
+      });
+      if (typeof MutationObserver !== 'undefined') {
+        this._readMo = new MutationObserver(() => this.observeThreadMessages());
+        this._readMo.observe(thread, { childList: true, subtree: true });
+      }
+      this.observeThreadMessages();
+    },
+    unbindReadObserver() {
+      this.clearAllReadDwells();
+      if (this._readTimer) {
+        clearTimeout(this._readTimer);
+        this._readTimer = null;
+      }
+      this._queuedReadMsg = null;
+      if (this._readMo) {
+        try { this._readMo.disconnect(); } catch (_) { /* ignore */ }
+        this._readMo = null;
+      }
+      if (this._readIo) {
+        try { this._readIo.disconnect(); } catch (_) { /* ignore */ }
+        this._readIo = null;
+      }
+      this._readObservedEls = null;
+    },
+    recheckVisibleMessages() {
+      if (this._dead || !this.isPageVisible()) return;
+      this.clearAllReadDwells();
+      if (!this._readIo) {
+        this.bindReadObserver();
+        return;
+      }
+      this._readIo.disconnect();
+      this._readObservedEls = new WeakSet();
+      this.observeThreadMessages();
     },
     startReply(msg) {
       if (!msg || msg.deleted) return;
@@ -1900,6 +2031,73 @@ function chatRoom(cfg) {
       this.attZoom = null;
       this.attZoomStyle = '';
     },
+    _isIOSLike() {
+      const ua = navigator.userAgent || '';
+      if (/iPad|iPhone|iPod/.test(ua)) return true;
+      return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    },
+    openPdfViewer(att) {
+      if (!att || !att.url) return;
+      this.hideAttZoom();
+      this.pdfShareError = '';
+      this.pdfShareBusy = false;
+      const url = att.url;
+      const sep = url.indexOf('?') >= 0 ? '&' : '?';
+      this.pdfViewer = {
+        name: att.name || 'Document.pdf',
+        downloadUrl: url,
+        previewUrl: url + sep + 'inline=1',
+        // iframe PDF souvent vide / sans chrome de sortie sur iOS.
+        canPreview: !this._isIOSLike(),
+      };
+    },
+    closePdfViewer() {
+      this.pdfViewer = null;
+      this.pdfShareBusy = false;
+      this.pdfShareError = '';
+    },
+    async sharePdf() {
+      if (!this.pdfViewer || this.pdfShareBusy) return;
+      this.pdfShareBusy = true;
+      this.pdfShareError = '';
+      const name = this.pdfViewer.name || 'Document.pdf';
+      const url = this.pdfViewer.downloadUrl;
+      try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('fetch');
+        const blob = await res.blob();
+        const file = new File(
+          [blob],
+          name,
+          { type: 'application/pdf' }
+        );
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          this.pdfShareBusy = false;
+          return;
+        }
+        if (typeof navigator.share === 'function') {
+          await navigator.share({ title: name, url: window.location.href });
+          this.pdfShareBusy = false;
+          return;
+        }
+        // Pas de Web Share : déclencher le téléchargement (feuille native).
+        const a = document.createElement('a');
+        a.href = url;
+        a.setAttribute('download', name);
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          this.pdfShareBusy = false;
+          return;
+        }
+        this.pdfShareError = 'Partage impossible — utilisez Télécharger.';
+      }
+      this.pdfShareBusy = false;
+    },
     _dragHasFiles(ev) {
       const types = ev && ev.dataTransfer && ev.dataTransfer.types;
       if (!types) return false;
@@ -2120,12 +2318,14 @@ function chatRoom(cfg) {
         this.measureComposer();
         this.scrollToInitialPosition();
         this.updateJumpBottom();
+        this.bindReadObserver();
         // Images / intro morceau / padding composer : repasser après paint
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             this.measureComposer();
             this.scrollToInitialPosition();
             this.updateJumpBottom();
+            this.observeThreadMessages();
           });
         });
         // Audio / thumbs YouTube peuvent agrandir le fil après coup
@@ -2136,6 +2336,7 @@ function chatRoom(cfg) {
           this.measureComposer();
           this.scrollToInitialPosition();
           this.updateJumpBottom();
+          this.observeThreadMessages();
         }, 280);
       });
       this.connect();
@@ -2150,6 +2351,7 @@ function chatRoom(cfg) {
     },
     destroy() {
       this._dead = true;
+      this.unbindReadObserver();
       if (this._openScrollTimer) {
         clearTimeout(this._openScrollTimer);
         this._openScrollTimer = null;
@@ -2219,7 +2421,11 @@ function chatRoom(cfg) {
     },
     bindVisibility() {
       this._visHandler = () => {
-        if (document.visibilityState === 'visible') this.scheduleMarkRead();
+        if (document.visibilityState === 'hidden') {
+          this.clearAllReadDwells();
+        } else {
+          this.recheckVisibleMessages();
+        }
       };
       document.addEventListener('visibilitychange', this._visHandler);
     },
@@ -2487,7 +2693,7 @@ function chatRoom(cfg) {
         if (this.ws !== sock) return;
         this.setStatus('live');
         this._wsRetryMs = 1000;
-        this.scheduleMarkRead();
+        this.observeThreadMessages();
       };
       this.ws.onclose = () => {
         if (this.ws !== sock) return;
@@ -2503,10 +2709,12 @@ function chatRoom(cfg) {
         try { data = JSON.parse(ev.data); } catch (_) { return; }
         if (data.type === 'chat.message' && data.message) {
           if (this.ingestMessage(data.message) && !this.archiveOpen) {
-            this.$nextTick(() => this.scrollBottom(false));
-          }
-          if (data.message.author_id !== this.currentUserId) {
-            this.scheduleMarkRead();
+            this.$nextTick(() => {
+              this.scrollBottom(false);
+              this.observeThreadMessages();
+            });
+          } else {
+            this.$nextTick(() => this.observeThreadMessages());
           }
         } else if (data.type === 'chat.message_edit' && data.message) {
           if (data.message.deleted) {
@@ -2530,10 +2738,18 @@ function chatRoom(cfg) {
               if (aidx >= 0) this.archiveMessages.splice(aidx, 1);
               if (!inLive) this.ingestMessage(data.message);
             }
-            // Ne pas marquer lu auto : une édition après lecture reste « message modifié »
-            // / non lu jusqu’à une relecture explicite (visibilité, nouveau message, etc.).
+            // Édition : redevient non lu jusqu’à 5 s de visibilité à l’écran.
             if (data.message.author_id !== this.currentUserId) {
               this.flashMessage(data.message.id);
+              this.clearReadDwell(data.message.id);
+              this.$nextTick(() => {
+                const el = document.getElementById('chat-msg-' + data.message.id);
+                if (!el || !this._readIo) return;
+                if (this._readObservedEls) this._readObservedEls.delete(el);
+                try { this._readIo.unobserve(el); } catch (_) { /* ignore */ }
+                this._readIo.observe(el);
+                if (this._readObservedEls) this._readObservedEls.add(el);
+              });
             }
           }
         } else if (data.type === 'chat.reaction' && data.message_id) {

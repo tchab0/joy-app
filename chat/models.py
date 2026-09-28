@@ -308,7 +308,11 @@ class ChatAttachment(models.Model):
 
     @property
     def is_pdf(self) -> bool:
-        return self.content_type == "application/pdf"
+        ct = (self.content_type or "").lower()
+        if ct == "application/pdf":
+            return True
+        name = (self.original_name or "").lower()
+        return name.endswith(".pdf")
 
 
 class ChatMessageReaction(models.Model):
