@@ -155,6 +155,14 @@
   .event-lightbox__nav--prev { left: 1rem; }
   .event-lightbox__nav--next { right: 1rem; }
 }
+@media (min-width: 960px) {
+  .event-medias .media-grid {
+    width: 200%;
+    max-width: calc(100vw - 4rem);
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+}
 </style>
 
 <section class="event-medias" aria-label="Médias du concert">
@@ -164,12 +172,12 @@
   </div>
 
   {% if concert_medias.tri == 'types' %}
-  {% include "includes/_media_by_type.html" with videos=concert_medias.videos photos=concert_medias.photos audios=concert_medias.audios pdfs=concert_medias.pdfs photo_vote=False lightbox_prefix="toutes" %}
+  {% include "includes/_media_by_type.html" with videos=concert_medias.videos photos=concert_medias.photos audios=concert_medias.audios pdfs=concert_medias.pdfs photo_vote=False lightbox_prefix="toutes" photo_sizes="(max-width:640px) 50vw, (min-width:960px) 30vw, 33vw" %}
   {% if not concert_medias.videos and not concert_medias.photos and not concert_medias.audios and not concert_medias.pdfs %}
   <p style="color:var(--muted);font-style:italic;margin:0">Aucun média pour ces filtres.</p>
   {% endif %}
   {% else %}
-  {% include "includes/_media_by_event.html" with groupes=concert_medias.groupes photo_vote=False %}
+  {% include "includes/_media_by_event.html" with groupes=concert_medias.groupes photo_vote=False photo_sizes="(max-width:640px) 50vw, (min-width:960px) 30vw, 33vw" %}
   {% if not concert_medias.groupes %}
   <p style="color:var(--muted);font-style:italic;margin:0">Aucun média pour ces filtres.</p>
   {% endif %}

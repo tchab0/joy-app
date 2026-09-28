@@ -15,7 +15,7 @@
   <h2 id="media-h-photos" class="media-section-title">Photos</h2>
   <div class="media-grid">
     {% for p in photos %}
-    {% include "includes/_media_photo.html" with p=p lightbox_group=lightbox_prefix|default:"toutes" lightbox_index=forloop.counter0 show_caption=True show_vote=photo_vote|default:False %}
+    {% include "includes/_media_photo.html" with p=p lightbox_group=lightbox_prefix|default:"toutes" lightbox_index=forloop.counter0 show_caption=True show_vote=photo_vote|default:False photo_sizes=photo_sizes %}
     {% endfor %}
   </div>
 </section>

@@ -4,7 +4,7 @@
      {% if lightbox_group %}onclick="openLightbox('{{ lightbox_group }}', {{ lightbox_index }}); return false;"{% endif %}>
     <img src="{{ p.thumb_url|default:p.url_miniature|default:p.display_url|default:p.url_affichage }}"
          srcset="{% if p.miniature %}{{ p.url_miniature }} 400w, {% endif %}{{ p.display_url|default:p.url_affichage }} 1280w"
-         sizes="(max-width:640px) 50vw, 220px"
+         sizes="{{ photo_sizes|default:'(max-width:640px) 50vw, 220px' }}"
          alt="{{ p.titre }}"
          width="400"
          height="300"
