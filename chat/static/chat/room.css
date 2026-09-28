@@ -3,6 +3,26 @@
   body:has(.chat-room:not(.chat-room--embedded)) footer { display: none; }
   body:has(.chat-room:not(.chat-room--embedded)) main { padding: 0; }
 
+  /* Clavier / saisie mobile : le champ d’écriture passe avant tout le chrome. */
+  body.chat-kb-open > nav,
+  body.chat-kb-open footer,
+  body.chat-kb-open > main > .pl-nav,
+  body.chat-kb-open > main > .pl-poll-banner,
+  body.chat-kb-open > main > .pl-notif-banner {
+    display: none !important;
+  }
+  .chat-room.chat-kb-open .chat-room__bar,
+  .chat-room.chat-kb-open .chat-status,
+  .chat-room.chat-kb-open .chat-setlist-tip,
+  .chat-room.chat-kb-open .chat-leave-hint,
+  .chat-room.chat-kb-open .chat-staff-panel,
+  .chat-room.chat-kb-open .chat-jump-bottom {
+    display: none !important;
+  }
+  .chat-room.chat-kb-open .chat-composer {
+    z-index: 40;
+  }
+
   .chat-room {
     --composer-h: 7.5rem;
     --keyboard-inset: 0px;
@@ -1045,7 +1065,10 @@
   .chat-composer__editor {
     width: 100%;
     min-height: 44px;
-    max-height: 110px;
+    height: auto;
+    /* Fallback si le JS n’a pas encore posé le cap. Le JS collapse
+       la boîte pour mesurer le texte, puis pose height + max-height. */
+    max-height: min(70dvh, calc(100svh - var(--keyboard-inset, 0px) - 7rem));
     resize: none;
     border: 1px solid var(--border);
     border-radius: var(--r);
@@ -1055,6 +1078,12 @@
     color: var(--text);
     background: var(--bg);
     line-height: 1.35;
+    overflow-x: hidden;
+    field-sizing: content;
+  }
+  .chat-kb-open .chat-composer textarea,
+  .chat-kb-open .chat-composer__editor {
+    max-height: calc(100svh - var(--keyboard-inset, 0px) - 2.5rem);
   }
   .chat-composer__editor {
     overflow-y: auto;
