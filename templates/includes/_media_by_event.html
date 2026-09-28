@@ -1,0 +1,87 @@
+{# Groupes par événement. Attendu : groupes, photo_vote. #}
+{% for groupe in groupes %}
+{% with gphotos=groupe.photos gvideos=groupe.videos gaudios=groupe.audios gpdfs=groupe.pdfs %}
+{% if gphotos or gvideos or gaudios or gpdfs %}
+<div class="media-groupe">
+  <div class="media-groupe-titre">
+    {% if groupe.evenement %}
+    <span style="font-family:var(--font-d);font-style:italic;font-size:1.2rem;color:var(--text)">{{ groupe.evenement.nom }}</span>
+    {% if groupe.evenement.date %}
+    <span style="font-family:var(--font-b);font-style:normal;font-size:.78rem;font-weight:400;color:var(--muted)">{{ groupe.evenement.date|date:"d F Y" }}</span>
+    {% endif %}
+    {% else %}
+    <span style="font-family:var(--font-d);font-style:italic;font-size:1.2rem;color:var(--text)">Autres médias</span>
+    {% endif %}
+    <span style="font-family:var(--font-b);font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ gphotos|length|add:gvideos|length|add:gaudios|length|add:gpdfs|length }} média{{ gphotos|length|add:gvideos|length|add:gaudios|length|add:gpdfs|length|pluralize }}</span>
+  </div>
+
+  {% if gvideos %}
+  <div class="video-grid" style="margin-bottom:1rem">
+    {% for v in gvideos %}
+    {% include "includes/_media_video.html" with v=v %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if gphotos %}
+  <div class="media-grid" style="margin-bottom:1rem">
+    {% for p in gphotos %}
+    <div class="photo-wrap">
+      <a href="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}"
+         onclick="openLightbox('groupe_{{ forloop.parentloop.counter0 }}', {{ forloop.counter0 }}); return false;">
+        <img src="{{ p.thumb_url|default:p.url_miniature|default:p.display_url|default:p.url_affichage }}"
+             srcset="{% if p.miniature %}{{ p.url_miniature }} 400w, {% endif %}{{ p.display_url|default:p.url_affichage }} 1280w"
+             sizes="(max-width:640px) 50vw, 220px"
+             alt="{{ p.titre }}"
+             width="400"
+             height="300"
+             loading="lazy"
+             decoding="async">
+      </a>
+      {% if photo_vote %}
+      <button
+        class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
+        type="button"
+        data-media-id="{{ p.pk }}"
+        data-vote-url="{% url 'media_vote' p.pk %}"
+        data-csrf="{{ csrf_token }}"
+        onclick="toggleVote(this)">
+        <span class="photo-vote-icon">{% if p.user_a_vote %}❤️{% else %}🤍{% endif %}</span>
+        <span class="photo-vote-count">{% if p.nb_votes %}{{ p.nb_votes }}{% endif %}</span>
+      </button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if gaudios %}
+  <div class="audio-list" style="margin-bottom:1rem">
+    {% for a in gaudios %}
+    {% if a.display_url or a.fichier %}
+    <div class="audio-item">
+      <div style="font-weight:600;font-size:.95rem">{{ a.titre|default:"Enregistrement" }}</div>
+      <audio controls src="{{ a.display_url|default:a.fichier.url }}"></audio>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if gpdfs %}
+  <div class="pdf-list">
+    {% for p in gpdfs %}
+    {% if p.display_url or p.fichier %}
+    <a class="pdf-item" href="{{ p.display_url|default:p.fichier.url }}" target="_blank" rel="noopener">
+      <span style="font-size:1.4rem" aria-hidden="true">📄</span>
+      <span>{{ p.titre|default:"Document PDF" }}</span>
+      <span style="margin-left:auto;font-size:.8rem;color:var(--muted)">Ouvrir ↗</span>
+    </a>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endwith %}
+{% endfor %}

@@ -1,0 +1,29 @@
+{# Tuile photo + vote optionnel. Attendu : p, lightbox_group, lightbox_index, show_caption, show_vote. #}
+<div class="photo-wrap">
+  <a href="{{ p.display_url|default:p.url_affichage|default:p.fichier.url }}"
+     {% if lightbox_group %}onclick="openLightbox('{{ lightbox_group }}', {{ lightbox_index }}); return false;"{% endif %}>
+    <img src="{{ p.thumb_url|default:p.url_miniature|default:p.display_url|default:p.url_affichage }}"
+         srcset="{% if p.miniature %}{{ p.url_miniature }} 400w, {% endif %}{{ p.display_url|default:p.url_affichage }} 1280w"
+         sizes="(max-width:640px) 50vw, 220px"
+         alt="{{ p.titre }}"
+         width="400"
+         height="300"
+         loading="lazy"
+         decoding="async">
+  </a>
+  {% if show_caption and p.evenement %}
+  <div class="photo-caption">{{ p.evenement.nom }}{% if p.evenement.date %} · {{ p.evenement.date|date:"Y" }}{% endif %}</div>
+  {% endif %}
+  {% if show_vote %}
+  <button
+    class="photo-vote {% if p.user_a_vote %}voted{% endif %}"
+    type="button"
+    data-media-id="{{ p.pk }}"
+    data-vote-url="{% url 'media_vote' p.pk %}"
+    data-csrf="{{ csrf_token }}"
+    onclick="toggleVote(this)">
+    <span class="photo-vote-icon">{% if p.user_a_vote %}❤️{% else %}🤍{% endif %}</span>
+    <span class="photo-vote-count">{% if p.nb_votes %}{{ p.nb_votes }}{% endif %}</span>
+  </button>
+  {% endif %}
+</div>

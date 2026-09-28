@@ -161,6 +161,14 @@
   .event-lightbox__nav--prev { left: 1rem; }
   .event-lightbox__nav--next { right: 1rem; }
 }
+@media (min-width: 960px) {
+  .event-medias__grid {
+    width: 200%;
+    max-width: calc(100vw - 4rem);
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+}
 </style>
 <section class="event-medias" aria-label="Médias du concert">
   <h2 class="event-medias__title">Médias</h2>
@@ -176,6 +184,7 @@
       aria-label="Agrandir {{ p.titre|default:'la photo' }}">
       <img
         src="{{ p.thumb_url|default:p.display_url }}"
+        {% if p.display_url and p.thumb_url and p.thumb_url != p.display_url %}srcset="{{ p.thumb_url }} 400w, {{ p.display_url }} 1280w" sizes="(min-width: 960px) 30vw, (min-width: 640px) 30vw, 50vw"{% endif %}
         alt="{{ p.titre }}"
         width="400"
         height="300"

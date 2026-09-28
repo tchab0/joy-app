@@ -16,6 +16,7 @@ from events.forms import EventForm, VenueForm
 from events.weather import attach_weather
 from .cache_utils import cache_page_anonymous
 from .media_events import published_media_for_past_event
+from .media_gallery import build_media_gallery, gallery_querystring, parse_media_query
 from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock, StaffMailing
 from .forms import MediaSoumissionForm, ContactForm, PrestationForm, StaffMailingForm
 from .forms import EXTENSIONS_AUTORISEES
@@ -183,12 +184,37 @@ def concert_detail(request, slug):
         f"Concert de Jazz Orchestra Yonnais (JOY) — {event.titre} "
         f"le {event.date_debut:%d/%m/%Y} à {event.lieu_affiche}."
     )
+    concert_medias = None
+    raw = published_media_for_past_event(event)
+    if raw is not None:
+        # Pas de cache pour les variantes de filtres : reconstruit si query présente.
+        if not request.session.session_key:
+            request.session.create()
+        tri, type_filtre, evenement_raw = parse_media_query(request.GET)
+        # Sur la fiche : pas de mode « votes » global — types | evenements.
+        if tri == "votes":
+            tri = "evenements"
+        gallery = build_media_gallery(
+            session_key=request.session.session_key,
+            tri=tri,
+            type_filtre=type_filtre,
+            evenement_raw=evenement_raw or str(raw["evenement"].pk),
+            evenement_scope=raw["evenement"],
+        )
+        gallery["evenement"] = raw["evenement"]
+        gallery["gallery_qs"] = gallery_querystring(
+            tri=gallery["tri"],
+            type_filtre=gallery["type_filtre"],
+            evenement_actif=gallery["evenement_actif"] or raw["evenement"],
+        )
+        gallery["form_action"] = request.path
+        concert_medias = gallery
     return render(
         request,
         "core/concert_detail.html",
         {
             "event": event,
-            "concert_medias": published_media_for_past_event(event),
+            "concert_medias": concert_medias,
             "meta_description": desc[:160],
             "json_ld": dumps_jsonld(music_group_jsonld(), music_event_jsonld(event)),
         },
@@ -224,87 +250,20 @@ def medias(request):
         request.session.create()
     session_key = request.session.session_key
 
-    tri = (request.GET.get("tri") or "evenements").strip().lower()
-    if tri not in ("evenements", "votes"):
-        tri = "evenements"
-
-    def annoter(qs):
-        return qs.annotate(
-            nb_votes=Count("votes"),
-            user_a_vote=Exists(
-                MediaVote.objects.filter(media=OuterRef("pk"), session_key=session_key)
-            )
-        )
-
-    videos = annoter(MediaItem.objects.filter(type="video", publie=True))
-    audios = annoter(MediaItem.objects.filter(type="audio", publie=True))
-    pdfs = annoter(MediaItem.objects.filter(type="pdf", publie=True))
-
-    photos_qs = annoter(
-        MediaItem.objects.filter(
-            type="photo", publie=True, evenement__isnull=False
-        ).select_related("evenement")
+    tri, type_filtre, evenement_raw = parse_media_query(request.GET)
+    gallery = build_media_gallery(
+        session_key=session_key,
+        tri=tri,
+        type_filtre=type_filtre,
+        evenement_raw=evenement_raw,
     )
-
-    # Événements ayant au moins une photo publiée (pour le sélecteur).
-    evenements_filtre = list(
-        EvenementMedia.objects.filter(
-            items__type="photo", items__publie=True
-        )
-        .distinct()
-        .order_by(F("date").desc(nulls_last=True), "nom", "pk")
+    gallery["gallery_qs"] = gallery_querystring(
+        tri=gallery["tri"],
+        type_filtre=gallery["type_filtre"],
+        evenement_actif=gallery["evenement_actif"],
     )
-
-    evenement_actif = None
-    evenement_raw = (request.GET.get("evenement") or "").strip()
-    if tri == "evenements" and evenement_raw.isdigit():
-        evenement_id = int(evenement_raw)
-        evenement_actif = next(
-            (ev for ev in evenements_filtre if ev.pk == evenement_id), None
-        )
-        if evenement_actif is not None:
-            photos_qs = photos_qs.filter(evenement_id=evenement_actif.pk)
-
-    groupes_photos = []
-    photos_votes = []
-
-    if tri == "votes":
-        photos_votes = list(
-            photos_qs.order_by("-nb_votes", "-evenement__date", "evenement_id", "id")
-        )
-        for p in photos_votes:
-            p.display_url = p.url_affichage
-    else:
-        # Chronologie inverse : événements les plus récents d'abord.
-        photos = list(
-            photos_qs.order_by(
-                F("evenement__date").desc(nulls_last=True),
-                "evenement_id",
-                "ordre",
-                "id",
-            )
-        )
-        groupes_map: dict = {}
-        for p in photos:
-            # Compute display URL once (avoids repeated Path.exists() in template).
-            p.display_url = p.url_affichage
-            key = p.evenement_id
-            if key not in groupes_map:
-                groupe = {"evenement": p.evenement, "photos": []}
-                groupes_map[key] = groupe
-                groupes_photos.append(groupe)
-            groupes_map[key]["photos"].append(p)
-
-    return render(request, "core/medias.html", {
-        "groupes_photos": groupes_photos,
-        "photos_votes": photos_votes,
-        "tri": tri,
-        "evenements_filtre": evenements_filtre,
-        "evenement_actif": evenement_actif,
-        "videos": videos,
-        "audios": audios,
-        "pdfs": pdfs,
-    })
+    gallery["form_action"] = reverse("medias")
+    return render(request, "core/medias.html", gallery)
 
 
 def proposer_media(request):

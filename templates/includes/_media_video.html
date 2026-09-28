@@ -1,0 +1,29 @@
+{# Lecteur vidéo (YouTube facade ou fichier) — attend ``v``. #}
+{% if v.youtube_id %}
+<div>
+  <div class="media-yt" data-yt-embed="{{ v.youtube_embed_url }}">
+    <button type="button" class="media-yt__facade" aria-label="Lire {{ v.titre|default:'la vidéo' }}">
+      <img class="media-yt__thumb"
+           src="{{ v.youtube_thumb_url }}"
+           alt="{% if v.titre %}Aperçu vidéo — {{ v.titre }}{% else %}Aperçu vidéo — Jazz Orchestra Yonnais{% endif %}"
+           width="480"
+           height="360"
+           loading="lazy"
+           decoding="async">
+      <span class="media-yt__play" aria-hidden="true"></span>
+    </button>
+  </div>
+  {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
+</div>
+{% elif v.display_url or v.url_affichage %}
+<div>
+  <video controls playsinline preload="metadata"
+         {% if v.miniature %}poster="{{ v.url_miniature }}"{% endif %}
+         src="{{ v.display_url|default:v.url_affichage }}">
+    <a href="{{ v.display_url|default:v.url_affichage }}">{{ v.titre|default:"Vidéo" }}</a>
+  </video>
+  {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
+</div>
+{% elif v.url_externe %}
+<iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
+{% endif %}

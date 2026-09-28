@@ -1,0 +1,49 @@
+{# Barre de tri / filtres médias. Attendu : tri, type_filtre, evenements_filtre, evenement_actif, form_action, show_votes, show_diaporama. #}
+<nav class="media-tri" aria-label="Tri et filtres des médias">
+  <a href="?tri=evenements{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}{% if type_filtre %}&type={{ type_filtre }}{% endif %}"
+     class="{% if tri == 'evenements' %}is-active{% endif %}"
+     {% if tri == 'evenements' %}aria-current="page"{% endif %}>Par événement</a>
+  <a href="?tri=types{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}{% if type_filtre %}&type={{ type_filtre }}{% endif %}"
+     class="{% if tri == 'types' %}is-active{% endif %}"
+     {% if tri == 'types' %}aria-current="page"{% endif %}>Par type</a>
+  {% if show_votes %}
+  <a href="?tri=votes{% if evenement_actif %}&evenement={{ evenement_actif.pk }}{% endif %}{% if type_filtre %}&type={{ type_filtre }}{% endif %}"
+     class="{% if tri == 'votes' %}is-active{% endif %}"
+     {% if tri == 'votes' %}aria-current="page"{% endif %}>❤️ Préférées</a>
+  {% endif %}
+
+  <form class="media-event-filter" method="get" action="{{ form_action }}">
+    <input type="hidden" name="tri" value="{{ tri }}">
+    {% if type_filtre %}<input type="hidden" name="type" value="{{ type_filtre }}">{% endif %}
+    <label for="media-evenement">Événement</label>
+    <select id="media-evenement" name="evenement" class="{% if evenement_actif %}is-active{% endif %}"
+            onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();"
+            aria-label="Filtrer par événement">
+      <option value="">Tous les événements</option>
+      {% for ev in evenements_filtre %}
+      <option value="{{ ev.pk }}" {% if evenement_actif and evenement_actif.pk == ev.pk %}selected{% endif %}>
+        {{ ev.nom }}{% if ev.date %} — {{ ev.date|date:"d/m/Y" }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <form class="media-event-filter media-type-filter" method="get" action="{{ form_action }}">
+    <input type="hidden" name="tri" value="{{ tri }}">
+    {% if evenement_actif %}<input type="hidden" name="evenement" value="{{ evenement_actif.pk }}">{% endif %}
+    <label for="media-type">Type</label>
+    <select id="media-type" name="type" class="{% if type_filtre %}is-active{% endif %}"
+            onchange="if(!this.value){this.removeAttribute('name');} this.form.submit();"
+            aria-label="Filtrer par type de média">
+      <option value="">Tous les types</option>
+      <option value="photo" {% if type_filtre == 'photo' %}selected{% endif %}>Photos</option>
+      <option value="video" {% if type_filtre == 'video' %}selected{% endif %}>Vidéos</option>
+      <option value="audio" {% if type_filtre == 'audio' %}selected{% endif %}>Audio</option>
+      <option value="pdf" {% if type_filtre == 'pdf' %}selected{% endif %}>Documents</option>
+    </select>
+  </form>
+
+  {% if show_diaporama %}
+  <button type="button" onclick="openLightbox('{% if tri == 'votes' %}favoris{% else %}toutes{% endif %}', 0)">▶ Diaporama</button>
+  {% endif %}
+</nav>
