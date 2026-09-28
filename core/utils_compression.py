@@ -8,15 +8,17 @@ def compresser_media(media_item):
 
     Ne bascule pas un média déjà classé (publie / refuse) vers en_cours :
     sinon un reload juste après retouche le fait disparaître de son onglet.
+
+    Retourne ``"ok"``, ``"error"`` ou ``"skipped"`` (pas de source / type inconnu).
     """
     src_path = media_item.source_compression()
     if not src_path or not src_path.exists():
-        return
+        return "skipped"
 
     src = str(src_path)
     dest = media_item.compressed_sidecar_dest()
     if dest is None:
-        return
+        return "skipped"
     dest.parent.mkdir(parents=True, exist_ok=True)
     nom_base = dest.stem
 
@@ -104,17 +106,19 @@ def compresser_media(media_item):
                 if media_item.statut != new_statut:
                     media_item.statut = new_statut
                     media_item.save(update_fields=["statut"])
-                return
+                return "ok"
         else:
-            return
+            return "skipped"
 
         new_statut = _restore_statut(True)
         if media_item.statut != new_statut:
             media_item.statut = new_statut
             media_item.save(update_fields=["statut"])
+        return "ok"
 
     except Exception as e:
         new_statut = _restore_statut(False)
         media_item.statut = new_statut
         media_item.note_admin = f"Erreur compression : {e}"
         media_item.save(update_fields=["statut", "note_admin"])
+        return "error"

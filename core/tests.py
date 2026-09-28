@@ -9,7 +9,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from core.media_pending import invalidate_pending_media_count
 from core.models import EvenementMedia, MediaItem
-from core.views import _notifier_admin
+from core.views import (
+    _compress_then_notify_staff,
+    _notifier_admin,
+)
 from users.models import User, UserNotification
 
 
@@ -83,6 +86,149 @@ class PendingMediaStaffTests(TestCase):
         )
         done = self.client.get(reverse("admin_hub"))
         self.assertNotContains(done, 'aria-label="Médias,')
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    EMAIL_SENDING_ENABLED=True,
+    VAPID_PUBLIC_KEY="",
+    VAPID_PRIVATE_KEY="",
+)
+class VideoCompressionNotifyTests(TestCase):
+    """Alerte staff « à valider » seulement après compression + fichier accessible."""
+
+    def setUp(self):
+        import tempfile
+
+        invalidate_pending_media_count()
+        self._tmp = tempfile.TemporaryDirectory()
+        self._media_override = override_settings(MEDIA_ROOT=self._tmp.name)
+        self._media_override.enable()
+        self.addCleanup(self._media_override.disable)
+        self.addCleanup(self._tmp.cleanup)
+
+        self.staff = User.objects.create_user(
+            "staff_vid", "staff-vid@example.com", "x", is_staff=True
+        )
+        self.submitter = User.objects.create_user(
+            "staff_submit", "staff-submit@example.com", "x", is_staff=True
+        )
+
+    def _video_with_source(self, **kwargs):
+        from django.conf import settings
+
+        data = {
+            "type": "video",
+            "titre": "Concert CYEL",
+            "statut": "en_attente",
+            "publie": False,
+            "soumis_par_nom": "Thierry Bussy",
+        }
+        data.update(kwargs)
+        media = MediaItem.objects.create(**data)
+        rel = f"medias/2026/09/clip-{media.pk}.mp4"
+        src = Path(settings.MEDIA_ROOT) / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_bytes(b"fake-video-bytes")
+        media.fichier.name = rel
+        media.save(update_fields=["fichier"])
+        return media
+
+    def _notify_titles(self):
+        return list(
+            UserNotification.objects.filter(related_type="media").values_list(
+                "title", flat=True
+            )
+        )
+
+    def test_no_validate_notify_while_compression_in_progress(self):
+        from unittest.mock import patch
+
+        media = self._video_with_source()
+
+        def fake_compress(item):
+            item.statut = "en_cours"
+            item.save(update_fields=["statut"])
+            self.assertFalse(
+                UserNotification.objects.filter(related_type="media").exists(),
+                "Aucune alerte pendant en_cours",
+            )
+            return "ok"
+
+        with patch("core.views.compresser_media", side_effect=fake_compress):
+            _compress_then_notify_staff(media.pk, exclude_user_id=self.submitter.pk)
+
+        # fake_compress laisse en_cours → pas d’alerte « à valider »
+        self.assertEqual(self._notify_titles(), [])
+
+    def test_validate_notify_after_accessible_compressed_file(self):
+        from unittest.mock import patch
+
+        media = self._video_with_source()
+
+        def fake_compress(item):
+            dest = item.compressed_sidecar_dest()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"compressed-mp4")
+            item.statut = "en_attente"
+            item.save(update_fields=["statut"])
+            self.assertFalse(
+                UserNotification.objects.filter(related_type="media").exists(),
+                "Pas de notif avant la fin de compression",
+            )
+            return "ok"
+
+        with patch("core.views.compresser_media", side_effect=fake_compress):
+            _compress_then_notify_staff(media.pk, exclude_user_id=self.submitter.pk)
+
+        media.refresh_from_db()
+        self.assertEqual(media.statut, "en_attente")
+        compressed = media.chemin_compresse()
+        self.assertIsNotNone(compressed)
+        self.assertTrue(compressed.exists())
+        titles = self._notify_titles()
+        self.assertEqual(len(titles), 1)  # staff only (submitter excluded)
+        self.assertIn("à valider", titles[0])
+        notif = UserNotification.objects.get(user=self.staff, related_type="media")
+        self.assertEqual(notif.url, "/admin-medias/")
+        self.assertFalse(
+            UserNotification.objects.filter(user=self.submitter, related_type="media").exists()
+        )
+
+    def test_no_validate_notify_on_compression_failure(self):
+        from unittest.mock import patch
+
+        media = self._video_with_source()
+
+        def fake_compress(item):
+            item.statut = "en_attente"
+            item.note_admin = "Erreur compression : ffmpeg boom"
+            item.save(update_fields=["statut", "note_admin"])
+            return "error"
+
+        with patch("core.views.compresser_media", side_effect=fake_compress):
+            _compress_then_notify_staff(media.pk, exclude_user_id=self.submitter.pk)
+
+        titles = self._notify_titles()
+        self.assertEqual(len(titles), 1)
+        self.assertIn("Compression média échouée", titles[0])
+        self.assertNotIn("à valider", titles[0])
+
+    def test_no_notify_when_recompressing_published_video(self):
+        from unittest.mock import patch
+
+        media = self._video_with_source(statut="publie", publie=True)
+
+        def fake_compress(item):
+            # Comme compresser_media réel : ne pas rebasculer un publié.
+            item.statut = "publie"
+            item.save(update_fields=["statut"])
+            return "ok"
+
+        with patch("core.views.compresser_media", side_effect=fake_compress):
+            _compress_then_notify_staff(media.pk)
+
+        self.assertEqual(self._notify_titles(), [])
 
 
 class MediasEventFilterTests(TestCase):

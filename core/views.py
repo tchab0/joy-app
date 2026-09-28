@@ -59,15 +59,6 @@ def _attach_fichier_edite(media: MediaItem, uploaded) -> None:
     t.start()
 
 
-PAGE_LABELS = {
-    (7,  "core",   "externallink"): "Liens externes",
-    (8,  "core",   "mediaitem"):    "Médias",
-    (9,  "events", "event"):        "Concerts",
-    (10, "events", "eventtype"):    "Types d'événement",
-    (11, "events", "venue"):        "Salles / Lieux",
-}
-
-
 def _public_events_qs():
     return Event.objects.filter(public=True).select_related(
         "venue", "type", "parent", "parent__venue"
@@ -413,10 +404,23 @@ def proposer_media(request):
                 media.publie = False
                 media.statut = "en_attente"
                 media.save()
+                exclude_id = (
+                    request.user.pk
+                    if getattr(request.user, "is_authenticated", False)
+                    else None
+                )
                 if media.fichier:
-                    t = threading.Thread(target=compresser_media, args=(media,), daemon=True)
+                    # Vidéo / audio / PDF : notifier seulement quand le fichier
+                    # servi est prêt (après compression), pas pendant en_cours.
+                    t = threading.Thread(
+                        target=_compress_then_notify_staff,
+                        args=(media.pk, exclude_id),
+                        daemon=True,
+                    )
                     t.start()
-                _notifier_admin(media, exclude_user=request.user)
+                else:
+                    # Lien externe (YouTube…) : accessible tout de suite.
+                    _notifier_admin(media, exclude_user=request.user)
                 return render(request, "core/proposer_media_succes.html", {
                     "evenement": evenement, "nb": 1
                 })
@@ -447,11 +451,49 @@ def _proposer_media_context(form, planning_event, prefilled_media_event):
     }
 
 
-def _notifier_admin(media, nb=1, exclude_user=None):
-    """Alerte tout le staff (inbox, push ou e-mail) qu’un média attend validation."""
-    from core.media_pending import invalidate_pending_media_count
+def _media_fichier_accessible(media) -> bool:
+    """Vrai si le fichier servi (compressé ou original) existe sur disque."""
+    if media.chemin_compresse():
+        return True
+    src = media.source_compression()
+    return bool(src and src.exists())
 
-    invalidate_pending_media_count()
+
+def _compress_then_notify_staff(media_id, exclude_user_id=None):
+    """
+    Compresse puis alerte le staff seulement si le média est prêt à valider.
+
+    Appelé uniquement depuis une nouvelle soumission (fichier vidéo/audio/pdf).
+    Ne renvoie pas d’alerte « à valider » pour un média déjà publié/refusé,
+    pendant en_cours, ni si la compression a échoué.
+    """
+    try:
+        media = MediaItem.objects.get(pk=media_id)
+    except MediaItem.DoesNotExist:
+        return
+
+    result = compresser_media(media)
+    media.refresh_from_db()
+
+    # Recompression d’un média déjà classé : pas d’alerte soumission.
+    if media.statut in ("publie", "refuse") or media.publie:
+        return
+    if media.statut == "en_cours":
+        return
+
+    exclude_user = None
+    if exclude_user_id:
+        exclude_user = User.objects.filter(pk=exclude_user_id).first()
+
+    if result == "ok" and media.statut == "en_attente" and _media_fichier_accessible(media):
+        _notifier_admin(media, exclude_user=exclude_user)
+        return
+
+    if result == "error":
+        _notifier_compression_echouee(media, exclude_user=exclude_user)
+
+
+def _staff_recipients(exclude_user=None):
     staff = User.objects.filter(is_active=True, is_staff=True)
     if (
         exclude_user is not None
@@ -459,17 +501,27 @@ def _notifier_admin(media, nb=1, exclude_user=None):
         and getattr(exclude_user, "pk", None)
     ):
         staff = staff.exclude(pk=exclude_user.pk)
+    return staff
+
+
+def _media_notify_body(media) -> str:
     evenement = media.evenement or media.titre or "?"
     qui = media.soumis_par_nom or "Anonyme"
     if media.soumis_par_email:
         qui = f"{qui} <{media.soumis_par_email}>"
-    title = f"JOY — {nb} média(s) à valider"
-    body = f"{media.get_type_display()} · {evenement} · {qui}"
+    return f"{media.get_type_display()} · {evenement} · {qui}"
+
+
+def _notifier_admin(media, nb=1, exclude_user=None):
+    """Alerte tout le staff (inbox, push ou e-mail) qu’un média attend validation."""
+    from core.media_pending import invalidate_pending_media_count
+
+    invalidate_pending_media_count()
     try:
         notify_users(
-            staff,
-            title=title,
-            body=body,
+            _staff_recipients(exclude_user),
+            title=f"JOY — {nb} média(s) à valider",
+            body=_media_notify_body(media),
             url="/admin-medias/",
             related_type="media",
             related_id=media.pk,
@@ -477,6 +529,27 @@ def _notifier_admin(media, nb=1, exclude_user=None):
         )
     except Exception:
         logger.exception("Erreur notification staff média id=%s", getattr(media, "pk", None))
+
+
+def _notifier_compression_echouee(media, exclude_user=None):
+    """Alerte courte : dépôt conservé mais compression KO — pas « à valider »."""
+    from core.media_pending import invalidate_pending_media_count
+
+    invalidate_pending_media_count()
+    try:
+        notify_users(
+            _staff_recipients(exclude_user),
+            title="JOY — Compression média échouée",
+            body=_media_notify_body(media),
+            url="/admin-medias/",
+            related_type="media",
+            related_id=media.pk,
+            notify_type="media",
+        )
+    except Exception:
+        logger.exception(
+            "Erreur notification compression échouée id=%s", getattr(media, "pk", None)
+        )
 
 
 def _contact_mode(request) -> str:
@@ -765,25 +838,32 @@ def media_vote(request, pk):
     return JsonResponse({"voted": voted, "nb": nb})
 
 
+def _evenements_rattachement():
+    """Événements galerie, une ligne chacun (pas les médias ni les autres modèles)."""
+    ct = ContentType.objects.get_for_model(EvenementMedia)
+    return [
+        {"ct_id": ct.pk, "obj_id": ev.pk, "nom": str(ev)}
+        for ev in EvenementMedia.objects.order_by(
+            F("date").desc(nulls_last=True), "nom", "pk"
+        )
+    ]
+
+
 @staff_member_required
 def admin_medias(request):
     statut = request.GET.get("statut", "en_attente")
-    medias_qs = MediaItem.objects.filter(statut=statut).annotate(nb_votes=Count("votes")).order_by("-soumis_le")
-
-    pages_disponibles = []
-    for ct in ContentType.objects.filter(app_label__in=["core", "events", "planning"]).order_by("app_label", "model"):
-        label = PAGE_LABELS.get((ct.pk, ct.app_label, ct.model), f"{ct.app_label} › {ct.model}")
-        try:
-            for obj in ct.model_class().objects.all()[:50]:
-                pages_disponibles.append({"ct_id": ct.pk, "obj_id": obj.pk, "label": label, "nom": str(obj)})
-        except Exception:
-            pass
+    medias_qs = (
+        MediaItem.objects.filter(statut=statut)
+        .select_related("evenement", "content_type")
+        .annotate(nb_votes=Count("votes"))
+        .order_by("-soumis_le")
+    )
 
     return render(request, "core/admin_medias.html", {
         "medias": medias_qs,
         "statut_actif": statut,
         "statut_choices": MediaItem.STATUT_CHOICES,
-        "pages_disponibles": pages_disponibles,
+        "pages_disponibles": _evenements_rattachement(),
     })
 
 
@@ -807,12 +887,14 @@ def admin_media_action(request, pk):
 
         invalidate_pending_media_count()
     if action == "rattacher":
-        ct_id = request.POST.get("content_type_id")
         obj_id = request.POST.get("object_id")
-        if ct_id and obj_id:
-            media.content_type_id = ct_id
-            media.object_id = obj_id
-            media.save(update_fields=["content_type_id", "object_id"])
+        ev = EvenementMedia.objects.filter(pk=obj_id).first() if obj_id else None
+        if ev is not None:
+            ct = ContentType.objects.get_for_model(EvenementMedia)
+            media.evenement = ev
+            media.content_type = ct
+            media.object_id = ev.pk
+            media.save(update_fields=["evenement", "content_type", "object_id"])
     return JsonResponse({"ok": True, "statut": media.statut})
 
 
