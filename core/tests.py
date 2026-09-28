@@ -304,6 +304,22 @@ class MediasEventFilterTests(TestCase):
         self.assertEqual(len(r.context["photos_votes"]), 3)
         self.assertNotContains(r, 'id="media-evenement"')
 
+    def test_file_video_renders_player(self):
+        MediaItem.objects.create(
+            type="video",
+            titre="Concert CYEL",
+            publie=True,
+            statut="publie",
+            fichier=SimpleUploadedFile("clip.mp4", b"fake-mp4", content_type="video/mp4"),
+        )
+        r = self.client.get(reverse("medias"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "<video")
+        self.assertContains(r, "Concert CYEL")
+        self.assertContains(r, 'preload="metadata"')
+        self.assertContains(r, ".mp4")
+        self.assertNotContains(r, '<iframe src=""')
+
 
 class CompressedSidecarUniquenessTests(TestCase):
     """Deux photos éditées « photo-editee.jpg » ne doivent pas partager le WebP."""

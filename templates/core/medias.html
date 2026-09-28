@@ -65,7 +65,8 @@
 .media-event-filter select:focus { outline:none; border-color:var(--accent); }
 .media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.75rem; }
 .video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; margin-top:1rem; }
-.video-grid iframe { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); }
+.video-grid iframe,
+.video-grid video { width:100%; aspect-ratio:16/9; border:none; border-radius:var(--r); background:#111; display:block; }
 .media-yt {
   position:relative; width:100%; aspect-ratio:16/9; border-radius:var(--r);
   overflow:hidden; background:#111; color:#fff;
@@ -180,7 +181,16 @@
         </div>
         {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
       </div>
-      {% else %}
+      {% elif v.url_affichage %}
+      <div>
+        <video controls playsinline preload="metadata"
+               {% if v.miniature %}poster="{{ v.url_miniature }}"{% endif %}
+               src="{{ v.url_affichage }}">
+          <a href="{{ v.url_affichage }}">{{ v.titre|default:"Vidéo" }}</a>
+        </video>
+        {% if v.titre %}<div class="media-yt__title">{{ v.titre }}</div>{% endif %}
+      </div>
+      {% elif v.url_externe %}
       <iframe src="{{ v.url_externe }}" allowfullscreen loading="lazy" title="{{ v.titre }}"></iframe>
       {% endif %}
       {% endfor %}
