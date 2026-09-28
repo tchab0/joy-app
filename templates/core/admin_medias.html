@@ -80,7 +80,11 @@
         {% if m.note_admin %}
         <div class="media-meta" style="color:var(--accent)">Note : {{ m.note_admin }}</div>
         {% endif %}
-        {% if m.page_liee %}
+        {% if m.evenement %}
+        <div class="media-meta" style="margin-top:.4rem">
+          Rattaché à : <strong>{{ m.evenement }}</strong>
+        </div>
+        {% elif m.page_liee %}
         <div class="media-meta" style="margin-top:.4rem">
           Rattaché à : <strong>{{ m.content_type.name|capfirst }} › {{ m.page_liee }}</strong>
         </div>
@@ -93,13 +97,13 @@
         </div>
 
         <div class="rattach-form" x-show="open_rattach" x-cloak>
-          <label style="font-weight:600">Rattacher à une page</label>
+          <label style="font-weight:600">Rattacher à un événement</label>
           <select x-ref="page_{{ m.pk }}">
             <option value="">— choisir —</option>
             {% for p in pages_disponibles %}
             <option value="{{ p.ct_id }}|{{ p.obj_id }}"
-              {% if m.content_type_id == p.ct_id and m.object_id == p.obj_id %}selected{% endif %}>
-              {{ p.label }} › {{ p.nom }}
+              {% if m.evenement_id == p.obj_id %}selected{% endif %}>
+              {{ p.nom }}
             </option>
             {% endfor %}
           </select>
