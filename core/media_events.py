@@ -10,12 +10,12 @@ from django.utils import timezone
 from core.models import EvenementMedia
 
 
-def ensure_evenement_media_for_event(event) -> EvenementMedia:
+def find_evenement_media_for_event(event) -> EvenementMedia | None:
     """
-    Retrouve ou crée l’EvenementMedia correspondant à un Event planning.
+    Retrouve l’EvenementMedia d’un Event, sans le créer.
 
     Appariement : même nom + même date locale ; sinon même date avec un nom
-    qui commence par le titre du concert ; sinon création.
+    qui commence par le titre du concert.
     """
     local_day = timezone.localtime(event.date_debut).date()
     existing = (
@@ -31,8 +31,15 @@ def ensure_evenement_media_for_event(event) -> EvenementMedia:
             .order_by("pk")
             .first()
         )
+    return existing
+
+
+def ensure_evenement_media_for_event(event) -> EvenementMedia:
+    """Retrouve ou crée l’EvenementMedia correspondant à un Event planning."""
+    existing = find_evenement_media_for_event(event)
     if existing:
         return existing
+    local_day = timezone.localtime(event.date_debut).date()
     lieu = ""
     venue = getattr(event, "venue", None)
     if venue is not None:
@@ -71,6 +78,44 @@ def default_concert_media_event():
     if event is None:
         return None, None
     return event, ensure_evenement_media_for_event(event)
+
+
+def published_media_for_past_event(event) -> dict | None:
+    """
+    Médias publiés rattachés à un concert déjà commencé.
+
+    Retourne None pour un concert à venir, ou s’il n’a aucun média publié.
+    """
+    from core.models import MediaItem
+
+    if event.date_debut >= timezone.now():
+        return None
+    evenement = find_evenement_media_for_event(event)
+    if evenement is None:
+        return None
+    items = list(
+        MediaItem.objects.filter(evenement=evenement, publie=True).order_by(
+            "ordre", "id"
+        )
+    )
+    groups = {"photos": [], "videos": [], "audios": [], "pdfs": []}
+    buckets = {
+        "photo": groups["photos"],
+        "video": groups["videos"],
+        "audio": groups["audios"],
+        "pdf": groups["pdfs"],
+    }
+    for item in items:
+        bucket = buckets.get(item.type)
+        if bucket is None:
+            continue
+        item.display_url = item.url_affichage
+        item.thumb_url = item.url_miniature
+        bucket.append(item)
+    if not any(groups.values()):
+        return None
+    groups["evenement"] = evenement
+    return groups
 
 
 def media_submit_url_for_event(event) -> str:

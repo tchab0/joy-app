@@ -15,6 +15,7 @@ from events.models import Event, Venue, EventType
 from events.forms import EventForm, VenueForm
 from events.weather import attach_weather
 from .cache_utils import cache_page_anonymous
+from .media_events import published_media_for_past_event
 from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock, StaffMailing
 from .forms import MediaSoumissionForm, ContactForm, PrestationForm, StaffMailingForm
 from .forms import EXTENSIONS_AUTORISEES
@@ -187,6 +188,7 @@ def concert_detail(request, slug):
         "core/concert_detail.html",
         {
             "event": event,
+            "concert_medias": published_media_for_past_event(event),
             "meta_description": desc[:160],
             "json_ld": dumps_jsonld(music_group_jsonld(), music_event_jsonld(event)),
         },
@@ -882,6 +884,7 @@ def admin_media_action(request, pk):
         media.statut = "refuse"
         media.note_admin = request.POST.get("note", "")
         media.save(update_fields=["publie", "statut", "note_admin"])
+    changed = action in ("publier", "refuser")
     if action in ("publier", "refuser"):
         from core.media_pending import invalidate_pending_media_count
 
@@ -895,6 +898,11 @@ def admin_media_action(request, pk):
             media.content_type = ct
             media.object_id = ev.pk
             media.save(update_fields=["evenement", "content_type", "object_id"])
+            changed = True
+    if changed:
+        from core.page_cms import bump_concerts_cache
+
+        bump_concerts_cache()
     return JsonResponse({"ok": True, "statut": media.statut})
 
 

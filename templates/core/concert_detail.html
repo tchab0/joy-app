@@ -121,6 +121,9 @@
     {% if event.venue.latitude %}
     {% include "includes/_event_map.html" with lat=event.venue.latitude|stringformat:"f" lng=event.venue.longitude|stringformat:"f" map_id=event.pk %}
     {% endif %}
+    {% if concert_medias %}
+    {% include "includes/_concert_medias.html" %}
+    {% endif %}
   </div>
 </section>
 {% endblock %}

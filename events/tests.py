@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
 
+from core.models import EvenementMedia, MediaItem
 from events.models import Event, EventType, Organisme, Venue
 from events.organisme import organisme_url_for_name, remember_organisme
 
@@ -96,3 +98,89 @@ class OrganismePublicDisplayTests(TestCase):
             Organisme.objects.get(nom="Nouvel organisme").url_site,
             "https://nouvel-org.test",
         )
+
+
+class PastConcertMediaTests(TestCase):
+    def setUp(self):
+        self.venue = Venue.objects.create(
+            nom="Le Stella",
+            ville="Les Sables-d'Olonne",
+            latitude="46.503718",
+            longitude="-1.796830",
+        )
+        self.event_type = EventType.objects.create(nom="Concert")
+        self.past = Event.objects.create(
+            titre="Groove Circle",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=8),
+            public=True,
+        )
+        self.media_event = EvenementMedia.objects.create(
+            nom="Groove Circle - Les Sables-d'Olonne",
+            date=timezone.localtime(self.past.date_debut).date(),
+        )
+
+    def _photo(self, *, titre="Photo du concert", publie=True, evenement=None):
+        return MediaItem.objects.create(
+            type="photo",
+            titre=titre,
+            fichier=SimpleUploadedFile("photo.jpg", b"\xff\xd8\xff\xd9", content_type="image/jpeg"),
+            evenement=evenement if evenement is not None else self.media_event,
+            publie=publie,
+            statut="publie" if publie else "en_attente",
+        )
+
+    def test_past_concert_shows_own_media_under_map(self):
+        self._photo()
+        r = self.client.get(reverse("concert_detail", args=[self.past.slug]))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertLess(html.find('id="event-map-'), html.find('class="event-medias"'))
+        self.assertContains(r, "Photo du concert")
+        self.assertContains(r, "Voir dans la galerie")
+        self.assertContains(r, f"evenement={self.media_event.pk}")
+
+    def test_past_concert_without_media_hides_block(self):
+        r = self.client.get(reverse("concert_detail", args=[self.past.slug]))
+        self.assertNotContains(r, "event-medias")
+
+    def test_unpublished_media_stays_hidden(self):
+        self._photo(publie=False, titre="Brouillon")
+        r = self.client.get(reverse("concert_detail", args=[self.past.slug]))
+        self.assertNotContains(r, "event-medias")
+        self.assertNotContains(r, "Brouillon")
+
+    def test_upcoming_concert_hides_media(self):
+        upcoming = Event.objects.create(
+            titre="Groove Circle",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=10),
+            public=True,
+        )
+        EvenementMedia.objects.create(
+            nom="Groove Circle",
+            date=timezone.localtime(upcoming.date_debut).date(),
+        )
+        self._photo(titre="Trop tôt", evenement=EvenementMedia.objects.get(nom="Groove Circle"))
+        r = self.client.get(reverse("concert_detail", args=[upcoming.slug]))
+        self.assertNotContains(r, "event-medias")
+        self.assertNotContains(r, "Trop tôt")
+
+    def test_lookup_does_not_create_media_event(self):
+        from core.media_events import find_evenement_media_for_event
+
+        other = Event.objects.create(
+            titre="Café de La Loüv",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=timezone.now() - timedelta(days=30),
+            public=True,
+        )
+        before = EvenementMedia.objects.count()
+        self.assertIsNone(find_evenement_media_for_event(other))
+        self.assertEqual(EvenementMedia.objects.count(), before)
+        r = self.client.get(reverse("concert_detail", args=[other.slug]))
+        self.assertNotContains(r, "event-medias")
+        self.assertEqual(EvenementMedia.objects.count(), before)
