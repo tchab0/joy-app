@@ -37,6 +37,7 @@ from chat.services import (
     post_message,
     remove_private_member,
     remove_thematic_member,
+    rename_room,
     room_mention_members,
     serialize_mention_members,
     serialize_message,
@@ -44,6 +45,7 @@ from chat.services import (
     toggle_reaction,
     unread_messages_filter,
     user_can_access_room,
+    user_can_rename_room,
 )
 from users.forms import NotificationPrefsForm
 from users.roles import user_can_access_planning
@@ -870,6 +872,31 @@ def api_edit(request: HttpRequest, room_id: int) -> JsonResponse:
     return JsonResponse(
         {"ok": True, "message": serialize_message(message, viewer=request.user)}
     )
+
+
+@login_required
+@require_POST
+def api_rename(request: HttpRequest, room_id: int) -> JsonResponse:
+    """Renommer un salon privé (membre) ou thématique (staff)."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+    if not user_can_rename_room(request.user, room):
+        return JsonResponse(
+            {"ok": False, "error": "Vous ne pouvez pas renommer ce salon."},
+            status=403,
+        )
+
+    title = request.POST.get("title", "")
+    try:
+        room = rename_room(room, title, actor=request.user)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "title": room.title})
 
 
 @login_required

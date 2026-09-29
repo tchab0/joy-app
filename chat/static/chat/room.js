@@ -34,6 +34,9 @@ function chatRoom(cfg) {
     apiReactUrl: cfg.apiReactUrl || '',
     apiEditUrl: cfg.apiEditUrl || '',
     apiDeleteUrl: cfg.apiDeleteUrl || '',
+    apiRenameUrl: cfg.apiRenameUrl || '',
+    canRenameTitle: !!cfg.canRenameTitle,
+    roomTitle: cfg.roomTitle || '',
     apiMembersUrl: cfg.apiMembersUrl || '',
     apiReadUrl: cfg.apiReadUrl || '',
     apiArchiveUrl: cfg.apiArchiveUrl || '',
@@ -47,6 +50,9 @@ function chatRoom(cfg) {
     threadsMode: !!cfg.threadsMode,
     activeThreadEventId: cfg.activeThreadEventId != null ? cfg.activeThreadEventId : null,
     roomId: cfg.roomId || null,
+    titleEditing: false,
+    titleBusy: false,
+    _titleFocusValue: '',
     setlistTipVisible: false,
     membersLoaded: false,
     body: '',
@@ -1108,6 +1114,84 @@ function chatRoom(cfg) {
         this.autoGrow();
         this.onFocus();
       });
+    },
+    _setTitleEl(text) {
+      const el = this.$refs.titleEl;
+      if (el) el.textContent = text || '';
+    },
+    onTitleFocus() {
+      if (!this.canRenameTitle || this.titleBusy) return;
+      this.titleEditing = true;
+      this._titleFocusValue = this.roomTitle || '';
+      const el = this.$refs.titleEl;
+      if (!el) return;
+      // Resynchronise depuis l’état JS (évite un h1 vidé par une sync Alpine).
+      if (!(el.textContent || '').trim() && this.roomTitle) {
+        el.textContent = this.roomTitle;
+      }
+      this.$nextTick(() => {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        } catch (e) { /* ignore */ }
+      });
+    },
+    cancelTitleEdit() {
+      this.titleEditing = false;
+      this._setTitleEl(this.roomTitle || '');
+      const el = this.$refs.titleEl;
+      if (el && typeof el.blur === 'function') el.blur();
+    },
+    async onTitleBlur() {
+      if (!this.canRenameTitle) return;
+      const el = this.$refs.titleEl;
+      const raw = el ? String(el.textContent || '') : '';
+      const next = raw.replace(/\s+/g, ' ').trim();
+      this.titleEditing = false;
+      if (!next) {
+        this._setTitleEl(this.roomTitle || '');
+        return;
+      }
+      if (next === (this.roomTitle || '') || !this.apiRenameUrl) {
+        this._setTitleEl(this.roomTitle || next);
+        return;
+      }
+      if (this.titleBusy) return;
+      this.titleBusy = true;
+      const previous = this.roomTitle || '';
+      this.roomTitle = next;
+      this._setTitleEl(next);
+      const fd = new FormData();
+      fd.append('title', next);
+      try {
+        const r = await fetch(this.apiRenameUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          body: fd,
+        });
+        const data = await r.json();
+        if (!data.ok) {
+          this.roomTitle = previous;
+          this._setTitleEl(previous);
+          alert(data.error || 'Erreur');
+        } else {
+          this.roomTitle = data.title || next;
+          this._setTitleEl(this.roomTitle);
+          if (typeof document !== 'undefined' && document.title) {
+            document.title = this.roomTitle + ' — Chat JOY';
+          }
+        }
+      } catch (e) {
+        this.roomTitle = previous;
+        this._setTitleEl(previous);
+        alert('Échec du renommage');
+      }
+      this.titleBusy = false;
     },
     startEdit(msg) {
       if (!msg || msg.deleted || msg.author_id !== this.currentUserId || msg.highlight) return;

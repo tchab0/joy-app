@@ -682,6 +682,37 @@ def is_private_adhoc_room(room: ChatRoom) -> bool:
     return room.kind == ChatRoom.Kind.EVENT and not room.event_id
 
 
+def user_can_rename_room(user, room: ChatRoom) -> bool:
+    """
+    Titre modifiable uniquement pour les salons créés à la main :
+    privé (membre actif) ou thématique (staff).
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if not room.is_active:
+        return False
+    if is_private_adhoc_room(room):
+        return active_membership(room, user) is not None
+    if is_thematic_room(room):
+        return bool(user.is_staff or user.is_superuser)
+    return False
+
+
+def rename_room(room: ChatRoom, title: str, *, actor) -> ChatRoom:
+    """Met à jour le titre d’un salon renommable. Lève ValueError si refusé."""
+    if not user_can_rename_room(actor, room):
+        raise ValueError("Vous ne pouvez pas renommer ce salon.")
+    cleaned = (title or "").strip()
+    if not cleaned:
+        raise ValueError("Le titre du salon est obligatoire.")
+    if len(cleaned) > 200:
+        cleaned = cleaned[:200]
+    if room.title != cleaned:
+        room.title = cleaned
+        room.save(update_fields=["title"])
+    return room
+
+
 @transaction.atomic
 def create_private_room(
     title: str,
@@ -2616,6 +2647,12 @@ def build_room_embed_context(
     api_react_url = reverse("chat:api_react", kwargs={"room_id": room.pk})
     api_edit_url = reverse("chat:api_edit", kwargs={"room_id": room.pk})
     api_delete_url = reverse("chat:api_delete", kwargs={"room_id": room.pk})
+    can_rename_title = user_can_rename_room(user, room) and active_thread is None
+    api_rename_url = (
+        reverse("chat:api_rename", kwargs={"room_id": room.pk})
+        if can_rename_title
+        else ""
+    )
     # ?v=3 : Staff = staff only (no full orchestra in @ mentions)
     api_members_url = (
         reverse("chat:api_members", kwargs={"room_id": room.pk}) + "?v=4"
@@ -2643,6 +2680,8 @@ def build_room_embed_context(
         "api_react_url": api_react_url,
         "api_edit_url": api_edit_url,
         "api_delete_url": api_delete_url,
+        "api_rename_url": api_rename_url,
+        "can_rename_title": can_rename_title,
         "api_members_url": api_members_url,
         "api_read_url": reverse("chat:api_read", kwargs={"room_id": room.pk}),
         "api_archive_url": api_archive_url,

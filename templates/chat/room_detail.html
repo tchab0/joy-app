@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ room.title }} — Chat JOY{% endblock %}
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=29"></script>
+<script defer src="{% static 'chat/room.js' %}?v=32"></script>
 {% endblock %}
 {% block extra_css %}
 {% include "planning/_styles.html" %}
@@ -30,6 +30,9 @@
        apiReactUrl: '{{ api_react_url|escapejs }}',
        apiEditUrl: '{{ api_edit_url|escapejs }}',
        apiDeleteUrl: '{{ api_delete_url|escapejs }}',
+       apiRenameUrl: '{{ api_rename_url|default:""|escapejs }}',
+       canRenameTitle: {{ can_rename_title|default:False|yesno:'true,false' }},
+       roomTitle: '{{ room.title|escapejs }}',
        apiMembersUrl: '{{ api_members_url|escapejs }}',
        apiReadUrl: '{{ api_read_url|escapejs }}',
        apiArchiveUrl: '{{ api_archive_url|default:""|escapejs }}',

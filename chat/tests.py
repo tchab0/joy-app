@@ -38,6 +38,7 @@ from chat.services import (
     post_message,
     remove_private_member,
     remove_thematic_member,
+    rename_room,
     replies_prefetch,
     resolve_mentioned_users,
     room_mention_members,
@@ -49,6 +50,7 @@ from chat.services import (
     toggle_reaction,
     unread_count,
     user_can_access_room,
+    user_can_rename_room,
     REHEARSAL_SETLIST_TIP_PREFIX,
     REHEARSAL_THREAD_OPENER_PREFIX,
 )
@@ -1969,6 +1971,39 @@ class ThematicRoomTests(TestCase):
             ).exists()
         )
 
+    def test_staff_can_rename_thematic_room(self):
+        room = create_thematic_room(
+            "Titre initial",
+            musician_users=[self.musician],
+            created_by=self.staff,
+        )
+        self.assertTrue(user_can_rename_room(self.staff, room))
+        self.assertFalse(user_can_rename_room(self.musician, room))
+
+        renamed = rename_room(room, "  Titre staff  ", actor=self.staff)
+        self.assertEqual(renamed.title, "Titre staff")
+
+        with self.assertRaises(ValueError):
+            rename_room(room, "Interdit", actor=self.musician)
+
+        client = Client()
+        client.login(username="them_staff", password="pass")
+        r = client.post(
+            reverse("chat:api_rename", args=[room.pk]),
+            {"title": "Via API"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["title"], "Via API")
+
+        client.login(username="them_musi", password="pass")
+        r = client.post(
+            reverse("chat:api_rename", args=[room.pk]),
+            {"title": "Pas le droit"},
+        )
+        self.assertEqual(r.status_code, 403)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Via API")
+
 
 class PrivateRoomTests(TestCase):
     @classmethod
@@ -2164,3 +2199,42 @@ class PrivateRoomTests(TestCase):
         self.assertFalse(
             ChatMembership.objects.filter(room=room, user=self.outsider).exists()
         )
+
+    def test_member_can_rename_via_api(self):
+        room = create_private_room(
+            "Ancien titre",
+            invited_users=[self.guest],
+            created_by=self.creator,
+        )
+        self.assertTrue(user_can_rename_room(self.creator, room))
+        self.assertTrue(user_can_rename_room(self.guest, room))
+        self.assertFalse(user_can_rename_room(self.outsider, room))
+        self.assertFalse(user_can_rename_room(self.staff, room))
+
+        client = Client()
+        client.login(username="priv_guest", password="pass")
+        r = client.get(reverse("chat:room", args=[room.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "chat-room__title--editable")
+        self.assertContains(r, 'contenteditable="true"')
+        self.assertContains(r, "onTitleBlur()")
+
+        r = client.post(
+            reverse("chat:api_rename", args=[room.pk]),
+            {"title": "  Nouveau titre  "},
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["title"], "Nouveau titre")
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Nouveau titre")
+
+        client.login(username="priv_out", password="pass")
+        r = client.post(
+            reverse("chat:api_rename", args=[room.pk]),
+            {"title": "Hack"},
+        )
+        self.assertEqual(r.status_code, 403)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Nouveau titre")

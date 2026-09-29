@@ -5,7 +5,25 @@
   <a class="chat-room__back" href="{% url 'chat:room' room.pk %}" aria-label="Retour aux dates">←</a>
   {% endif %}
   <div class="chat-room__titles">
-    <h1>{% if active_thread %}{{ active_thread.when_label }}{% else %}{{ room.title }}{% endif %}</h1>
+    {% if active_thread %}
+    <h1>{{ active_thread.when_label }}</h1>
+    {% else %}
+    <h1 class="chat-room__title{% if can_rename_title %} chat-room__title--editable{% endif %}"
+        {% if can_rename_title %}
+        contenteditable="true"
+        spellcheck="false"
+        enterkeyhint="done"
+        role="textbox"
+        tabindex="0"
+        title="Cliquer pour renommer"
+        aria-label="Titre du salon — cliquer pour modifier"
+        x-ref="titleEl"
+        @focus="onTitleFocus()"
+        @blur="onTitleBlur()"
+        @keydown.enter.prevent="$event.target.blur()"
+        @keydown.escape.prevent="cancelTitleEdit()"
+        {% endif %}>{{ room.title }}</h1>
+    {% endif %}
     <p class="chat-room__sub">
       {% if active_thread %}
         {{ active_thread.title }} — propositions setlist
