@@ -43,6 +43,39 @@
     box-sizing: border-box;
   }
   .pl-notif-chip:active { background: rgba(var(--accent-rgb), .06); }
+  /* Accueil Coulisses : trois flashs cuivre à l’ouverture, puis le fond redevient calme. */
+  .pl-notif-banner--flash { --pl-notif-rest: transparent; }
+  .pl-notif-banner--flash,
+  .pl-notif-banner--flash .pl-notif-chip {
+    animation: pl-notif-bg-flash 1.7s linear .1s 1;
+  }
+  .pl-notif-banner--flash .pl-notif-chip { --pl-notif-rest: var(--surface); }
+  .pl-notif-banner--flash .pl-notif-chip__title {
+    --pl-notif-title: var(--accent);
+    animation: pl-notif-title-flash 1.7s linear .1s 1;
+  }
+  .pl-notif-banner--flash .pl-notif-chip.is-staff .pl-notif-chip__title {
+    --pl-notif-title: var(--staff);
+  }
+  .pl-notif-banner--flash .pl-notif-chip__preview {
+    animation: pl-notif-preview-flash 1.7s linear .1s 1;
+  }
+  @keyframes pl-notif-bg-flash {
+    0%, 8%, 22%, 38%, 52%, 68%, 82%, 100% {
+      background-color: var(--pl-notif-rest);
+    }
+    9%, 20%, 39%, 50%, 69%, 80% {
+      background-color: rgba(var(--accent-rgb), .92);
+    }
+  }
+  @keyframes pl-notif-title-flash {
+    0%, 8%, 22%, 38%, 52%, 68%, 82%, 100% { color: var(--pl-notif-title); }
+    9%, 20%, 39%, 50%, 69%, 80% { color: var(--text); }
+  }
+  @keyframes pl-notif-preview-flash {
+    0%, 8%, 22%, 38%, 52%, 68%, 82%, 100% { color: var(--muted); }
+    9%, 20%, 39%, 50%, 69%, 80% { color: var(--text); }
+  }
   .pl-notif-chip--solo {
     width: 100%;
     justify-content: flex-start;
@@ -182,6 +215,10 @@
     50% { opacity: .72; box-shadow: 0 0 0 .35rem rgba(107, 101, 96, 0); }
   }
   @media (prefers-reduced-motion: reduce) {
+    .pl-notif-banner--flash,
+    .pl-notif-banner--flash .pl-notif-chip,
+    .pl-notif-banner--flash .pl-notif-chip__title,
+    .pl-notif-banner--flash .pl-notif-chip__preview { animation: none; }
     .pl-notif-banner__dot { animation: none; opacity: 1; }
   }
   body:has(.chat-room:not(.chat-room--embedded)) > main > .pl-notif-banner {
@@ -204,7 +241,7 @@
     }
   }
 </style>
-<aside class="pl-notif-banner" role="region" aria-label="Notifications non lues">
+<aside class="pl-notif-banner{% if request.resolver_match.namespace == 'planning' and request.resolver_match.url_name == 'dashboard' %} pl-notif-banner--flash{% elif request.resolver_match.url_name == 'upcoming_12_months' %} pl-notif-banner--flash{% endif %}" role="region" aria-label="Notifications non lues">
   <div class="pl-notif-banner__bar">
     <ul class="pl-notif-banner__chips">
       {% for g in unread_inbox_banner.chips %}

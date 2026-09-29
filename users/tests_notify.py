@@ -319,6 +319,8 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertEqual(r.context["unread_inbox_count"], 1)
         self.assertContains(r, "Invite Coulisses")
         self.assertContains(r, "Merci de répondre")
+        self.assertContains(r, "pl-notif-banner--flash")
+        self.assertContains(r, "pl-notif-bg-flash")
         # Sous le menu Coulisses, pas au-dessus.
         self.assertLess(
             r.content.find(b'pl-nav__label">Planning'),
