@@ -31,6 +31,7 @@ function chatRoom(cfg) {
     wsUrl: cfg.wsUrl,
     apiSendUrl: cfg.apiSendUrl || '',
     apiPollUrl: cfg.apiPollUrl || '',
+    apiPollsUrl: cfg.apiPollsUrl || '',
     apiReactUrl: cfg.apiReactUrl || '',
     apiEditUrl: cfg.apiEditUrl || '',
     apiDeleteUrl: cfg.apiDeleteUrl || '',
@@ -82,6 +83,15 @@ function chatRoom(cfg) {
     pollDeadline: '',
     pollOptions: [],
     _pollOptSeq: 0,
+    roomPolls: loadJson(cfg.roomPollsScriptId, []),
+    pollSummaryOpen: false,
+    pollSummaryId: null,
+    pollSummaryEditing: false,
+    pollSummaryBusy: false,
+    pollSummaryError: '',
+    pollEdit: { title: '', description: '', audience: 'room', deadline: '', kind: 'text', options: [] },
+    _pollEditSeq: 0,
+    _pollSummaryTimer: null,
     replyTo: null,
     editingId: null,
     editPreview: '',
@@ -2377,10 +2387,260 @@ function chatRoom(cfg) {
         }
         this.pollBusy = false;
         this.pollOpen = false;
+        this.loadRoomPolls();
       } catch (e) {
         this.pollError = 'Erreur réseau — réessayez.';
       } finally {
         this.pollBusy = false;
+      }
+    },
+    activeRoomPoll() {
+      if (!this.roomPolls.length) return null;
+      return this.roomPolls.find((poll) => poll.id === this.pollSummaryId) || this.roomPolls[0];
+    },
+    pollSummaryLead(poll) {
+      if (!poll) return '';
+      const n = Number(poll.answered) || 0;
+      const total = Number(poll.audience_count) || 0;
+      const who = poll.audience === 'all' ? 'musiciens' : 'membres du salon';
+      const scope = total ? (' sur ' + total + ' ' + who) : '';
+      if (!n) return 'Aucune réponse complète pour l’instant' + (total ? (' · ' + total + ' ' + who) : '') + '.';
+      const verb = n > 1
+        ? n + ' personnes ont répondu à toutes les options'
+        : '1 personne a répondu à toutes les options';
+      return verb + scope + '.';
+    },
+    pollBarWidth(opt, key) {
+      const total = Number(opt && opt.total) || 0;
+      if (!total) return 0;
+      const count = Number(opt.counts && opt.counts[key]) || 0;
+      return (count / total) * 100;
+    },
+    pollNameList(people) {
+      if (!people || !people.length) return 'Personne';
+      const selfId = this.currentUserId;
+      return people.map((person) => (
+        person.id === selfId ? person.name + ' (vous)' : person.name
+      )).join(', ');
+    },
+    pollPeopleLine(people, more) {
+      const line = this.pollNameList(people);
+      const extra = Number(more) || 0;
+      if (!extra) return line === 'Personne' ? '' : line;
+      if (line === 'Personne') return '+' + extra;
+      return line + ' · +' + extra;
+    },
+    openPollSummary() {
+      if (!this.roomPolls.length) return;
+      const current = this.roomPolls.some((poll) => poll.id === this.pollSummaryId);
+      if (!current) this.pollSummaryId = this.roomPolls[0].id;
+      this.pollSummaryEditing = false;
+      this.pollSummaryError = '';
+      this.pollSummaryOpen = true;
+      this.loadRoomPolls();
+      this.startPollSummaryRefresh();
+    },
+    closePollSummary() {
+      if (this.pollSummaryBusy) return;
+      this.pollSummaryOpen = false;
+      this.pollSummaryEditing = false;
+      this.pollSummaryError = '';
+      this.stopPollSummaryRefresh();
+    },
+    selectPollSummary(id) {
+      this.pollSummaryId = id;
+      this.pollSummaryEditing = false;
+      this.pollSummaryError = '';
+    },
+    startPollSummaryRefresh() {
+      this.stopPollSummaryRefresh();
+      this._pollSummaryTimer = setInterval(() => {
+        if (!this.pollSummaryOpen || this.pollSummaryEditing || this._dead) return;
+        this.loadRoomPolls();
+      }, 15000);
+    },
+    stopPollSummaryRefresh() {
+      if (this._pollSummaryTimer) {
+        clearInterval(this._pollSummaryTimer);
+        this._pollSummaryTimer = null;
+      }
+    },
+    async loadRoomPolls() {
+      if (!this.apiPollsUrl || this._dead) return;
+      try {
+        const res = await fetch(this.apiPollsUrl, {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !Array.isArray(data.polls)) return;
+        this.roomPolls = data.polls;
+        if (this.pollSummaryId && !this.roomPolls.some((poll) => poll.id === this.pollSummaryId)) {
+          this.pollSummaryId = this.roomPolls.length ? this.roomPolls[0].id : null;
+          this.pollSummaryEditing = false;
+        }
+        if (!this.roomPolls.length) {
+          this.pollSummaryOpen = false;
+          this.stopPollSummaryRefresh();
+        }
+      } catch (e) { /* garder la synthèse déjà affichée */ }
+    },
+    _replaceRoomPoll(poll) {
+      const idx = this.roomPolls.findIndex((item) => item.id === poll.id);
+      if (idx === -1) this.roomPolls.push(poll);
+      else this.roomPolls.splice(idx, 1, poll);
+      this.pollSummaryId = poll.id;
+    },
+    startPollSummaryEdit() {
+      const poll = this.activeRoomPoll();
+      if (!poll || !poll.can_edit) return;
+      this._pollEditSeq += 1;
+      this.pollSummaryError = '';
+      this.pollEdit = {
+        title: poll.title || '',
+        description: poll.description || '',
+        audience: poll.audience === 'all' ? 'all' : 'room',
+        deadline: poll.deadline || '',
+        kind: poll.option_kind === 'dates' ? 'dates' : 'text',
+        options: (poll.options || []).map((opt) => ({
+          _id: 'pe-' + opt.id,
+          id: opt.id,
+          label: opt.label || '',
+          starts_at: opt.starts_local || '',
+          ends_at: opt.ends_local || '',
+          votes: Number(opt.total) || 0,
+        })),
+      };
+      if (!this.pollEdit.options.length) this.addPollEditOption();
+      this.pollSummaryEditing = true;
+    },
+    cancelPollSummaryEdit() {
+      if (this.pollSummaryBusy) return;
+      this.pollSummaryEditing = false;
+      this.pollSummaryError = '';
+    },
+    addPollEditOption() {
+      if (!this.pollEdit.options || this.pollEdit.options.length >= 12) return;
+      this._pollEditSeq += 1;
+      this.pollEdit.options.push({
+        _id: 'pe-new-' + this._pollEditSeq,
+        id: null,
+        label: '',
+        starts_at: '',
+        ends_at: '',
+        votes: 0,
+      });
+    },
+    removePollEditOption(index) {
+      const opt = this.pollEdit.options[index];
+      if (!opt || this.pollEdit.options.length <= 1) return;
+      if (opt.votes > 0) {
+        const ok = window.confirm(
+          'Retirer cette option efface aussi les ' + opt.votes + ' réponse' + (opt.votes > 1 ? 's' : '') + ' déjà donnée' + (opt.votes > 1 ? 's' : '') + '.'
+        );
+        if (!ok) return;
+      }
+      this.pollEdit.options.splice(index, 1);
+    },
+    async savePollSummary() {
+      const poll = this.activeRoomPoll();
+      if (!poll || this.pollSummaryBusy || !this.apiPollsUrl) return;
+      const title = (this.pollEdit.title || '').trim();
+      if (!title) {
+        this.pollSummaryError = 'Indiquez une question.';
+        return;
+      }
+      const kind = this.pollEdit.kind;
+      const options = [];
+      for (const opt of this.pollEdit.options) {
+        const label = (opt.label || '').trim();
+        if (kind === 'dates') {
+          if (!opt.starts_at) {
+            this.pollSummaryError = 'Chaque option doit avoir une date et une heure.';
+            return;
+          }
+          options.push({
+            id: opt.id || undefined,
+            label: label,
+            starts_at: opt.starts_at,
+            ends_at: opt.ends_at || '',
+          });
+        } else {
+          if (!label) {
+            this.pollSummaryError = 'Chaque option doit avoir un libellé.';
+            return;
+          }
+          options.push({ id: opt.id || undefined, label: label });
+        }
+      }
+      if (!options.length) {
+        this.pollSummaryError = kind === 'dates'
+          ? 'Ajoutez au moins une date.'
+          : 'Ajoutez au moins une option.';
+        return;
+      }
+      this.pollSummaryBusy = true;
+      this.pollSummaryError = '';
+      try {
+        const res = await fetch(this.apiPollsUrl + poll.id + '/', {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': this.csrfToken,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            title: title,
+            description: (this.pollEdit.description || '').trim(),
+            audience: this.pollEdit.audience === 'all' ? 'all' : 'room',
+            deadline: this.pollEdit.deadline || '',
+            options: options,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          this.pollSummaryError = (data && data.error) || 'Impossible d’enregistrer.';
+          return;
+        }
+        if (data.poll) this._replaceRoomPoll(data.poll);
+        this.pollSummaryEditing = false;
+      } catch (e) {
+        this.pollSummaryError = 'Erreur réseau — réessayez.';
+      } finally {
+        this.pollSummaryBusy = false;
+      }
+    },
+    async closeRoomPoll() {
+      const poll = this.activeRoomPoll();
+      if (!poll || this.pollSummaryBusy || !this.apiPollsUrl) return;
+      const ok = window.confirm(
+        'Clôturer ce sondage ? La synthèse disparaît du salon pour tout le monde.'
+      );
+      if (!ok) return;
+      this.pollSummaryBusy = true;
+      this.pollSummaryError = '';
+      try {
+        const res = await fetch(this.apiPollsUrl + poll.id + '/close/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          this.pollSummaryError = (data && data.error) || 'Impossible de clôturer.';
+          return;
+        }
+        this.roomPolls = this.roomPolls.filter((item) => item.id !== poll.id);
+        this.pollSummaryId = this.roomPolls.length ? this.roomPolls[0].id : null;
+        this.pollSummaryEditing = false;
+        if (!this.roomPolls.length) {
+          this.pollSummaryOpen = false;
+          this.stopPollSummaryRefresh();
+        }
+      } catch (e) {
+        this.pollSummaryError = 'Erreur réseau — réessayez.';
+      } finally {
+        this.pollSummaryBusy = false;
       }
     },
     insertEmoji(em) {
@@ -2395,6 +2655,7 @@ function chatRoom(cfg) {
     init() {
       this.refreshSetlistTip();
       this.loadMembers();
+      this.loadRoomPolls();
       this.bindArchiveEsc();
       this.$nextTick(() => {
         this.bindThreadScroll();
@@ -2435,6 +2696,7 @@ function chatRoom(cfg) {
     },
     destroy() {
       this._dead = true;
+      this.stopPollSummaryRefresh();
       this.unbindReadObserver();
       if (this._openScrollTimer) {
         clearTimeout(this._openScrollTimer);

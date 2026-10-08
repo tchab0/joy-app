@@ -52,6 +52,7 @@ from planning.services import (
     ensure_participation_statuses,
     EQUIPMENT_CATEGORIES,
     format_poll_vote_counts,
+    option_positivity_sort_key,
     get_or_create_equipment_item,
     get_or_create_profile,
     get_participation_for,
@@ -861,12 +862,22 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                     "my_vote": my_vote.choice if my_vote else None,
                 }
             )
+        # Synthèse : plus positive → plus négative (ordre de création en cas d’égalité).
+        options_data.sort(
+            key=lambda item: (
+                *option_positivity_sort_key(item["counts"]),
+                item["option"].sort_order,
+                item["option"].pk,
+            )
+        )
         event = proposal.linked_event
         context.update(
             {
                 "proposal": proposal,
                 "event": event,
                 "options_data": options_data,
+                # Même ordre que la synthèse (positif → négatif) pour le select staff.
+                "options_ranked": [item["option"] for item in options_data],
                 "is_planning_staff": is_staff,
                 "can_edit_deadline": user_can_edit_poll_deadline(user, proposal)
                 and proposal.status

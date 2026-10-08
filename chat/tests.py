@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from io import StringIO
 
@@ -55,7 +56,7 @@ from chat.services import (
     REHEARSAL_THREAD_OPENER_PREFIX,
 )
 from events.models import Event, EventType, Venue
-from planning.models import EventParticipation, MusicianProfile
+from planning.models import DateOption, DateProposal, DateVote, EventParticipation, MusicianProfile
 from planning.services import ensure_participation_statuses, get_status
 
 User = get_user_model()
@@ -2238,3 +2239,185 @@ class PrivateRoomTests(TestCase):
         self.assertEqual(r.status_code, 403)
         room.refresh_from_db()
         self.assertEqual(room.title, "Nouveau titre")
+
+
+@override_settings(
+    CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}},
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class RoomPollSummaryTests(TestCase):
+    def setUp(self):
+        ensure_participation_statuses()
+        self.author = User.objects.create_user(
+            username="poll_lea",
+            password="pass",
+            first_name="Léa",
+            last_name="Martin",
+            is_musician=True,
+        )
+        self.voter = User.objects.create_user(
+            username="poll_paul",
+            password="pass",
+            first_name="Paul",
+            last_name="Durand",
+            is_musician=True,
+        )
+        self.outsider = User.objects.create_user(
+            username="poll_out",
+            password="pass",
+            first_name="Inès",
+            last_name="Bernard",
+            is_musician=True,
+        )
+        self.room = create_thematic_room(
+            "Salon sondage",
+            musician_users=[self.author, self.voter],
+            created_by=self.author,
+        )
+        from planning.services import create_and_launch_chat_poll
+
+        self.proposal, _message = create_and_launch_chat_poll(
+            room=self.room,
+            author=self.author,
+            title="Dispo samedi",
+            description="Bal de fin d’année",
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ROOM,
+            options=[{"label": "Swing"}, {"label": "Bebop"}],
+        )
+        swing = self.proposal.options.get(label="Swing")
+        DateVote.objects.create(
+            option=swing, user=self.voter, choice=DateVote.Choice.YES
+        )
+
+    def test_member_sees_named_summary_outsider_does_not(self):
+        client = Client()
+        client.login(username="poll_paul", password="pass")
+        r = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["polls"]), 1)
+        poll = payload["polls"][0]
+        self.assertEqual(poll["title"], "Dispo samedi")
+        self.assertFalse(poll["can_edit"])
+        swing = next(opt for opt in poll["options"] if opt["label"] == "Swing")
+        bebop = next(opt for opt in poll["options"] if opt["label"] == "Bebop")
+        self.assertEqual(swing["counts"], {"yes": 1, "maybe": 0, "no": 0})
+        self.assertEqual(swing["yes"][0]["name"], "Paul Durand")
+        self.assertEqual(bebop["total"], 0)
+        # Options triées de la plus positive à la plus négative.
+        self.assertEqual(
+            [opt["label"] for opt in poll["options"]],
+            ["Swing", "Bebop"],
+        )
+        partial_names = [person["name"] for person in poll["partial"]]
+        pending_names = [person["name"] for person in poll["pending"]]
+        self.assertIn("Paul Durand", partial_names)
+        self.assertIn("Léa Martin", pending_names)
+
+        page = client.get(reverse("chat:room", args=[self.room.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "chat-poll-fab")
+        self.assertContains(page, "Synthèse du sondage")
+        self.assertContains(page, "Dispo samedi")
+
+        client.login(username="poll_out", password="pass")
+        denied = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        self.assertEqual(denied.status_code, 403)
+
+    def test_creator_can_edit_after_votes_and_close(self):
+        swing = self.proposal.options.get(label="Swing")
+        bebop = self.proposal.options.get(label="Bebop")
+        client = Client()
+        client.login(username="poll_paul", password="pass")
+        denied = client.post(
+            reverse("chat:api_poll_update", args=[self.room.pk, self.proposal.pk]),
+            data=json.dumps(
+                {
+                    "title": "Hack",
+                    "description": "",
+                    "audience": "room",
+                    "deadline": "",
+                    "options": [
+                        {"id": swing.pk, "label": "Hack"},
+                        {"id": bebop.pk, "label": "Bebop"},
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+        swing.refresh_from_db()
+        self.assertEqual(swing.label, "Swing")
+
+        client.login(username="poll_lea", password="pass")
+        saved = client.post(
+            reverse("chat:api_poll_update", args=[self.room.pk, self.proposal.pk]),
+            data=json.dumps(
+                {
+                    "title": "Dispo dimanche",
+                    "description": "Reporté",
+                    "audience": "room",
+                    "deadline": "",
+                    "options": [
+                        {"id": swing.pk, "label": "Cool jazz"},
+                        {"label": "Latin"},
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(saved.status_code, 200, saved.content)
+        body = saved.json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["poll"]["can_edit"])
+        self.assertEqual(body["poll"]["title"], "Dispo dimanche")
+        labels = [opt["label"] for opt in body["poll"]["options"]]
+        self.assertEqual(labels, ["Cool jazz", "Latin"])
+        cool = next(opt for opt in body["poll"]["options"] if opt["label"] == "Cool jazz")
+        self.assertEqual(cool["yes"][0]["name"], "Paul Durand")
+        self.assertFalse(DateOption.objects.filter(pk=bebop.pk).exists())
+        self.assertTrue(
+            DateVote.objects.filter(
+                option_id=swing.pk, user=self.voter, choice=DateVote.Choice.YES
+            ).exists()
+        )
+
+        closed = client.post(
+            reverse("chat:api_poll_close", args=[self.room.pk, self.proposal.pk])
+        )
+        self.assertEqual(closed.status_code, 200)
+        self.proposal.refresh_from_db()
+        self.assertEqual(self.proposal.status, DateProposal.Status.LOCKED)
+        listing = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        self.assertEqual(listing.json()["polls"], [])
+
+        client.login(username="poll_paul", password="pass")
+        page = client.get(reverse("chat:room", args=[self.room.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, "Dispo dimanche")
+
+    def test_summary_options_ordered_most_positive_first(self):
+        swing = self.proposal.options.get(label="Swing")
+        bebop = self.proposal.options.get(label="Bebop")
+        DateVote.objects.filter(option=swing, user=self.voter).delete()
+        DateVote.objects.create(
+            option=swing, user=self.voter, choice=DateVote.Choice.NO
+        )
+        DateVote.objects.create(
+            option=bebop, user=self.voter, choice=DateVote.Choice.YES
+        )
+        DateVote.objects.create(
+            option=bebop, user=self.author, choice=DateVote.Choice.MAYBE
+        )
+        DateVote.objects.create(
+            option=swing, user=self.author, choice=DateVote.Choice.NO
+        )
+
+        client = Client()
+        client.login(username="poll_lea", password="pass")
+        r = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        self.assertEqual(r.status_code, 200)
+        labels = [opt["label"] for opt in r.json()["polls"][0]["options"]]
+        self.assertEqual(labels, ["Bebop", "Swing"])

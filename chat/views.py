@@ -840,6 +840,113 @@ def api_poll(request: HttpRequest, room_id: int) -> JsonResponse:
     )
 
 
+def _room_poll_or_error(request, room, poll_id: int):
+    """Sondage ouvert de ce salon, ou réponse d’erreur JSON."""
+    from planning.models import DateProposal
+    from planning.services.polls import poll_in_room
+
+    proposal = get_object_or_404(DateProposal, pk=poll_id)
+    if not poll_in_room(proposal, room):
+        return None, JsonResponse(
+            {"ok": False, "error": "Ce sondage n’est pas dans ce salon."},
+            status=404,
+        )
+    return proposal, None
+
+
+@login_required
+@require_GET
+def api_polls(request: HttpRequest, room_id: int) -> JsonResponse:
+    """Synthèse des sondages encore ouverts dans le salon."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    from planning.services.polls import room_open_poll_summaries
+
+    return JsonResponse(
+        {"ok": True, "polls": room_open_poll_summaries(room, request.user)}
+    )
+
+
+@login_required
+@require_POST
+def api_poll_update(request: HttpRequest, room_id: int, poll_id: int) -> JsonResponse:
+    """Le créateur (ou le staff) modifie un sondage, y compris après des réponses."""
+    import json
+
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    proposal, error = _room_poll_or_error(request, room, poll_id)
+    if error:
+        return error
+
+    from planning.services.polls import (
+        apply_room_poll_edit,
+        load_poll_summary,
+        poll_room_summary,
+        user_can_edit_poll_options,
+    )
+
+    if not user_can_edit_poll_options(request.user, proposal):
+        return JsonResponse(
+            {"ok": False, "error": "Seul le créateur du sondage peut le modifier."},
+            status=403,
+        )
+    try:
+        data = json.loads(request.body.decode() or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "error": "Données invalides."}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({"ok": False, "error": "Données invalides."}, status=400)
+    try:
+        apply_room_poll_edit(proposal, data)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    fresh = load_poll_summary(proposal.pk)
+    return JsonResponse({"ok": True, "poll": poll_room_summary(fresh, request.user)})
+
+
+@login_required
+@require_POST
+def api_poll_close(request: HttpRequest, room_id: int, poll_id: int) -> JsonResponse:
+    """Le créateur (ou le staff) clôture le sondage : la synthèse disparaît du salon."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    proposal, error = _room_poll_or_error(request, room, poll_id)
+    if error:
+        return error
+
+    from planning.services.polls import close_poll, user_can_edit_poll_deadline
+
+    if not user_can_edit_poll_deadline(request.user, proposal):
+        return JsonResponse(
+            {"ok": False, "error": "Seul le créateur du sondage peut le clôturer."},
+            status=403,
+        )
+    try:
+        close_poll(proposal)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "closed": True})
+
+
 @login_required
 @require_POST
 def api_edit(request: HttpRequest, room_id: int) -> JsonResponse:

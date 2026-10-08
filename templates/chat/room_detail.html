@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ room.title }} — Chat JOY{% endblock %}
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=32"></script>
+<script defer src="{% static 'chat/room.js' %}?v=34"></script>
 {% endblock %}
 {% block extra_css %}
 {% include "planning/_styles.html" %}
@@ -18,7 +18,7 @@
 {{ mention_members|json_script:mention_members_script_id }}
 {{ read_cursors|json_script:read_cursors_script_id }}
 {# cache-bust mentions v2 — liste orchestre entière #}
-<div class="chat-room{% if room.kind == 'staff' %} chat-room--staff{% endif %}"
+<div class="chat-room{% if room.kind == 'staff' %} chat-room--staff{% endif %}{% if threads_mode %} chat-room--threads{% endif %}"
      x-data="chatRoom({
        messagesScriptId: '{{ messages_script_id|escapejs }}',
        membersScriptId: '{{ mention_members_script_id|escapejs }}',
@@ -27,6 +27,8 @@
        wsUrl: '{{ ws_url|escapejs }}',
        apiSendUrl: '{{ api_send_url|escapejs }}',
        apiPollUrl: '{{ api_poll_url|default:""|escapejs }}',
+       apiPollsUrl: '{{ api_polls_url|default:""|escapejs }}',
+       roomPollsScriptId: '{{ room_polls_script_id|default:""|escapejs }}',
        apiReactUrl: '{{ api_react_url|escapejs }}',
        apiEditUrl: '{{ api_edit_url|escapejs }}',
        apiDeleteUrl: '{{ api_delete_url|escapejs }}',
@@ -86,5 +88,6 @@
 
   {% include "chat/_room_thread_composer.html" %}
   {% endif %}
+  {% include "chat/_room_poll_summary.html" %}
 </div>
 {% endblock %}

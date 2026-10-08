@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 {% if room %}
-<script defer src="{% static 'chat/room.js' %}?v=28"></script>
+<script defer src="{% static 'chat/room.js' %}?v=34"></script>
 {% endif %}
 {% endblock %}
 
@@ -339,27 +339,25 @@
     {% if needs_event_create %}
     <form class="pl-form pl-confirm-poll" method="post" action="{% url 'planning:lock_poll' proposal.pk %}">
       {% csrf_token %}
-      {% with opts=proposal.options.all %}
-      {% if opts|length == 1 %}
-      <input type="hidden" name="option_id" value="{{ opts.0.pk }}">
+      {% if options_data|length == 1 %}
+      <input type="hidden" name="option_id" value="{{ options_data.0.option.pk }}">
       <p class="pl-row__meta" style="margin:0 0 .75rem">
         Date retenue :
         <strong style="color:var(--text)">
-          {{ opts.0.starts_at|date:"l j F Y · H:i" }}{% if opts.0.label %} — {{ opts.0.label }}{% endif %}
+          {{ options_data.0.option.starts_at|date:"l j F Y · H:i" }}{% if options_data.0.option.label %} — {{ options_data.0.option.label }}{% endif %}
         </strong>
       </p>
       {% else %}
       <label for="poll_lock_option">Date à confirmer</label>
       <select name="option_id" id="poll_lock_option" required>
         <option value="">Choisir la date…</option>
-        {% for opt in opts %}
-        <option value="{{ opt.pk }}">
-          {{ opt.starts_at|date:"D d/m/Y H:i" }}{% if opt.label %} — {{ opt.label }}{% endif %}
+        {% for item in options_data %}
+        <option value="{{ item.option.pk }}">
+          {{ item.option.starts_at|date:"D d/m/Y H:i" }}{% if item.option.label %} — {{ item.option.label }}{% endif %}
         </option>
         {% endfor %}
       </select>
       {% endif %}
-      {% endwith %}
       <div>
         <label for="poll_type">Type</label>
         <select name="type_id" id="poll_type" required
@@ -377,7 +375,7 @@
       </button>
     </form>
     {% else %}
-    {% include "planning/_confirm_poll_form.html" with proposal=proposal options=proposal.options.all id_prefix="poll" %}
+    {% include "planning/_confirm_poll_form.html" with proposal=proposal options=options_ranked id_prefix="poll" %}
     {% endif %}
   </section>
   {% endif %}

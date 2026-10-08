@@ -662,6 +662,38 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Oui 1 · Non 0 · Peut-être 1")
 
+    def test_poll_detail_options_ordered_most_positive_first(self):
+        from planning.models import DateOption, DateVote
+        from planning.services import cast_date_vote, launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="Ordre positivité",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+        )
+        early = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=12),
+            label="Créneau faible",
+            sort_order=0,
+        )
+        later = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=13),
+            label="Créneau fort",
+            sort_order=1,
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        cast_date_vote(early, self.musician, DateVote.Choice.NO)
+        cast_date_vote(later, self.musician, DateVote.Choice.YES)
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        ranked = [item["option"].label for item in r.context["options_data"]]
+        self.assertEqual(ranked, ["Créneau fort", "Créneau faible"])
+
     def test_poll_detail_shows_confirm_cta_for_staff(self):
         from planning.models import DateOption
         from planning.services import launch_availability_poll

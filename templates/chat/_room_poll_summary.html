@@ -1,0 +1,201 @@
+{{ room_polls|json_script:room_polls_script_id }}
+<button type="button"
+        class="chat-poll-fab"
+        x-show="roomPolls.length && !keyboardOpen"
+        x-cloak
+        @click="openPollSummary()"
+        :aria-label="roomPolls.length > 1 ? ('Synthèse des sondages, ' + roomPolls.length) : 'Synthèse du sondage'">
+  <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>
+  </svg>
+  <span class="chat-poll-fab__badge" x-show="roomPolls.length > 1" x-text="roomPolls.length"></span>
+</button>
+
+<template x-teleport="body">
+  <div class="chat-poll-modal chat-poll-modal--summary"
+       x-show="pollSummaryOpen"
+       x-cloak
+       @keydown.escape.window="pollSummaryOpen && closePollSummary()">
+    <div class="chat-poll-modal__backdrop" @click="closePollSummary()"></div>
+    <div class="chat-poll-modal__panel"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="chat-poll-summary-title"
+         @click.stop>
+      <header class="chat-poll-modal__head">
+        <h2 id="chat-poll-summary-title"
+            x-text="pollSummaryEditing ? 'Modifier le sondage' : 'Synthèse'"></h2>
+        <button type="button" class="chat-poll-modal__close" @click="closePollSummary()"
+                aria-label="Fermer">×</button>
+      </header>
+
+      <div class="chat-poll-sum__switch" x-show="roomPolls.length > 1 && !pollSummaryEditing" x-cloak>
+        <template x-for="poll in roomPolls" :key="'sw-' + poll.id">
+          <button type="button"
+                  class="chat-poll-sum__switch-btn"
+                  :class="pollSummaryId === poll.id && 'is-active'"
+                  @click="selectPollSummary(poll.id)"
+                  x-text="poll.title"></button>
+        </template>
+      </div>
+
+      <div class="chat-poll-modal__body" x-show="activeRoomPoll() && !pollSummaryEditing">
+        <p class="chat-poll-modal__error" x-show="pollSummaryError" x-text="pollSummaryError" x-cloak></p>
+        <template x-if="activeRoomPoll()">
+          <div>
+            <h3 class="chat-poll-sum__title" x-text="activeRoomPoll().title"></h3>
+            <p class="chat-poll-sum__meta">
+              <span x-show="activeRoomPoll().author_name"
+                    x-text="'Proposé par ' + activeRoomPoll().author_name"></span>
+              <span x-show="activeRoomPoll().deadline_label"
+                    x-text="(activeRoomPoll().author_name ? ' · ' : '') + 'Avant le ' + activeRoomPoll().deadline_label"></span>
+            </p>
+            <p class="chat-poll-sum__desc" x-show="activeRoomPoll().description"
+               x-text="activeRoomPoll().description"></p>
+            <p class="chat-poll-sum__lead" x-text="pollSummaryLead(activeRoomPoll())"></p>
+
+            <template x-for="opt in activeRoomPoll().options" :key="'opt-' + opt.id">
+              <article class="chat-poll-sum__option">
+                <h4 class="chat-poll-sum__option-title" x-text="opt.headline"></h4>
+                <div class="chat-poll-sum__bar"
+                     :class="!opt.total && 'is-empty'"
+                     role="img"
+                     :aria-label="'Oui ' + opt.counts.yes + ', Peut-être ' + opt.counts.maybe + ', Non ' + opt.counts.no">
+                  <span class="chat-poll-sum__seg chat-poll-sum__seg--yes"
+                        x-show="opt.total"
+                        :style="'width:' + pollBarWidth(opt, 'yes') + '%'"></span>
+                  <span class="chat-poll-sum__seg chat-poll-sum__seg--maybe"
+                        x-show="opt.total"
+                        :style="'width:' + pollBarWidth(opt, 'maybe') + '%'"></span>
+                  <span class="chat-poll-sum__seg chat-poll-sum__seg--no"
+                        x-show="opt.total"
+                        :style="'width:' + pollBarWidth(opt, 'no') + '%'"></span>
+                </div>
+                <ul class="chat-poll-sum__groups">
+                  <li>
+                    <span class="chat-poll-sum__choice chat-poll-sum__choice--yes"
+                          x-text="'Oui · ' + opt.counts.yes"></span>
+                    <span class="chat-poll-sum__names" x-text="pollNameList(opt.yes)"></span>
+                  </li>
+                  <li>
+                    <span class="chat-poll-sum__choice chat-poll-sum__choice--maybe"
+                          x-text="'Peut-être · ' + opt.counts.maybe"></span>
+                    <span class="chat-poll-sum__names" x-text="pollNameList(opt.maybe)"></span>
+                  </li>
+                  <li>
+                    <span class="chat-poll-sum__choice chat-poll-sum__choice--no"
+                          x-text="'Non · ' + opt.counts.no"></span>
+                    <span class="chat-poll-sum__names" x-text="pollNameList(opt.no)"></span>
+                  </li>
+                </ul>
+              </article>
+            </template>
+
+            <section class="chat-poll-sum__waiting" x-show="activeRoomPoll().partial.length">
+              <h4>Réponse incomplète</h4>
+              <p x-text="pollPeopleLine(activeRoomPoll().partial, activeRoomPoll().partial_more)"></p>
+            </section>
+            <section class="chat-poll-sum__waiting" x-show="activeRoomPoll().pending.length || activeRoomPoll().pending_more">
+              <h4>Pas encore répondu</h4>
+              <p x-text="pollPeopleLine(activeRoomPoll().pending, activeRoomPoll().pending_more)"></p>
+            </section>
+
+            <p class="chat-poll-sum__link-row">
+              <a class="chat-poll-sum__link" :href="activeRoomPoll().url">Répondre ou modifier ma réponse</a>
+            </p>
+          </div>
+        </template>
+      </div>
+
+      <div class="chat-poll-modal__body" x-show="pollSummaryEditing" x-cloak>
+        <p class="chat-poll-modal__error" x-show="pollSummaryError" x-text="pollSummaryError"></p>
+        <p class="chat-poll-sum__hint">
+          Les réponses déjà données restent liées aux options que vous conservez.
+          Retirer une option efface aussi ses réponses.
+        </p>
+        <label class="chat-poll-modal__label" for="chat-poll-edit-q">Question</label>
+        <input id="chat-poll-edit-q" type="text" class="chat-poll-modal__input"
+               x-model="pollEdit.title" maxlength="200" autocomplete="off">
+        <label class="chat-poll-modal__label" for="chat-poll-edit-desc">Description (optionnel)</label>
+        <textarea id="chat-poll-edit-desc" class="chat-poll-modal__textarea" rows="2"
+                  x-model="pollEdit.description"></textarea>
+        <div class="chat-poll-modal__options">
+          <p class="chat-poll-modal__label">Options</p>
+          <template x-for="(opt, i) in pollEdit.options" :key="opt._id">
+            <div class="chat-poll-modal__option">
+              <template x-if="pollEdit.kind === 'dates'">
+                <div class="chat-poll-modal__option-dates">
+                  <input type="datetime-local" class="chat-poll-modal__input"
+                         x-model="opt.starts_at" :aria-label="'Début option ' + (i + 1)">
+                  <input type="text" class="chat-poll-modal__input"
+                         x-model="opt.label" maxlength="120"
+                         placeholder="Libellé (optionnel)"
+                         :aria-label="'Libellé option ' + (i + 1)">
+                </div>
+              </template>
+              <template x-if="pollEdit.kind !== 'dates'">
+                <input type="text" class="chat-poll-modal__input"
+                       x-model="opt.label" maxlength="120"
+                       :placeholder="'Option ' + (i + 1)"
+                       :aria-label="'Option ' + (i + 1)">
+              </template>
+              <button type="button" class="chat-poll-modal__remove"
+                      @click="removePollEditOption(i)"
+                      :disabled="pollEdit.options.length <= 1"
+                      aria-label="Retirer cette option">×</button>
+            </div>
+          </template>
+          <button type="button" class="chat-poll-modal__add" @click="addPollEditOption()"
+                  :disabled="pollEdit.options.length >= 12">
+            + Option
+          </button>
+        </div>
+        <fieldset class="chat-poll-modal__fieldset">
+          <legend>Qui peut répondre</legend>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-edit-audience" value="room"
+                   :checked="pollEdit.audience === 'room'"
+                   @change="pollEdit.audience = 'room'">
+            <span>Membres du salon</span>
+          </label>
+          <label class="chat-poll-modal__choice">
+            <input type="radio" name="chat-poll-edit-audience" value="all"
+                   :checked="pollEdit.audience === 'all'"
+                   @change="pollEdit.audience = 'all'">
+            <span>Tous les musiciens</span>
+          </label>
+        </fieldset>
+        <label class="chat-poll-modal__label" for="chat-poll-edit-deadline">Date limite (optionnel)</label>
+        <input id="chat-poll-edit-deadline" type="date" class="chat-poll-modal__input"
+               x-model="pollEdit.deadline">
+      </div>
+
+      <div class="chat-poll-modal__foot" x-show="activeRoomPoll() && !pollSummaryEditing">
+        <a class="chat-poll-modal__cancel chat-poll-sum__foot-link"
+           :href="activeRoomPoll() ? activeRoomPoll().url : '#'">Page du sondage</a>
+        <button type="button" class="chat-poll-modal__cancel"
+                x-show="activeRoomPoll() && activeRoomPoll().can_edit"
+                @click="startPollSummaryEdit()">
+          Modifier
+        </button>
+        <button type="button" class="chat-poll-modal__submit"
+                x-show="activeRoomPoll() && activeRoomPoll().can_close"
+                :disabled="pollSummaryBusy"
+                @click="closeRoomPoll()">
+          <span x-text="pollSummaryBusy ? 'Clôture…' : 'Clôturer'"></span>
+        </button>
+      </div>
+      <div class="chat-poll-modal__foot" x-show="pollSummaryEditing" x-cloak>
+        <button type="button" class="chat-poll-modal__cancel"
+                @click="cancelPollSummaryEdit()" :disabled="pollSummaryBusy">
+          Annuler
+        </button>
+        <button type="button" class="chat-poll-modal__submit"
+                :disabled="pollSummaryBusy || !(pollEdit.title || '').trim()"
+                @click="savePollSummary()">
+          <span x-text="pollSummaryBusy ? 'Enregistrement…' : 'Enregistrer'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

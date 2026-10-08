@@ -2660,6 +2660,9 @@ def build_room_embed_context(
     messages_data = [serialize_message(m, viewer=user) for m in history]
     mention_members = serialize_mention_members(room_mention_members(room))
     read_cursors = room_read_cursors(room)
+    from planning.services.polls import room_open_poll_summaries
+
+    room_polls = room_open_poll_summaries(room, user)
 
     return {
         "room": room,
@@ -2677,6 +2680,9 @@ def build_room_embed_context(
         "ws_url": ws_url,
         "api_send_url": api_send_url,
         "api_poll_url": reverse("chat:api_poll", kwargs={"room_id": room.pk}),
+        "api_polls_url": reverse("chat:api_polls", kwargs={"room_id": room.pk}),
+        "room_polls": room_polls,
+        "room_polls_script_id": f"chat-room-polls-{room.pk}",
         "api_react_url": api_react_url,
         "api_edit_url": api_edit_url,
         "api_delete_url": api_delete_url,

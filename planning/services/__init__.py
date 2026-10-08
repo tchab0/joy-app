@@ -63,6 +63,7 @@ from planning.services.polls import (
     lock_date_proposal,
     vote_counts_for_option,
     format_poll_vote_counts,
+    option_positivity_sort_key,
     user_can_access_poll,
     user_has_answered_poll,
     pending_polls_for_user,

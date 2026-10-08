@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.formats import date_format
 
 from events.models import Event
 from planning.models import (
@@ -475,6 +476,19 @@ def format_poll_vote_counts(counts: dict[str, int] | None) -> str:
     )
 
 
+def option_positivity_sort_key(counts: dict[str, int] | None):
+    """
+    Clé de tri : options les plus positives d’abord
+    (plus de Oui, puis plus de Peut-être, puis moins de Non).
+    """
+    c = counts or {}
+    return (
+        -int(c.get("yes", 0) or 0),
+        -int(c.get("maybe", 0) or 0),
+        int(c.get("no", 0) or 0),
+    )
+
+
 def user_can_access_poll(user, proposal: DateProposal) -> bool:
     """Staff ; audience orchestre ; membres du salon source ; participants événement."""
     if not getattr(user, "is_authenticated", False):
@@ -684,6 +698,289 @@ def update_poll_meta(
         fields.append("audience")
 
     proposal.save(update_fields=fields)
+    return proposal
+
+
+_PENDING_NAME_CAP = 16
+
+
+def poll_in_room(proposal: DateProposal, room) -> bool:
+    """Sondage lancé dans ce salon, ou sondage ouvert de l’événement du salon."""
+    if proposal.source_room_id and proposal.source_room_id == getattr(room, "pk", None):
+        return True
+    event_id = getattr(room, "event_id", None)
+    return bool(event_id and proposal.linked_event_id == event_id)
+
+
+def _poll_summary_queryset():
+    return DateProposal.objects.select_related("created_by", "source_room").prefetch_related(
+        Prefetch(
+            "options",
+            queryset=DateOption.objects.prefetch_related(
+                Prefetch(
+                    "votes",
+                    queryset=DateVote.objects.select_related("user").order_by(
+                        "user__last_name", "user__first_name", "user__username"
+                    ),
+                )
+            ).order_by("sort_order", "starts_at", "pk"),
+        )
+    )
+
+
+def open_polls_for_room(room):
+    """Sondages encore ouverts visibles dans ce salon."""
+    q = Q(source_room_id=room.pk)
+    if getattr(room, "event_id", None):
+        q |= Q(linked_event_id=room.event_id)
+    return (
+        _poll_summary_queryset()
+        .filter(status=DateProposal.Status.OPEN)
+        .filter(q)
+        .order_by("-launched_at", "-pk")
+    )
+
+
+def _poll_audience_users(proposal: DateProposal):
+    """Personnes attendues au sondage (membres du salon, ou tous les musiciens)."""
+    if proposal.audience == DateProposal.Audience.ALL:
+        return User.objects.filter(is_musician=True, is_active=True)
+    from chat.models import ChatMembership, ChatRoom
+
+    room_id = proposal.source_room_id
+    if not room_id and proposal.linked_event_id:
+        room_id = (
+            ChatRoom.objects.filter(event_id=proposal.linked_event_id, is_active=True)
+            .values_list("pk", flat=True)
+            .first()
+        )
+    if room_id:
+        member_ids = ChatMembership.objects.filter(
+            room_id=room_id, left_at__isnull=True
+        ).values_list("user_id", flat=True)
+        return User.objects.filter(pk__in=member_ids, is_active=True)
+    if proposal.linked_event_id:
+        member_ids = EventParticipation.objects.filter(
+            event_id=proposal.linked_event_id
+        ).values_list("user_id", flat=True)
+        return User.objects.filter(pk__in=member_ids, is_active=True)
+    return User.objects.none()
+
+
+def _option_when_label(option: DateOption) -> str:
+    if option.starts_at:
+        start = timezone.localtime(option.starts_at)
+        when = date_format(start, "l j F Y · H:i")
+        if option.ends_at:
+            when += " – " + date_format(timezone.localtime(option.ends_at), "H:i")
+        if option.label:
+            return f"{when} — {option.label}"
+        return when
+    return (option.label or "").strip() or "Option"
+
+
+def _dt_local_input(value) -> str:
+    if not value:
+        return ""
+    return timezone.localtime(value).strftime("%Y-%m-%dT%H:%M")
+
+
+def _person_payload(user) -> dict:
+    return {"id": user.pk, "name": _user_display_label(user)}
+
+
+def poll_room_summary(proposal: DateProposal, viewer) -> dict:
+    """
+    Synthèse lisible d’un sondage ouvert : comptes, noms par réponse,
+    et qui n’a pas encore tout répondu.
+    """
+    options = list(proposal.options.all())
+    option_payloads = []
+    complete_ids: set[int] | None = None
+    any_vote_ids: set[int] = set()
+
+    for opt in options:
+        groups = {"yes": [], "maybe": [], "no": []}
+        voted_here: set[int] = set()
+        for vote in opt.votes.all():
+            if vote.choice not in groups or vote.user_id is None:
+                continue
+            groups[vote.choice].append(_person_payload(vote.user))
+            voted_here.add(vote.user_id)
+            any_vote_ids.add(vote.user_id)
+        for people in groups.values():
+            people.sort(key=lambda person: person["name"].casefold())
+        counts = {key: len(groups[key]) for key in groups}
+        if complete_ids is None:
+            complete_ids = set(voted_here)
+        else:
+            complete_ids &= voted_here
+        option_payloads.append(
+            {
+                "id": opt.pk,
+                "label": opt.label,
+                "headline": _option_when_label(opt),
+                "starts_local": _dt_local_input(opt.starts_at),
+                "ends_local": _dt_local_input(opt.ends_at),
+                "yes": groups["yes"],
+                "maybe": groups["maybe"],
+                "no": groups["no"],
+                "counts": counts,
+                "total": sum(counts.values()),
+            }
+        )
+
+    # Plus positive → plus négative (ordre de création en cas d’égalité).
+    option_payloads.sort(
+        key=lambda item: (
+            *option_positivity_sort_key(item["counts"]),
+            item["id"],
+        )
+    )
+
+    if complete_ids is None:
+        complete_ids = set()
+
+    audience = list(
+        _poll_audience_users(proposal).order_by("last_name", "first_name", "username")
+    )
+    pending = []
+    partial = []
+    for person in audience:
+        if person.pk in complete_ids and options:
+            continue
+        payload = _person_payload(person)
+        if person.pk in any_vote_ids:
+            partial.append(payload)
+        else:
+            pending.append(payload)
+
+    answered = len(complete_ids & {person.pk for person in audience}) if options else 0
+    can_edit = bool(
+        user_can_edit_poll_options(viewer, proposal) and proposal.is_open
+    )
+    return {
+        "id": proposal.pk,
+        "title": proposal.title,
+        "description": proposal.description or "",
+        "option_kind": proposal.option_kind,
+        "audience": proposal.audience,
+        "deadline": proposal.deadline.isoformat() if proposal.deadline else "",
+        "deadline_label": _deadline_label(proposal.deadline),
+        "author_name": _user_display_label(proposal.created_by),
+        "is_creator": proposal.created_by_id == getattr(viewer, "pk", None),
+        "can_edit": can_edit,
+        "can_close": can_edit,
+        "url": reverse("planning:poll_detail", args=[proposal.pk]),
+        "options": option_payloads,
+        "answered": answered,
+        "audience_count": len(audience),
+        "pending": pending[:_PENDING_NAME_CAP],
+        "pending_more": max(0, len(pending) - _PENDING_NAME_CAP),
+        "partial": partial[:_PENDING_NAME_CAP],
+        "partial_more": max(0, len(partial) - _PENDING_NAME_CAP),
+    }
+
+
+def room_open_poll_summaries(room, viewer) -> list[dict]:
+    return [poll_room_summary(proposal, viewer) for proposal in open_polls_for_room(room)]
+
+
+def load_poll_summary(proposal_id: int) -> DateProposal:
+    return _poll_summary_queryset().get(pk=proposal_id)
+
+
+@transaction.atomic
+def apply_room_poll_edit(proposal: DateProposal, data: dict) -> DateProposal:
+    """
+    Met à jour un sondage encore ouvert.
+
+    Les votes déjà enregistrés restent attachés aux options conservées
+    (identifiant inchangé), même si le libellé ou l’horaire change.
+    Retirer une option supprime ses votes.
+    """
+    if proposal.status != DateProposal.Status.OPEN:
+        raise ValueError("Ce sondage est clos — non modifiable.")
+
+    title = data.get("title")
+    description = data.get("description", "")
+    audience = (data.get("audience") or "").strip() or None
+    update_poll_meta(
+        proposal,
+        title=title if title is not None else proposal.title,
+        description=description,
+        audience=audience,
+    )
+
+    if "deadline" in data:
+        deadline_raw = data.get("deadline")
+        if deadline_raw in (None, ""):
+            deadline = None
+        else:
+            deadline = parse_date(str(deadline_raw).strip())
+            if deadline is None:
+                raise ValueError("Date limite invalide.")
+        proposal.deadline = deadline
+        proposal.deadline_reminder_sent_at = None
+        proposal.save(
+            update_fields=["deadline", "deadline_reminder_sent_at", "updated_at"]
+        )
+
+    raw_options = data.get("options")
+    if raw_options is None:
+        return proposal
+    if not isinstance(raw_options, list) or not raw_options:
+        raise ValueError("Ajoutez au moins une option.")
+    if len(raw_options) > 12:
+        raise ValueError("12 options maximum.")
+
+    existing = {opt.pk: opt for opt in proposal.options.all()}
+    updates: list[dict] = []
+    new_options: list[dict] = []
+    kept_ids: set[int] = set()
+    text_mode = proposal.is_text_poll
+
+    for raw in raw_options:
+        if not isinstance(raw, dict):
+            continue
+        label = (raw.get("label") or "").strip()
+        try:
+            opt_id = int(raw["id"]) if raw.get("id") else None
+        except (TypeError, ValueError):
+            opt_id = None
+        if text_mode:
+            if not label:
+                raise ValueError("Chaque option texte doit avoir un libellé.")
+            item = {"label": label}
+        else:
+            starts = _parse_poll_dt(raw.get("starts_at") or "")
+            if starts is None:
+                raise ValueError(
+                    "Chaque option doit avoir une date et une heure de début."
+                )
+            ends_raw = raw.get("ends_at") or ""
+            item = {
+                "label": label,
+                "starts_at": starts,
+                "ends_at": _parse_poll_dt(ends_raw) if ends_raw else None,
+            }
+        if opt_id and opt_id in existing:
+            item["id"] = opt_id
+            updates.append(item)
+            kept_ids.add(opt_id)
+        else:
+            new_options.append(item)
+
+    if not updates and not new_options:
+        raise ValueError("Ajoutez au moins une option.")
+
+    delete_ids = [pk for pk in existing if pk not in kept_ids]
+    update_poll_options(
+        proposal,
+        updates=updates,
+        new_options=new_options,
+        delete_ids=delete_ids,
+    )
     return proposal
 
 

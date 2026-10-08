@@ -37,6 +37,17 @@ urlpatterns = [
     ),
     path("<int:room_id>/api/send/", views.api_send, name="api_send"),
     path("<int:room_id>/api/poll/", views.api_poll, name="api_poll"),
+    path("<int:room_id>/api/polls/", views.api_polls, name="api_polls"),
+    path(
+        "<int:room_id>/api/polls/<int:poll_id>/",
+        views.api_poll_update,
+        name="api_poll_update",
+    ),
+    path(
+        "<int:room_id>/api/polls/<int:poll_id>/close/",
+        views.api_poll_close,
+        name="api_poll_close",
+    ),
     path("<int:room_id>/api/edit/", views.api_edit, name="api_edit"),
     path("<int:room_id>/api/rename/", views.api_rename, name="api_rename"),
     path("<int:room_id>/api/delete/", views.api_delete, name="api_delete"),
