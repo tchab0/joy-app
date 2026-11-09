@@ -1,0 +1,25 @@
+{# Bouton de clôture — auteur ou staff, sondage ouvert. #}
+{% if can_close_poll %}
+<section class="pl-section pl-section--panel pl-close-poll{% if close_poll_bottom %} pl-close-poll--bottom{% endif %}"
+         aria-label="Clôturer le sondage">
+  <div class="pl-close-poll__row">
+    <div class="pl-close-poll__copy">
+      <h2 class="pl-close-poll__title">Clôturer le sondage</h2>
+      <p class="pl-close-poll__meta">
+        Les votes seront figés. Les résultats resteront consultables.
+      </p>
+    </div>
+    <form class="pl-close-poll__form"
+          method="post"
+          action="{% url 'planning:close_poll' proposal.pk %}"
+          onsubmit="return confirm('Clôturer ce sondage ? Les votes seront figés.');">
+      {% csrf_token %}
+      <button type="submit"
+              class="pl-btn pl-btn--primary pl-close-poll__btn"
+              {% if close_poll_bottom %}id="close-poll-bottom"{% else %}id="close-poll-top"{% endif %}>
+        Clôturer le sondage
+      </button>
+    </form>
+  </div>
+</section>
+{% endif %}

@@ -86,18 +86,7 @@
     </p>
   </header>
 
-  {% if can_close_poll %}
-  <section class="pl-section" aria-label="Clôturer le sondage">
-    <form method="post" action="{% url 'planning:close_poll' proposal.pk %}"
-          onsubmit="return confirm('Clôturer ce sondage ? Les votes seront figés.');"
-          style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-      {% csrf_token %}
-      <button type="submit" class="pl-btn" style="min-height:48px">
-        Clôturer le sondage
-      </button>
-    </form>
-  </section>
-  {% endif %}
+  {% include "planning/_close_poll_form.html" %}
 
   {% if proposal.status == 'locked' and event %}
   <section class="pl-section" aria-label="Sondage clôturé">
@@ -317,6 +306,8 @@
   <p class="pl-row__meta" style="margin:.5rem 0 0"
      x-show="allAnswered()" x-cloak x-text="answeredSummary()"></p>
   {% endif %}
+
+  {% include "planning/_close_poll_form.html" with close_poll_bottom=True %}
 
   {% if is_planning_staff and proposal.is_open and options_data and proposal.is_dates_poll %}
   <section class="pl-section pl-accept__staff pl-section--pending"
