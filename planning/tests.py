@@ -3011,3 +3011,55 @@ class PollMetaAndTextEditTests(PlanningBaseTestCase):
             {"title": "Hack", "description": "", "audience": "all"},
         )
         self.assertEqual(r.status_code, 403)
+
+
+class ClosePollTests(PlanningBaseTestCase):
+    def _open_text_poll(self, *, created_by):
+        proposal = DateProposal.objects.create(
+            title="À clôturer",
+            status=DateProposal.Status.OPEN,
+            created_by=created_by,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ALL,
+            launched_at=timezone.now(),
+            launched_by=created_by,
+        )
+        DateOption.objects.create(
+            proposal=proposal, label="Option A", starts_at=None, sort_order=0
+        )
+        return proposal
+
+    def test_author_sees_visible_close_buttons(self):
+        proposal = self._open_text_poll(created_by=self.musician)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="close-poll-top"')
+        self.assertContains(r, 'id="close-poll-bottom"')
+        self.assertContains(r, "Clôturer le sondage")
+        self.assertContains(r, reverse("planning:close_poll", args=[proposal.pk]))
+        self.assertContains(r, "pl-close-poll")
+
+    def test_author_can_close_poll(self):
+        proposal = self._open_text_poll(created_by=self.musician)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(reverse("planning:close_poll", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
+
+    def test_other_musician_cannot_close_poll(self):
+        proposal = self._open_text_poll(created_by=self.staff)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(reverse("planning:close_poll", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 403)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.OPEN)
+
+    def test_non_author_does_not_see_close_buttons(self):
+        proposal = self._open_text_poll(created_by=self.staff)
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'id="close-poll-top"')
+        self.assertNotContains(r, 'id="close-poll-bottom"')
