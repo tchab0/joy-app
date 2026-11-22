@@ -48,6 +48,16 @@ urlpatterns = [
         views.api_poll_close,
         name="api_poll_close",
     ),
+    path(
+        "<int:room_id>/api/polls/<int:poll_id>/remind/",
+        views.api_poll_remind,
+        name="api_poll_remind",
+    ),
+    path(
+        "<int:room_id>/api/polls/<int:poll_id>/delete/",
+        views.api_poll_delete,
+        name="api_poll_delete",
+    ),
     path("<int:room_id>/api/edit/", views.api_edit, name="api_edit"),
     path("<int:room_id>/api/rename/", views.api_rename, name="api_rename"),
     path("<int:room_id>/api/delete/", views.api_delete, name="api_delete"),

@@ -239,7 +239,8 @@ class DigestCommandFrequencyTests(TestCase):
         other_m = sync_musician_to_orchestra(self.other)
         other_m.subscribed = False
         other_m.save(update_fields=["subscribed"])
-        post_message(room=room, author=self.other, body="Hello digest clair")
+        first = post_message(room=room, author=self.other, body="Hello digest clair")
+        post_message(room=room, author=self.other, body="Suite digest")
 
         evening = datetime(2026, 9, 8, 18, 15, tzinfo=PARIS)
         sent = send_due_notification_digests(now=evening, dry_run=False)
@@ -247,8 +248,11 @@ class DigestCommandFrequencyTests(TestCase):
         notif = UserNotification.objects.get(user=self.musician, title="JOY — Orchestre")
         self.assertIn("Camille Martin", notif.body)
         self.assertIn("Orchestre", notif.body)
-        self.assertIn("Hello digest clair", notif.body)
+        self.assertIn("2 messages", notif.body)
+        self.assertIn("Suite digest", notif.body)
         self.assertIn("dans", notif.body)
+        # Lien : 1er message du lot (pas le dernier).
+        self.assertIn(f"?msg={first.pk}", notif.url)
 
     def test_inbox_digest_for_daily_user(self):
         notify_users(

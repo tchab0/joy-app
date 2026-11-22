@@ -1467,15 +1467,32 @@ def _replies_meta(message: ChatMessage) -> dict:
 def serialize_message(message: ChatMessage, viewer=None) -> dict:
     author = message.author
     poll_url = ""
+    poll_status = ""
+    poll_cta = ""
     if message.related_proposal_id and message.kind == ChatMessage.Kind.POLL_LAUNCH:
         poll_url = reverse(
             "planning:poll_detail", kwargs={"pk": message.related_proposal_id}
         )
+        proposal = getattr(message, "related_proposal", None)
+        if proposal is not None:
+            poll_status = proposal.status
+            if proposal.is_open:
+                poll_cta = "Répondre au sondage →"
+            elif proposal.status == proposal.Status.LOCKED:
+                poll_cta = "Voir le sondage (clôturé) →"
+            elif proposal.status == proposal.Status.CANCELLED:
+                poll_cta = "Sondage supprimé"
+            else:
+                poll_cta = "Voir le sondage →"
+        else:
+            poll_cta = "Répondre au sondage →"
     data = {
         "id": message.pk,
         "kind": message.kind,
         "highlight": message.kind == ChatMessage.Kind.POLL_LAUNCH,
         "poll_url": poll_url,
+        "poll_status": poll_status,
+        "poll_cta": poll_cta,
         "body": "" if message.is_deleted else message.body,
         "deleted": message.is_deleted,
         "created_at": message.created_at.isoformat(),
@@ -2741,3 +2758,38 @@ def unread_count(membership: ChatMembership) -> int:
             )
         )
     return qs.count()
+
+
+def first_unread_message_id(membership: ChatMembership) -> int | None:
+    """Id du plus ancien message non lu du salon pour ce membership, ou None."""
+    qs = ChatMessage.objects.filter(
+        room_id=membership.room_id, deleted_at__isnull=True
+    ).exclude(author_id=membership.user_id)
+    if membership.last_read_at:
+        qs = qs.filter(
+            Q(edited_at__gt=membership.last_read_at)
+            | (
+                Q(edited_at__isnull=True)
+                & Q(created_at__gt=membership.last_read_at)
+            )
+        )
+    return qs.order_by("created_at", "pk").values_list("pk", flat=True).first()
+
+
+def first_unread_message_ids_for_user(user, room_ids) -> dict[int, int]:
+    """``{room_id: first_unread_message_id}`` pour les memberships actifs."""
+    ids = {int(rid) for rid in (room_ids or set()) if rid}
+    if user is None or not ids:
+        return {}
+    memberships = list(
+        ChatMembership.objects.filter(
+            user=user, room_id__in=ids, left_at__isnull=True
+        )
+    )
+    out: dict[int, int] = {}
+    for membership in memberships:
+        mid = first_unread_message_id(membership)
+        if mid:
+            out[membership.room_id] = int(mid)
+    return out
+

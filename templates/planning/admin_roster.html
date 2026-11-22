@@ -49,12 +49,13 @@
   <section class="pl-section pl-section--panel pl-section--pending joy-staff-ui">
     <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
     <p class="pl-row__meta pl-roster-lead">
-      Lancez le sondage pour que les musiciens invités indiquent leur disponibilité
-      (notification).
+      Choisissez qui reçoit le sondage de disponibilité, puis lancez-le.
     </p>
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:44px">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      {% include "planning/_poll_audience_fieldset.html" with selected=draft_proposal.audience|default:"all" for_event=True show_preview=True proposal=draft_proposal id_prefix="roster_aud" %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:44px;margin-top:.75rem">
         Lancer le sondage de disponibilité
       </button>
     </form>

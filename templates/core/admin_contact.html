@@ -16,6 +16,7 @@
     background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
     padding:1.15rem 1.25rem; color:var(--text);
   }
+  .msg-card.is-spam { opacity:.78; border-style:dashed; }
   .msg-card__top {
     display:flex; flex-wrap:wrap; gap:.5rem .85rem; align-items:center;
     margin-bottom:.75rem;
@@ -29,6 +30,12 @@
     border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
     color: var(--accent);
   }
+  .status-badge.is-new {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    color: var(--accent);
+  }
+  .status-badge.is-processed { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
+  .status-badge.is-spam { color: #b43c3c; border-color: #b43c3c; }
   .msg-card h2 {
     font-family:var(--font-d); font-size:1.15rem; margin:0 0 .35rem; color:var(--text);
   }
@@ -56,6 +63,27 @@
     background:transparent; color:#b43c3c; border:1.5px solid #b43c3c;
   }
   .btn-danger:hover { background:#b43c3c; color:#fff; }
+  .btn-spam {
+    background:transparent; color:#b43c3c; border:1.5px solid color-mix(in srgb, #b43c3c 55%, var(--border));
+  }
+  .btn-spam:hover { background:#b43c3c; color:#fff; border-color:#b43c3c; }
+  .msg-reply {
+    margin-top:.85rem; padding-top:.85rem; border-top:1px solid var(--border);
+    display:flex; flex-direction:column; gap:.75rem;
+  }
+  .msg-reply label {
+    display:block; font-weight:600; font-size:.9rem; margin:0 0 .35rem; color:var(--text);
+  }
+  .msg-reply input[type="text"],
+  .msg-reply textarea {
+    width:100%; box-sizing:border-box; min-height:44px;
+    padding:.65rem .75rem; border:1px solid var(--border); border-radius:var(--r);
+    background:var(--bg); color:var(--text); font:inherit;
+  }
+  .msg-reply textarea { min-height:9rem; resize:vertical; line-height:1.45; }
+  .msg-reply__actions {
+    display:flex; flex-wrap:wrap; gap:.5rem; justify-content:flex-end;
+  }
   .empty-state {
     background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
     padding:2rem; color:var(--muted);
@@ -72,7 +100,7 @@
       <div>
         <h1 class="section-title">Messages de contact</h1>
         {% page_lead "core.admin_contact" %}
-          Demandes reçues depuis le formulaire public.
+          Demandes reçues depuis le formulaire public — répondez ou classez en spam.
         {% endpage_lead %}
       </div>
       <div class="admin-filters">
@@ -91,10 +119,10 @@
     {% if messages_list %}
       <div class="msg-list">
         {% for item in messages_list %}
-          <article class="msg-card">
+          <article class="msg-card {% if item.statut == 'spam' %}is-spam{% endif %}" x-data="{ replyOpen: false }">
             <div class="msg-card__top">
               <span class="kind-badge {% if item.is_prestation %}is-prestation{% endif %}">{{ item.get_kind_display }}</span>
-              <span class="status-badge">{{ item.get_statut_display }}</span>
+              <span class="status-badge {% if item.statut == 'new' %}is-new{% elif item.statut == 'processed' %}is-processed{% elif item.statut == 'spam' %}is-spam{% endif %}">{{ item.get_statut_display }}</span>
               <span class="msg-card__meta">{{ item.created_at|date:"d/m/Y H:i" }}</span>
             </div>
             <h2>{{ item.nom }}{% if item.organisation %} — {{ item.organisation }}{% endif %}</h2>
@@ -132,13 +160,89 @@
               <p class="message-body">{{ item.message }}</p>
             {% endif %}
 
-            <div class="msg-card__actions">
+            <div class="msg-card__actions" x-show="!replyOpen">
+              {% if item.statut != 'spam' %}
+                <button type="button" class="btn btn-primary" @click="replyOpen = true">Répondre</button>
+                {% if item.statut != 'processed' %}
+                  <form method="post" action="{% url 'admin_contact_action' item.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="processed">
+                    <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                    <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
+                    <button type="submit" class="btn btn-staff-outline">Traité</button>
+                  </form>
+                {% endif %}
+                <form method="post" action="{% url 'admin_contact_action' item.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="spam">
+                  <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                  <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
+                  <button type="submit" class="btn btn-spam">Spam</button>
+                </form>
+              {% else %}
+                <form method="post" action="{% url 'admin_contact_action' item.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="unspam">
+                  <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                  <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
+                  <button type="submit" class="btn btn-staff-outline">Pas du spam</button>
+                </form>
+              {% endif %}
               <form method="post" action="{% url 'admin_contact_delete' item.pk %}"
                     onsubmit="return confirm('Supprimer ce message de {{ item.nom|escapejs }} ?')">
                 {% csrf_token %}
+                <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
                 <button type="submit" class="btn btn-danger">Supprimer</button>
               </form>
             </div>
+
+            {% if item.statut != 'spam' %}
+              <div class="msg-reply" x-show="replyOpen" x-cloak @keydown.escape.window="replyOpen = false">
+                <p class="msg-card__meta" style="margin:0">
+                  <a class="btn btn-primary" style="display:inline-flex"
+                     href="mailto:{{ item.email }}?subject={{ item.reply_subject|urlencode }}&body={{ item.reply_body|urlencode }}">
+                    Ouvrir dans mon appli mail
+                  </a>
+                </p>
+                {% if email_sending_enabled %}
+                  <form method="post" action="{% url 'admin_contact_action' item.pk %}"
+                        style="display:flex;flex-direction:column;gap:.75rem">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reply">
+                    <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                    <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
+                    <div>
+                      <label for="reply-subject-{{ item.pk }}">Ou répondre depuis le site</label>
+                      <input type="text" id="reply-subject-{{ item.pk }}" name="subject" required maxlength="200"
+                             value="{{ item.reply_subject }}">
+                    </div>
+                    <div>
+                      <label for="reply-body-{{ item.pk }}">Message</label>
+                      <textarea id="reply-body-{{ item.pk }}" name="body" required rows="8">{{ item.reply_body }}</textarea>
+                    </div>
+                    <div class="msg-reply__actions">
+                      <button type="button" class="btn btn-staff-outline" @click="replyOpen = false">Annuler</button>
+                      <button type="submit" class="btn btn-primary">Envoyer</button>
+                    </div>
+                  </form>
+                {% else %}
+                  <p class="msg-card__meta" style="margin:0">
+                    Envoi SMTP en pause — utilisez votre appli mail, puis marquez le message traité.
+                  </p>
+                  <div class="msg-reply__actions">
+                    <button type="button" class="btn btn-staff-outline" @click="replyOpen = false">Fermer</button>
+                    <form method="post" action="{% url 'admin_contact_action' item.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="processed">
+                      <input type="hidden" name="retour_statut" value="{{ statut_actif }}">
+                      <input type="hidden" name="retour_kind" value="{{ kind_actif }}">
+                      <button type="submit" class="btn btn-primary">Marquer traité</button>
+                    </form>
+                  </div>
+                {% endif %}
+              </div>
+            {% endif %}
           </article>
         {% endfor %}
       </div>

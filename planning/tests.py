@@ -501,6 +501,7 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 302)
         proposal = DateProposal.objects.get(title="Choix date mars")
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
         self.assertEqual(
             proposal.deadline, timezone.localdate() + timedelta(days=7)
         )
@@ -511,6 +512,7 @@ class PollTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 302)
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, DateProposal.Status.OPEN)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
 
         # Poll sans événement lié : accès staff uniquement (CreatePollView).
         self.client.login(username="staff1", password="pass12345")
@@ -635,8 +637,64 @@ class PollTests(PlanningBaseTestCase):
         html = r.content.decode()
         self.assertEqual(html.count("@click=\"vote("), 6)  # 3 choices × 2 sections
         self.assertIn('aria-label="Dates proposées (bas de page)"', html)
-        self.assertContains(r, "Oui 0 · Non 0 · Peut-être 0")
-        self.assertContains(r, "pl-option__counts")
+        self.assertContains(r, "Oui 0 · Peut-être 0 · Non 0")
+        self.assertContains(r, "pl-poll-stat")
+        self.assertContains(r, "pl-poll-results__lead")
+
+    def test_poll_detail_prefers_source_room_and_lists_siblings(self):
+        """Salon source prioritaire + lien vers les autres sondages du salon."""
+        from chat.services import create_private_room, ensure_event_room
+        from planning.services import create_and_launch_chat_poll
+
+        room = create_private_room(
+            title="Salon twin",
+            created_by=self.staff,
+            invited_users=[self.musician],
+        )
+        starts = timezone.now() + timedelta(days=20)
+        proposal_a, _ = create_and_launch_chat_poll(
+            room=room,
+            author=self.staff,
+            title="Dispo A",
+            options=[{"starts_at": starts.isoformat()}],
+            audience=DateProposal.Audience.ROOM,
+        )
+        proposal_b, _ = create_and_launch_chat_poll(
+            room=room,
+            author=self.staff,
+            title="Dispo B",
+            options=[{"starts_at": (starts + timedelta(days=7)).isoformat()}],
+            audience=DateProposal.Audience.ROOM,
+        )
+        # Simule une confirmation qui lie un événement (salon événement distinct).
+        confirmed = Event.objects.create(
+            titre="Dispo A confirmé",
+            type=self.event_type,
+            venue=self.venue,
+            date_debut=starts,
+            statut=Event.Statut.CONFIRME,
+        )
+        proposal_a.linked_event = confirmed
+        proposal_a.status = DateProposal.Status.LOCKED
+        proposal_a.locked_option = proposal_a.options.get()
+        proposal_a.save(
+            update_fields=["linked_event", "status", "locked_option", "updated_at"]
+        )
+        event_room = ensure_event_room(confirmed)
+        self.assertNotEqual(event_room.pk, room.pk)
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:poll_detail", args=[proposal_a.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Salon « Salon twin »")
+        self.assertContains(r, "Autre sondage du même salon")
+        self.assertContains(r, "Dispo B")
+        self.assertContains(
+            r, reverse("planning:poll_detail", args=[proposal_b.pk])
+        )
+        # Le salon embarqué reste le salon source, pas le salon événement.
+        self.assertEqual(r.context["room"].pk, room.pk)
+        self.assertNotEqual(r.context["room"].pk, event_room.pk)
 
     def test_poll_detail_shows_vote_counts_for_musician(self):
         from planning.models import DateOption, DateVote
@@ -660,7 +718,9 @@ class PollTests(PlanningBaseTestCase):
         self.client.login(username="musi", password="pass12345")
         r = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Oui 1 · Non 0 · Peut-être 1")
+        self.assertContains(r, "Oui · 1")
+        self.assertContains(r, "Peut-être · 1")
+        self.assertContains(r, "pl-poll-stat__names")
 
     def test_poll_detail_options_ordered_most_positive_first(self):
         from planning.models import DateOption, DateVote
@@ -913,7 +973,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
         )
         self.assertEqual(
             markers[0].cal_summary["poll_vote_counts_label"],
-            "Oui 1 · Non 0 · Peut-être 0",
+            "Oui 1 · Peut-être 0 · Non 0",
         )
 
         self.client.login(username="musi", password="pass12345")
@@ -926,7 +986,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Sondage — vote enregistré")
         self.assertContains(r, "Voir / modifier")
-        self.assertContains(r, "Oui 1 · Non 0 · Peut-être 0")
+        self.assertContains(r, "Oui 1 · Peut-être 0 · Non 0")
         self.assertNotContains(r, "Votre réponse :")
         self.assertNotContains(r, "Votre vote est enregistré")
         self.assertNotContains(r, "Sondage ouvert — votez pour cette date")
@@ -980,7 +1040,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
         self.assertEqual(summary["my_poll_vote_label"], "Peut-être")
         self.assertTrue(summary["poll_answered"])
         self.assertEqual(summary["poll_vote_counts"], {"yes": 0, "no": 0, "maybe": 1})
-        self.assertEqual(summary["poll_vote_counts_label"], "Oui 0 · Non 0 · Peut-être 1")
+        self.assertEqual(summary["poll_vote_counts_label"], "Oui 0 · Peut-être 1 · Non 0")
         self.assertEqual(summary["proposed_by_label"], self.staff.get_full_name() or self.staff.username)
         self.assertEqual(
             summary["deadline_label"],
@@ -998,7 +1058,7 @@ class OpenPollCalendarAndPendingTests(PlanningBaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Sondage — vote enregistré")
         self.assertContains(r, "Voir / modifier")
-        self.assertContains(r, "Oui 0 · Non 0 · Peut-être 1")
+        self.assertContains(r, "Oui 0 · Peut-être 1 · Non 0")
         self.assertNotContains(r, "Votre réponse :")
         self.assertNotContains(r, "Votre vote est enregistré")
 
@@ -1107,12 +1167,14 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
                 "venue_id": self.venue.pk,
                 "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
                 "launch_poll": "1",
+                "audience": "all",
             },
         )
         self.assertEqual(r.status_code, 302)
         event = Event.objects.get(titre="Nouveau bal")
         proposal = DateProposal.objects.get(linked_event=event)
         self.assertEqual(proposal.status, DateProposal.Status.OPEN)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
         self.assertIsNotNone(proposal.launched_at)
         self.assertEqual(proposal.launched_by_id, self.staff.pk)
         self.assertEqual(
@@ -1140,6 +1202,7 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
         event = Event.objects.get(titre="Brouillon sondage")
         proposal = DateProposal.objects.get(linked_event=event)
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
 
 
 class PollDeadlineEditTests(PlanningBaseTestCase):
@@ -3276,3 +3339,315 @@ class PollMetaAndTextEditTests(PlanningBaseTestCase):
             {"title": "Hack", "description": "", "audience": "all"},
         )
         self.assertEqual(r.status_code, 403)
+
+    def test_author_sees_manage_actions_and_can_remind_and_delete(self):
+        from unittest.mock import patch
+
+        from chat.services import create_thematic_room
+
+        room = create_thematic_room(
+            "Manage poll room",
+            musician_users=[self.musician, self.sub],
+            created_by=self.musician,
+        )
+        proposal = DateProposal.objects.create(
+            title="Qui est dispo ?",
+            status=DateProposal.Status.OPEN,
+            created_by=self.musician,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ROOM,
+            source_room=room,
+            launched_at=timezone.now(),
+            launched_by=self.musician,
+        )
+        DateOption.objects.create(
+            proposal=proposal, label="Oui", sort_order=0, starts_at=None
+        )
+
+        self.client.login(username="musi", password="pass12345")
+        page = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Gérer ce sondage")
+        self.assertContains(page, "Relancer les non-répondants")
+        self.assertContains(page, "Modifier le sondage")
+        self.assertContains(page, "Clôturer (archiver)")
+        self.assertContains(page, "Supprimer")
+        self.assertContains(page, reverse("planning:remind_poll", args=[proposal.pk]))
+        self.assertContains(page, reverse("planning:cancel_poll", args=[proposal.pk]))
+        # Bloc gestion avant les frères / le vote : présent dès le haut de page.
+        manage_idx = page.content.find(b"G\xc3\xa9rer ce sondage")
+        self.assertGreater(manage_idx, 0)
+
+        with patch(
+            "planning.services.polls.notify_users", return_value=2
+        ) as mock_notify:
+            reminded = self.client.post(
+                reverse("planning:remind_poll", args=[proposal.pk])
+            )
+        self.assertEqual(reminded.status_code, 302)
+        mock_notify.assert_called_once()
+        recipients = {u.pk for u in mock_notify.call_args.args[0]}
+        self.assertIn(self.sub.pk, recipients)
+        self.assertGreaterEqual(len(recipients), 1)
+
+        cancelled = self.client.post(
+            reverse("planning:cancel_poll", args=[proposal.pk])
+        )
+        self.assertEqual(cancelled.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.CANCELLED)
+
+    def test_non_author_cannot_remind_or_delete(self):
+        proposal = DateProposal.objects.create(
+            title="Staff poll",
+            status=DateProposal.Status.OPEN,
+            created_by=self.staff,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ALL,
+            launched_at=timezone.now(),
+        )
+        DateOption.objects.create(proposal=proposal, label="A", starts_at=None)
+        self.client.login(username="musi", password="pass12345")
+        self.assertEqual(
+            self.client.post(
+                reverse("planning:remind_poll", args=[proposal.pk])
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("planning:cancel_poll", args=[proposal.pk])
+            ).status_code,
+            403,
+        )
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.OPEN)
+
+    def test_author_can_delete_draft_poll(self):
+        proposal = DateProposal.objects.create(
+            title="Brouillon mariage",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.musician,
+            option_kind=DateProposal.OptionKind.DATES,
+            audience=DateProposal.Audience.ALL,
+            linked_event=self.event,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=30),
+            sort_order=0,
+        )
+
+        self.client.login(username="musi", password="pass12345")
+        page = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Gérer ce sondage")
+        self.assertContains(page, "encore en brouillon")
+        self.assertContains(page, "Supprimer")
+        self.assertContains(page, reverse("planning:cancel_poll", args=[proposal.pk]))
+        self.assertNotContains(page, reverse("planning:close_poll", args=[proposal.pk]))
+        self.assertNotContains(page, reverse("planning:remind_poll", args=[proposal.pk]))
+
+        cancelled = self.client.post(
+            reverse("planning:cancel_poll", args=[proposal.pk])
+        )
+        self.assertEqual(cancelled.status_code, 302)
+        self.assertEqual(
+            cancelled.url, reverse("planning:event_detail", args=[self.event.pk])
+        )
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.CANCELLED)
+
+    def test_staff_can_delete_other_author_draft(self):
+        proposal = DateProposal.objects.create(
+            title="Draft Cedric",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.musician,
+            option_kind=DateProposal.OptionKind.DATES,
+            audience=DateProposal.Audience.ALL,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=40),
+            sort_order=0,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        page = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Supprimer")
+        cancelled = self.client.post(
+            reverse("planning:cancel_poll", args=[proposal.pk])
+        )
+        self.assertEqual(cancelled.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.CANCELLED)
+
+    def test_cannot_delete_locked_poll(self):
+        proposal = DateProposal.objects.create(
+            title="Déjà clôturé",
+            status=DateProposal.Status.LOCKED,
+            created_by=self.musician,
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ALL,
+            launched_at=timezone.now(),
+        )
+        DateOption.objects.create(proposal=proposal, label="A", starts_at=None)
+        self.client.login(username="musi", password="pass12345")
+        page = self.client.get(reverse("planning:poll_detail", args=[proposal.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, reverse("planning:cancel_poll", args=[proposal.pk]))
+        refused = self.client.post(
+            reverse("planning:cancel_poll", args=[proposal.pk])
+        )
+        self.assertEqual(refused.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.LOCKED)
+
+
+class PollAudienceIntentTests(PlanningBaseTestCase):
+    """Intention d’audience explicite (orchestre vs salon/invités)."""
+
+    def test_audience_all_shows_calendar_markers_for_non_invitee(self):
+        from datetime import datetime as dt_cls, time as time_cls
+
+        from planning.services import (
+            launch_availability_poll,
+            open_poll_calendar_markers_for_user,
+        )
+
+        proposal = DateProposal.objects.create(
+            title="Dispo Chantonnay",
+            status=DateProposal.Status.DRAFT,
+            linked_event=self.event,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ALL,
+        )
+        opt_a = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=40),
+            label="Date A",
+            sort_order=0,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=47),
+            label="Date B",
+            sort_order=1,
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+
+        outsider = User.objects.create_user(
+            username="outsider",
+            password="pass12345",
+            is_musician=True,
+        )
+        opt_day = timezone.localtime(opt_a.starts_at).date()
+        tz = timezone.get_current_timezone()
+        range_start = timezone.make_aware(
+            dt_cls.combine(opt_day.replace(day=1), time_cls.min), tz
+        )
+        range_end = timezone.now() + timedelta(days=120)
+        markers = open_poll_calendar_markers_for_user(
+            outsider, range_start=range_start, range_end=range_end
+        )
+        self.assertEqual(len(markers), 2)
+        self.assertEqual({m.proposal_id for m in markers}, {proposal.pk})
+
+    def test_launch_room_without_recipients_is_blocked(self):
+        from chat.models import ChatMembership
+        from chat.services import create_thematic_room
+        from planning.services import launch_availability_poll, poll_recipient_count
+
+        room = create_thematic_room(
+            "Salon vide musiciens",
+            musician_users=[],
+            created_by=self.staff,
+        )
+        # Retirer les musiciens éventuellement seedés (staff musicien).
+        ChatMembership.objects.filter(
+            room=room, user__is_musician=True, left_at__isnull=True
+        ).update(left_at=timezone.now())
+
+        proposal = DateProposal.objects.create(
+            title="Salon sans destinataires",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ROOM,
+            source_room=room,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=15),
+        )
+        self.assertEqual(poll_recipient_count(proposal), 0)
+        with self.assertRaises(ValueError) as ctx:
+            launch_availability_poll(
+                proposal,
+                launched_by=self.staff,
+                require_recipients=True,
+            )
+        self.assertIn("Aucun musicien", str(ctx.exception))
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+
+    def test_launch_view_blocks_room_without_recipients(self):
+        from chat.models import ChatMembership
+        from chat.services import create_thematic_room
+
+        room = create_thematic_room(
+            "Salon launch view",
+            musician_users=[],
+            created_by=self.staff,
+        )
+        ChatMembership.objects.filter(
+            room=room, user__is_musician=True, left_at__isnull=True
+        ).update(left_at=timezone.now())
+        proposal = DateProposal.objects.create(
+            title="Bloqué à l’envoi",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ROOM,
+            source_room=room,
+        )
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=16),
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:launch_poll", args=[proposal.pk]),
+            {"audience": "room"},
+        )
+        self.assertEqual(r.status_code, 302)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+
+    def test_propose_with_room_audience_without_invitees_keeps_draft_on_failed_launch(
+        self,
+    ):
+        """launch_poll + audience=room sans invités → événement créé, sondage reste brouillon."""
+        concert_type = EventType.objects.create(nom="Concert")
+        # Staff non musicien → pas dans les destinataires ROOM du salon événement.
+        self.staff.is_musician = False
+        self.staff.save(update_fields=["is_musician"])
+        day = (timezone.localdate() + timedelta(days=25)).isoformat()
+        self.client.login(username="staff1", password="pass12345")
+        r = self.client.post(
+            reverse("planning:propose_event"),
+            {
+                "titre": "Chantonnay room only",
+                "date": day,
+                "time": "20:00",
+                "type_id": concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "deadline": (timezone.localdate() + timedelta(days=8)).isoformat(),
+                "launch_poll": "1",
+                "audience": "room",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        event = Event.objects.get(titre="Chantonnay room only")
+        proposal = DateProposal.objects.get(linked_event=event)
+        self.assertEqual(proposal.audience, DateProposal.Audience.ROOM)
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)

@@ -4,7 +4,9 @@
     {% if draft_proposal %}
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
-      <button type="submit" class="btn-launch" style="width:100%">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      {% include "planning/_poll_audience_fieldset.html" with selected=draft_proposal.audience|default:"all" for_event=True show_preview=True proposal=draft_proposal id_prefix="chat_launch_aud" %}
+      <button type="submit" class="btn-launch" style="width:100%;margin-top:.75rem">
         Lancer le sondage de disponibilité
       </button>
     </form>

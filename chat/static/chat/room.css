@@ -762,6 +762,33 @@
     border-color: rgba(var(--accent-rgb), .35);
     background: rgba(var(--accent-rgb), .07);
   }
+  .chat-msg--unread:not(.chat-msg--mine):not(.chat-msg--highlight) {
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+  .chat-unread-sep {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    width: 100%;
+    margin: .35rem 0 .15rem;
+    padding: .15rem 0;
+    color: var(--accent);
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    line-height: 1.2;
+  }
+  .chat-unread-sep__line {
+    flex: 1 1 auto;
+    height: 1px;
+    background: color-mix(in srgb, var(--accent) 55%, var(--border));
+  }
+  .chat-unread-sep__label {
+    flex: 0 0 auto;
+    color: var(--accent);
+  }
   .chat-msg__meta {
     display: flex;
     align-items: center;
@@ -1898,6 +1925,11 @@
     text-decoration: none;
     font-weight: 600;
   }
+  .chat-msg__poll-link.is-closed {
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+  }
 
   .chat-react {
     display: inline-flex;
@@ -2187,6 +2219,13 @@
     height: 1.1rem;
     accent-color: var(--accent);
   }
+  .chat-poll-modal__hint {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.35;
+    color: var(--muted);
+  }
   .chat-poll-modal__options {
     display: flex;
     flex-direction: column;
@@ -2456,6 +2495,52 @@
     color: var(--text);
     font-size: .92rem;
     line-height: 1.4;
+  }
+  .chat-poll-sum__manage {
+    margin: .85rem 0 1rem;
+    padding: .75rem;
+    border: 2px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-radius: var(--r);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+  .chat-poll-sum__manage-title {
+    margin: 0 0 .55rem;
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .chat-poll-sum__manage-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .45rem;
+  }
+  .chat-poll-sum__manage-btn {
+    min-height: 48px;
+    padding: 0 .65rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--r);
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+    font-size: .9rem;
+    cursor: pointer;
+  }
+  .chat-poll-sum__manage-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+  }
+  .chat-poll-sum__manage-btn--primary {
+    border-color: transparent;
+    background: var(--accent);
+    color: #fff;
+    grid-column: 1 / -1;
+  }
+  .chat-poll-sum__manage-btn--danger {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .chat-poll-sum__link-row { margin: .9rem 0 0; }
   .chat-poll-sum__link,

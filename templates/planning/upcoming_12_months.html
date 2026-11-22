@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=28"></script>
+<script defer src="{% static 'chat/room.js' %}?v=39"></script>
 {% endblock %}
 
 {% block content %}
@@ -671,7 +671,7 @@
           <label for="ev_deadline">Date limite de réponse</label>
           <input type="date" name="deadline" id="ev_deadline" required>
           <p class="pl-row__meta" style="margin:.35rem 0 0">
-            Avant cette date, les musiciens doivent indiquer leur disponibilité.
+            Avant cette date, les destinataires du sondage doivent indiquer leur disponibilité.
           </p>
         </div>
         {% if is_planning_staff %}
@@ -692,18 +692,26 @@
             </div>
           </div>
         </div>
-        <label class="pl-check" for="ev_launch_poll">
-          <input type="checkbox" name="launch_poll" id="ev_launch_poll" value="1">
-          <span>Autoriser et envoyer le sondage de disponibilité maintenant</span>
-        </label>
-        <p class="pl-row__meta" style="margin:0">
-          Un salon réservé au staff sera créé.
-          Sans case cochée, le sondage reste en brouillon jusqu’à lancement manuel.
-        </p>
+        <div x-data="{ launchNow: false, pollAudience: 'all' }">
+          <label class="pl-check" for="ev_launch_poll">
+            <input type="checkbox" name="launch_poll" id="ev_launch_poll" value="1"
+                   x-model="launchNow">
+            <span>Autoriser et envoyer le sondage de disponibilité maintenant</span>
+          </label>
+          <p class="pl-row__meta" style="margin:.35rem 0 0">
+            Un salon réservé au staff sera créé.
+            Sans case cochée, le sondage reste en brouillon jusqu’à lancement manuel.
+          </p>
+          {% include "planning/_poll_audience_fieldset.html" with for_event=True selected="all" alpine_model="pollAudience" id_prefix="ev_aud" %}
+          <p class="pl-row__meta" style="margin:.35rem 0 0" x-show="launchNow" x-cloak>
+            Le sondage sera envoyé immédiatement selon l’audience choisie ci-dessus.
+          </p>
+        </div>
         {% else %}
+        <input type="hidden" name="audience" value="all">
         <p class="pl-row__meta" style="margin:0">
           Un salon réservé au staff sera créé. Le sondage de disponibilité
-          devra être lancé par un membre du staff.
+          (tout l’orchestre) devra être lancé par un membre du staff.
         </p>
         {% endif %}
         <button type="submit" class="pl-btn pl-btn--primary">Proposer l’événement</button>

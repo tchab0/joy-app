@@ -1,0 +1,92 @@
+{% load poll_audience %}
+{# Choix d’intention d’audience.
+   Options : name, selected (all|room), for_event, show_preview, proposal,
+   alpine_model, required (défaut true), id_prefix #}
+{% with field_name=name|default:"audience" sel=selected|default:"all" prefix=id_prefix|default:"poll_aud" %}
+<style>
+  .pl-poll-audience {
+    margin: .75rem 0 0;
+    padding: .75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+  }
+  .pl-poll-audience__legend {
+    padding: 0 .25rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .pl-poll-audience__choice {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 44px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .pl-poll-audience__help,
+  .pl-poll-audience__preview {
+    margin: .35rem 0 0;
+    font-size: .82rem;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .pl-poll-audience__preview strong { color: var(--text); }
+</style>
+<fieldset class="pl-poll-audience" aria-label="Qui reçoit ce sondage">
+  <legend class="pl-poll-audience__legend">Qui reçoit ce sondage ?</legend>
+  <label class="pl-poll-audience__choice" for="{{ prefix }}_all">
+    {% if alpine_model %}
+    <input type="radio" name="{{ field_name }}" id="{{ prefix }}_all" value="all"
+           :checked="{{ alpine_model }} === 'all'"
+           @change="{{ alpine_model }} = 'all'"
+           {% if required|default:True %}required{% endif %}>
+    {% else %}
+    <input type="radio" name="{{ field_name }}" id="{{ prefix }}_all" value="all"
+           {% if sel == "all" %}checked{% endif %}
+           {% if required|default:True %}required{% endif %}>
+    {% endif %}
+    <span>{% poll_audience_all_label %}</span>
+  </label>
+  <label class="pl-poll-audience__choice" for="{{ prefix }}_room">
+    {% if alpine_model %}
+    <input type="radio" name="{{ field_name }}" id="{{ prefix }}_room" value="room"
+           :checked="{{ alpine_model }} === 'room'"
+           @change="{{ alpine_model }} = 'room'"
+           {% if required|default:True %}required{% endif %}>
+    {% else %}
+    <input type="radio" name="{{ field_name }}" id="{{ prefix }}_room" value="room"
+           {% if sel != "all" %}checked{% endif %}
+           {% if required|default:True %}required{% endif %}>
+    {% endif %}
+    <span>{% poll_audience_room_label %}</span>
+  </label>
+  {% if alpine_model %}
+  <p class="pl-poll-audience__help" x-show="{{ alpine_model }} === 'all'" x-cloak>
+    {% if for_event %}{{ "all"|audience_help_event }}{% else %}{{ "all"|audience_help }}{% endif %}
+  </p>
+  <p class="pl-poll-audience__help" x-show="{{ alpine_model }} === 'room'" x-cloak>
+    {% if for_event %}{{ "room"|audience_help_event }}{% else %}{{ "room"|audience_help }}{% endif %}
+  </p>
+  {% elif for_event %}
+  <p class="pl-poll-audience__help">{{ sel|audience_help_event }}</p>
+  {% else %}
+  <p class="pl-poll-audience__help">{{ sel|audience_help }}</p>
+  {% endif %}
+  {% if show_preview and proposal %}
+  <p class="pl-poll-audience__preview">
+    {% with n=proposal|recipient_count %}
+    {% if n == 0 %}
+    <strong style="color:var(--accent)">Aucun musicien ne serait notifié</strong>
+    avec l’audience actuelle ({{ proposal.audience|audience_label }}).
+    {% else %}
+    Environ <strong>{{ n }}</strong> musicien{{ n|pluralize }}
+    ser{{ n|pluralize:"ait,aient" }} notifié{{ n|pluralize }}
+    ({{ proposal.audience|audience_label }}).
+    {% endif %}
+    {% endwith %}
+  </p>
+  {% endif %}
+</fieldset>
+{% endwith %}

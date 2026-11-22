@@ -35,6 +35,14 @@
         <label for="deadline">Date limite de réponse</label>
         <input type="date" name="deadline" id="deadline" required>
       </div>
+      <input type="hidden" name="audience" value="all">
+      <p class="pl-poll-audience" style="margin:.75rem 0 0;padding:.75rem;border:1px solid var(--border);border-radius:var(--r)">
+        <strong style="color:var(--text)">Qui reçoit ce sondage ?</strong>
+        <span style="display:block;margin-top:.35rem;color:var(--text);font-weight:600">Tout l’orchestre</span>
+        <span class="pl-row__meta" style="display:block;margin-top:.35rem">
+          Sondage autonome (sans salon) : tous les musiciens actifs seront notifiés au lancement.
+        </span>
+      </p>
       <template x-for="i in Array.from({length: n}, (_, k) => k)" :key="i">
         <div class="pl-form__row pl-form__row--2" style="padding:.5rem 0;border-top:1px solid var(--border)">
           <div>
@@ -84,8 +92,10 @@
         <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}" style="color:var(--accent)">{{ p.title }}</a>
         <p class="pl-row__meta">{{ p.n_options }} option{{ p.n_options|pluralize }} · brouillon</p>
       </div>
-      <form method="post" action="{% url 'planning:launch_poll' p.pk %}">
+      <form method="post" action="{% url 'planning:launch_poll' p.pk %}"
+            style="display:flex;flex-direction:column;gap:.5rem;align-items:stretch;min-width:12rem">
         {% csrf_token %}
+        <input type="hidden" name="audience" value="{% if p.source_room_id or p.linked_event_id %}{{ p.audience|default:'all' }}{% else %}all{% endif %}">
         <button type="submit" class="pl-btn pl-btn--primary">Lancer</button>
       </form>
     </div>

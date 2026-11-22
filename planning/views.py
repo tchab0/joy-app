@@ -25,6 +25,7 @@ from events.weather import attach_weather
 from planning.models import (
     DateOption,
     DateProposal,
+    DateVote,
     EquipmentItem,
     EventEquipmentAssignment,
     EventParticipation,
@@ -52,7 +53,8 @@ from planning.services import (
     ensure_participation_statuses,
     EQUIPMENT_CATEGORIES,
     format_poll_vote_counts,
-    option_positivity_sort_key,
+    poll_participation_lead,
+    poll_room_summary,
     get_or_create_equipment_item,
     get_or_create_profile,
     get_participation_for,
@@ -65,10 +67,16 @@ from planning.services import (
     launch_availability_poll,
     update_poll_meta,
     close_poll,
+    cancel_poll,
+    notify_poll_non_responders,
     lock_date_proposal,
     notify_roadmap,
     open_poll_calendar_markers_for_user,
     parse_invite_choice,
+    parse_poll_audience,
+    poll_audience_label,
+    poll_launch_success_message,
+    poll_recipient_count,
     propose_event,
     propose_substitute,
     respond_substitute_request,
@@ -77,6 +85,8 @@ from planning.services import (
     suggest_event_equipment,
     sync_known_fields,
     user_can_access_poll,
+    sibling_polls_for_user,
+    poll_embed_room,
     user_can_view_roadmap,
     set_participation_response,
     user_can_edit_poll_deadline,
@@ -603,6 +613,10 @@ class ProposeEventView(CanProposeEventMixin, View):
 
         public = False
 
+        poll_audience = parse_poll_audience(
+            request.POST.get("audience"),
+            default=DateProposal.Audience.ALL,
+        )
         event, proposal = propose_event(
             proposer=request.user,
             titre=titre,
@@ -620,6 +634,7 @@ class ProposeEventView(CanProposeEventMixin, View):
             contact_telephone=(request.POST.get("contact_telephone") or "").strip(),
             contact_email=(request.POST.get("contact_email") or "").strip(),
             deadline=deadline,
+            audience=poll_audience,
         )
 
         is_staff_user = request.user.is_staff or request.user.is_superuser
@@ -628,7 +643,12 @@ class ProposeEventView(CanProposeEventMixin, View):
         ).strip().lower() in ("1", "on", "true", "yes")
         if launch_now:
             try:
-                launch_availability_poll(proposal, launched_by=request.user)
+                launch_availability_poll(
+                    proposal,
+                    launched_by=request.user,
+                    audience=poll_audience,
+                    require_recipients=True,
+                )
             except ValueError as exc:
                 messages.warning(
                     request,
@@ -638,16 +658,18 @@ class ProposeEventView(CanProposeEventMixin, View):
 
         if is_staff_user:
             if launch_now:
+                sent = poll_recipient_count(proposal)
                 messages.success(
                     request,
-                    f"Événement « {event.titre} » créé — sondage de disponibilité "
-                    f"lancé. Invitez les musiciens concernés.",
+                    f"Événement « {event.titre} » créé — "
+                    f"{poll_launch_success_message(proposal, sent=sent)}",
                 )
             else:
                 messages.success(
                     request,
                     f"Événement « {event.titre} » créé — salon staff ouvert. "
-                    f"Invitez des musiciens puis lancez le sondage de disponibilité.",
+                    f"Sondage en brouillon ({poll_audience_label(poll_audience)}). "
+                    f"Lancez-le quand vous êtes prêt.",
                 )
             return redirect("planning:event_roster", pk=event.pk)
 
@@ -819,6 +841,9 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        votes_qs = DateVote.objects.select_related("user").order_by(
+            "user__last_name", "user__first_name", "user__username"
+        )
         proposal = get_object_or_404(
             DateProposal.objects.select_related(
                 "linked_event",
@@ -830,9 +855,9 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
             ).prefetch_related(
                 Prefetch(
                     "options",
-                    queryset=DateOption.objects.prefetch_related("votes").order_by(
-                        "sort_order", "starts_at"
-                    ),
+                    queryset=DateOption.objects.prefetch_related(
+                        Prefetch("votes", queryset=votes_qs)
+                    ).order_by("sort_order", "starts_at", "pk"),
                 )
             ),
             pk=kwargs["pk"],
@@ -849,10 +874,19 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
             from django.core.exceptions import PermissionDenied
 
             raise PermissionDenied("Vous n’êtes pas concerné par ce sondage.")
+        # Synthèse avec noms : même source que la modale salon.
+        summary = poll_room_summary(proposal, user)
+        option_models = {opt.pk: opt for opt in proposal.options.all()}
         options_data = []
-        for opt in proposal.options.all():
-            my_vote = next((v for v in opt.votes.all() if v.user_id == user.pk), None)
-            counts = vote_counts_for_option(opt)
+        for payload in summary["options"]:
+            opt = option_models.get(payload["id"])
+            if opt is None:
+                continue
+            my_vote = next(
+                (v for v in opt.votes.all() if v.user_id == user.pk),
+                None,
+            )
+            counts = payload["counts"]
             options_data.append(
                 {
                     "option": opt,
@@ -860,16 +894,19 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                     "counts_json": json.dumps(counts),
                     "counts_label": format_poll_vote_counts(counts),
                     "my_vote": my_vote.choice if my_vote else None,
+                    "yes": payload["yes"],
+                    "maybe": payload["maybe"],
+                    "no": payload["no"],
+                    "total": payload["total"],
+                    "voters_json": json.dumps(
+                        {
+                            "yes": payload["yes"],
+                            "maybe": payload["maybe"],
+                            "no": payload["no"],
+                        }
+                    ),
                 }
             )
-        # Synthèse : plus positive → plus négative (ordre de création en cas d’égalité).
-        options_data.sort(
-            key=lambda item: (
-                *option_positivity_sort_key(item["counts"]),
-                item["option"].sort_order,
-                item["option"].pk,
-            )
-        )
         event = proposal.linked_event
         context.update(
             {
@@ -878,6 +915,33 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 "options_data": options_data,
                 # Même ordre que la synthèse (positif → négatif) pour le select staff.
                 "options_ranked": [item["option"] for item in options_data],
+                "poll_summary_lead": poll_participation_lead(
+                    answered=summary["answered"],
+                    audience_count=summary["audience_count"],
+                    audience=proposal.audience,
+                ),
+                "poll_pending": summary["pending"],
+                "poll_pending_more": summary["pending_more"],
+                "poll_partial": summary["partial"],
+                "poll_partial_more": summary["partial_more"],
+                "poll_viewer": {
+                    "id": user.pk,
+                    "name": (
+                        (user.get_full_name() or "").strip()
+                        or user.username
+                        or "Vous"
+                    ),
+                },
+                "poll_viewer_json": json.dumps(
+                    {
+                        "id": user.pk,
+                        "name": (
+                            (user.get_full_name() or "").strip()
+                            or user.username
+                            or "Vous"
+                        ),
+                    }
+                ),
                 "is_planning_staff": is_staff,
                 "can_edit_deadline": user_can_edit_poll_deadline(user, proposal)
                 and proposal.status
@@ -899,6 +963,15 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 ),
                 "can_close_poll": user_can_edit_poll_deadline(user, proposal)
                 and proposal.is_open,
+                "can_manage_poll": user_can_edit_poll_deadline(user, proposal)
+                and proposal.is_open,
+                "can_delete_poll": user_can_edit_poll_deadline(user, proposal)
+                and proposal.status
+                not in (
+                    DateProposal.Status.LOCKED,
+                    DateProposal.Status.CANCELLED,
+                ),
+                "sibling_polls": sibling_polls_for_user(user, proposal),
                 "hide_pending_polls_banner": True,
             }
         )
@@ -919,14 +992,8 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
                 }
             )
 
-        # Salon embarqué : événement lié, sinon salon source du sondage chat.
-        embed_room = None
-        if event:
-            from chat.services import ensure_event_room
-
-            embed_room = ensure_event_room(event)
-        elif proposal.source_room_id:
-            embed_room = proposal.source_room
+        # Salon embarqué : priorité au salon source (plusieurs sondages possibles).
+        embed_room = poll_embed_room(proposal)
 
         if embed_room is not None:
             from chat.services import (
@@ -1298,6 +1365,17 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
         if deadline is None:
             messages.error(request, "Indiquez une date limite de réponse.")
             return redirect("planning:admin")
+        audience = parse_poll_audience(
+            request.POST.get("audience"),
+            default=DateProposal.Audience.ALL,
+        )
+        if audience == DateProposal.Audience.ROOM:
+            messages.error(
+                request,
+                "Un sondage admin autonome doit être ouvert à tout l’orchestre "
+                "(pas de salon lié).",
+            )
+            return redirect("planning:admin")
         # Brouillon : le staff doit lancer explicitement le sondage.
         proposal = DateProposal.objects.create(
             title=title,
@@ -1305,6 +1383,7 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
             created_by=request.user,
             status=DateProposal.Status.DRAFT,
             deadline=deadline,
+            audience=DateProposal.Audience.ALL,
         )
         options_created = 0
         for i in range(20):
@@ -1330,7 +1409,8 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
             return redirect("planning:admin")
         messages.success(
             request,
-            "Sondage créé en brouillon — lancez-le pour notifier les musiciens.",
+            "Sondage créé en brouillon — au lancement, "
+            f"il notifiera {poll_audience_label(DateProposal.Audience.ALL)}.",
         )
         return redirect("planning:poll_detail", pk=proposal.pk)
 
@@ -1490,15 +1570,44 @@ class LaunchPollView(PlanningStaffRequiredMixin, View):
 
     def post(self, request, pk):
         proposal = get_object_or_404(DateProposal, pk=pk)
+        raw_audience = (request.POST.get("audience") or "").strip()
+        audience = (
+            parse_poll_audience(raw_audience, default=proposal.audience)
+            if raw_audience
+            else None
+        )
+        # Sondage lié à un événement : défaut orchestre si pas encore précisé.
+        if (
+            audience is None
+            and proposal.linked_event_id
+            and proposal.audience == DateProposal.Audience.ROOM
+            and not proposal.source_room_id
+        ):
+            audience = DateProposal.Audience.ALL
         try:
-            launch_availability_poll(proposal, launched_by=request.user)
+            launch_availability_poll(
+                proposal,
+                launched_by=request.user,
+                audience=audience,
+                require_recipients=True,
+            )
         except ValueError as exc:
             messages.error(request, str(exc))
+            next_url = (request.POST.get("next") or "").strip()
+            if next_url.startswith("/"):
+                return redirect(next_url)
+            if proposal.linked_event_id:
+                return redirect("planning:event_roster", pk=proposal.linked_event_id)
             return redirect("planning:poll_detail", pk=pk)
+        proposal.refresh_from_db()
+        sent = poll_recipient_count(proposal)
         messages.success(
             request,
-            "Sondage lancé — notifications envoyées aux invités.",
+            poll_launch_success_message(proposal, sent=sent),
         )
+        next_url = (request.POST.get("next") or "").strip()
+        if next_url.startswith("/"):
+            return redirect(next_url)
         return redirect("planning:poll_detail", pk=pk)
 
 
@@ -1513,12 +1622,45 @@ class ResendPollNotificationsView(PlanningStaffRequiredMixin, View):
             messages.error(request, "Le sondage n’est pas ouvert.")
             return redirect("planning:poll_detail", pk=pk)
         sent = notify_availability_poll(proposal)
+        label = poll_audience_label(proposal.audience)
         messages.success(
             request,
             f"Notifications renvoyées ({sent} destinataire"
-            f"{'s' if sent != 1 else ''} joint"
-            f"{'s' if sent != 1 else ''} par push ou e-mail).",
+            f"{'s' if sent != 1 else ''} · {label}).",
         )
+        return redirect("planning:poll_detail", pk=pk)
+
+
+class RemindPollNonRespondersView(MusicianRequiredMixin, View):
+    """Auteur ou staff : relance uniquement les personnes qui n’ont pas répondu."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(
+            DateProposal.objects.prefetch_related("options"), pk=pk
+        )
+        if not user_can_edit_poll_deadline(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Seul l’auteur ou le staff peut relancer les non-répondants."
+            )
+        try:
+            sent = notify_poll_non_responders(proposal)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:poll_detail", pk=pk)
+        if sent == 0:
+            messages.info(
+                request,
+                "Tout le monde a déjà répondu — aucune relance envoyée.",
+            )
+        else:
+            messages.success(
+                request,
+                f"Relance envoyée à {sent} personne"
+                f"{'s' if sent != 1 else ''} "
+                f"qui n’{'ont' if sent != 1 else 'a'} pas encore répondu.",
+            )
         return redirect("planning:poll_detail", pk=pk)
 
 
@@ -1650,6 +1792,32 @@ class ClosePollView(MusicianRequiredMixin, View):
             return redirect("planning:poll_detail", pk=pk)
         messages.success(request, "Sondage clôturé.")
         return redirect("planning:poll_detail", pk=pk)
+
+
+class CancelPollView(MusicianRequiredMixin, View):
+    """Auteur ou staff : supprimer / annuler un sondage ouvert ou brouillon."""
+
+    def post(self, request, pk):
+        proposal = get_object_or_404(DateProposal, pk=pk)
+        if not user_can_edit_poll_deadline(request.user, proposal):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Seul l’auteur ou le staff peut supprimer ce sondage."
+            )
+        room_id = proposal.source_room_id
+        event_id = proposal.linked_event_id
+        try:
+            cancel_poll(proposal)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("planning:poll_detail", pk=pk)
+        messages.success(request, "Sondage supprimé.")
+        if room_id:
+            return redirect("chat:room", room_id=room_id)
+        if event_id:
+            return redirect("planning:event_detail", pk=event_id)
+        return redirect("planning:dashboard")
 
 
 class InviteMusicianView(PlanningStaffRequiredMixin, View):

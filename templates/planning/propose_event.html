@@ -56,10 +56,15 @@
       <label for="prop_deadline">Date limite de réponse</label>
       <input type="date" name="deadline" id="prop_deadline" required>
       <p class="pl-row__meta" style="margin:.35rem 0 0">
-        Avant cette date, les musiciens devront indiquer leur disponibilité
-        (modifiable ensuite par vous).
+        Avant cette date, les destinataires du sondage devront indiquer leur disponibilité
+        (modifiable ensuite par le staff).
       </p>
     </div>
+    <input type="hidden" name="audience" value="all">
+    <p class="pl-row__meta" style="margin:0">
+      Le sondage de disponibilité sera préparé pour <strong>tout l’orchestre</strong>.
+      Un membre du staff le lancera ensuite.
+    </p>
     <button type="submit" class="pl-btn pl-btn--primary">Envoyer la proposition</button>
   </form>
 </div>

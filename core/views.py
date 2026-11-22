@@ -674,6 +674,45 @@ def contact(request):
     })
 
 
+def _admin_contact_redirect(request):
+    """Conserve les filtres de la boîte contact après une action."""
+    from urllib.parse import urlencode
+
+    params = {}
+    statut = (request.POST.get("retour_statut") or "").strip()
+    kind = (request.POST.get("retour_kind") or "").strip()
+    if statut:
+        params["statut"] = statut
+    if kind:
+        params["kind"] = kind
+    url = reverse("admin_contact")
+    if params:
+        return redirect(f"{url}?{urlencode(params)}")
+    return redirect(url)
+
+
+def _contact_reply_subject(msg: ContactMessage) -> str:
+    if msg.is_prestation:
+        return "Re: Votre demande de prestation — Jazz Orchestra Yonnais"
+    return "Re: Votre message — Jazz Orchestra Yonnais"
+
+
+def _contact_reply_default_body(msg: ContactMessage) -> str:
+    prenom = (msg.nom or "").strip().split()[0] if (msg.nom or "").strip() else ""
+    greeting = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    body = (
+        f"{greeting}\n\n"
+        f"\n\n"
+        f"Cordialement,\n"
+        f"L’équipe du Jazz Orchestra Yonnais\n"
+    )
+    quote = (msg.message or "").strip()
+    if quote:
+        lines = "\n".join(f"> {line}" if line else ">" for line in quote.splitlines())
+        body += f"\n---\nVotre message :\n{lines}\n"
+    return body
+
+
 @staff_member_required
 def admin_contact(request):
     purged = _purge_foreign_contact_messages()
@@ -691,22 +730,85 @@ def admin_contact(request):
         messages_qs = messages_qs.filter(statut=statut)
     if kind in (ContactMessage.KIND_CONTACT, ContactMessage.KIND_PRESTATION):
         messages_qs = messages_qs.filter(kind=kind)
-    messages_qs = messages_qs.order_by("-created_at")
+    messages_list = list(messages_qs.order_by("-created_at"))
+    for item in messages_list:
+        item.reply_subject = _contact_reply_subject(item)
+        item.reply_body = _contact_reply_default_body(item)
 
     return render(request, "core/admin_contact.html", {
-        "messages_list": messages_qs,
+        "messages_list": messages_list,
         "statut_actif": statut,
         "kind_actif": kind,
         "statut_choices": ContactMessage.STATUS_CHOICES,
         "kind_choices": ContactMessage.KIND_CHOICES,
+        "email_sending_enabled": bool(getattr(settings, "EMAIL_SENDING_ENABLED", True)),
     })
+
+
+@staff_member_required
+def admin_contact_action(request, pk):
+    """Spam, traité, ou réponse e-mail simple depuis la boîte contact."""
+    if request.method != "POST":
+        return redirect("admin_contact")
+
+    msg = get_object_or_404(ContactMessage, pk=pk)
+    action = (request.POST.get("action") or "").strip()
+    now = timezone.now()
+
+    if action == "spam":
+        msg.statut = "spam"
+        msg.processed_at = now
+        msg.save(update_fields=["statut", "processed_at"])
+        messages.success(request, f"Message de {msg.nom} classé en spam.")
+    elif action == "unspam":
+        msg.statut = "new"
+        msg.processed_at = None
+        msg.save(update_fields=["statut", "processed_at"])
+        messages.success(request, f"Message de {msg.nom} retiré du spam.")
+    elif action == "processed":
+        msg.statut = "processed"
+        msg.processed_at = now
+        msg.save(update_fields=["statut", "processed_at"])
+        messages.success(request, f"Message de {msg.nom} marqué comme traité.")
+    elif action == "reply":
+        subject = (request.POST.get("subject") or "").strip()
+        body = (request.POST.get("body") or "").strip()
+        if not subject or not body:
+            messages.error(request, "Sujet et message obligatoires pour répondre.")
+            return _admin_contact_redirect(request)
+        if not getattr(settings, "EMAIL_SENDING_ENABLED", True):
+            messages.error(request, "Envoi e-mail temporairement désactivé.")
+            return _admin_contact_redirect(request)
+        try:
+            from django.core.mail import send_mail
+
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[msg.email],
+                fail_silently=False,
+            )
+        except Exception:
+            logger.exception("Échec réponse contact id=%s à %s", msg.pk, msg.email)
+            messages.error(request, f"Échec d’envoi à {msg.email}.")
+            return _admin_contact_redirect(request)
+        msg.statut = "processed"
+        msg.processed_at = now
+        msg.save(update_fields=["statut", "processed_at"])
+        messages.success(request, f"Réponse envoyée à {msg.email}.")
+    else:
+        messages.error(request, "Action inconnue.")
+
+    return _admin_contact_redirect(request)
 
 
 @staff_member_required
 def admin_contact_delete(request, pk):
     if request.method == "POST":
         ContactMessage.objects.filter(pk=pk).delete()
-    return redirect("admin_contact")
+        messages.success(request, "Message supprimé.")
+    return _admin_contact_redirect(request)
 
 
 @staff_member_required

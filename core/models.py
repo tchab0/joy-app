@@ -316,6 +316,7 @@ class ContactMessage(models.Model):
         ("new", "Nouveau"),
         ("read", "Lu"),
         ("processed", "Traité"),
+        ("spam", "Spam"),
         ("archived", "Archivé"),
     ]
 

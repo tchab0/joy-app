@@ -4,8 +4,10 @@ function pollVotes(cfg) {
   return {
     open: !!cfg.open,
     csrf: cfg.csrf || '',
+    viewer: cfg.viewer || null,
     choices: Object.assign({}, cfg.choices || {}),
     counts: Object.assign({}, cfg.counts || {}),
+    voters: Object.assign({}, cfg.voters || {}),
     urls: cfg.urls || {},
     busy: {},
     toast: '',
@@ -42,9 +44,54 @@ function pollVotes(cfg) {
         maybe: Number(c.maybe) || 0
       };
     },
+    optionTotal(id) {
+      const c = this.countsOf(id);
+      return c.yes + c.no + c.maybe;
+    },
     countsLabel(id) {
       const c = this.countsOf(id);
-      return 'Oui ' + c.yes + ' · Non ' + c.no + ' · Peut-être ' + c.maybe;
+      return 'Oui ' + c.yes + ' · Peut-être ' + c.maybe + ' · Non ' + c.no;
+    },
+    barWidth(id, key) {
+      const total = this.optionTotal(id);
+      if (!total) return 0;
+      return (this.countsOf(id)[key] / total) * 100;
+    },
+    votersOf(id) {
+      const raw = this.voters[id] || {};
+      return {
+        yes: Array.isArray(raw.yes) ? raw.yes.slice() : [],
+        maybe: Array.isArray(raw.maybe) ? raw.maybe.slice() : [],
+        no: Array.isArray(raw.no) ? raw.no.slice() : []
+      };
+    },
+    nameList(id, key) {
+      const people = this.votersOf(id)[key] || [];
+      if (!people.length) return 'Personne';
+      const selfId = this.viewer && this.viewer.id;
+      return people.map((person) => (
+        person.id === selfId ? person.name + ' (vous)' : person.name
+      )).join(', ');
+    },
+    _moveSelfVote(optionId, nextChoice) {
+      if (!this.viewer || !this.viewer.id) return;
+      const groups = this.votersOf(optionId);
+      const selfId = this.viewer.id;
+      ['yes', 'maybe', 'no'].forEach((key) => {
+        groups[key] = groups[key].filter((person) => person.id !== selfId);
+      });
+      if (nextChoice && groups[nextChoice]) {
+        groups[nextChoice].push({
+          id: selfId,
+          name: this.viewer.name || 'Vous'
+        });
+        groups[nextChoice].sort((a, b) =>
+          String(a.name || '').localeCompare(String(b.name || ''), 'fr', {
+            sensitivity: 'base'
+          })
+        );
+      }
+      this.voters[optionId] = groups;
     },
     allAnswered() {
       const ids = Object.keys(this.urls);
@@ -74,6 +121,7 @@ function pollVotes(cfg) {
               maybe: Number(d.counts.maybe) || 0
             };
           }
+          this._moveSelfVote(optionId, d.choice);
           this.onToast('Réponse enregistrée');
           if (this.allAnswered() && !this.complete) {
             this.complete = true;

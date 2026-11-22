@@ -366,7 +366,10 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertContains(r, "Alice vous a cité dans Répétition")
         self.assertNotContains(r, "Bob vous a cité dans Salon orchestre")
         self.assertNotContains(r, "Alice vous a cité dans Salon orchestre : hello")
-        self.assertContains(r, reverse("chat:room", args=[1]))
+        # Groupe multi : lien direct vers le 1er message notifié.
+        multi = next(g for g in banner["chat_groups"] if g["count"] == 2)
+        self.assertEqual(multi["first_msg_id"], 10)
+        self.assertContains(r, reverse("chat:room", args=[1]) + "?msg=10")
         # Le groupe à une seule notif ouvre le salon (via le lien d’ouverture).
         solo = next(g for g in banner["chat_groups"] if g["count"] == 1)
         self.assertTrue(solo["show_content"])

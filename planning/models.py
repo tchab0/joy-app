@@ -391,8 +391,8 @@ class DateProposal(models.Model):
         TEXT = "text", "Texte"
 
     class Audience(models.TextChoices):
-        ROOM = "room", "Membres du salon"
-        ALL = "all", "Tous les musiciens"
+        ROOM = "room", "Salon / invités seulement"
+        ALL = "all", "Tout l’orchestre"
 
     title = models.CharField(max_length=200, verbose_name="Titre")
     description = models.TextField(blank=True, verbose_name="Description")
@@ -416,7 +416,7 @@ class DateProposal(models.Model):
         default=Audience.ROOM,
         db_index=True,
         verbose_name="Audience",
-        help_text="Qui peut répondre : membres du salon source, ou tous les musiciens.",
+        help_text="Qui reçoit le sondage : salon/invités, ou tout l’orchestre.",
     )
     source_room = models.ForeignKey(
         "chat.ChatRoom",

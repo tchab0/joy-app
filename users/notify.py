@@ -323,12 +323,27 @@ def _bucket_by_dot(items: list) -> list[tuple[str, list]]:
     return [(dot, buckets[dot]) for dot in order]
 
 
-def _href_for_banner_items(items, *, is_chat: bool = False, room_id=None, url: str = "") -> str:
+def _href_for_banner_items(
+    items,
+    *,
+    is_chat: bool = False,
+    room_id=None,
+    url: str = "",
+    first_msg_id=None,
+) -> str:
     if is_chat:
         if len(items) == 1:
             return reverse("account_notification_open", args=[items[0].pk])
         if room_id:
-            return reverse("chat:room", args=[room_id])
+            try:
+                from chat.services import chat_room_url
+
+                return chat_room_url(
+                    int(room_id),
+                    message_id=int(first_msg_id) if first_msg_id else None,
+                )
+            except (TypeError, ValueError, ImportError):
+                return reverse("chat:room", args=[room_id])
         target = (url or "").split("?", 1)[0]
         if target.startswith("/chat/"):
             return target or reverse("chat:list")
@@ -350,6 +365,7 @@ def _chip(
     qty: int | None = None,
     preview: str = "",
     kind: str = "",
+    first_msg_id=None,
 ) -> dict:
     count = len(items)
     show = count == 1
@@ -373,11 +389,16 @@ def _chip(
         "is_chat": is_chat,
         "is_staff": bool(is_staff or dot == "staff"),
         "href": _href_for_banner_items(
-            items, is_chat=is_chat, room_id=room_id, url=url
+            items,
+            is_chat=is_chat,
+            room_id=room_id,
+            url=url,
+            first_msg_id=first_msg_id,
         ),
         "aria": aria,
         "open_pk": items[0].pk,
         "room_id": room_id,
+        "first_msg_id": first_msg_id,
     }
 
 
@@ -407,6 +428,7 @@ def _banner_chips(*, action: list, chat_groups: list, other: list) -> list[dict]
                 qty=group.get("qty") or group.get("count") or 1,
                 preview=group.get("preview") or "",
                 kind=kind,
+                first_msg_id=group.get("first_msg_id"),
             )
         )
     for dot, items in _bucket_by_dot(other):
@@ -495,11 +517,25 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
                     "show_content": False,
                     "qty": 0,
                     "unread_messages": 0,
+                    "first_msg_id": None,
                 }
                 chat_by_url[key] = group
                 chat_order.append(key)
             group["count"] += 1
             group["pks"].append(item.pk)
+            msg_id = _chat_msg_id_from_url(url)
+            if msg_id is None:
+                related = (getattr(item, "related_type", None) or "").strip()
+                related_id = getattr(item, "related_id", None)
+                if related in _CHAT_MSG_RELATED and related_id:
+                    try:
+                        msg_id = int(related_id)
+                    except (TypeError, ValueError):
+                        msg_id = None
+            if msg_id:
+                prev = group.get("first_msg_id")
+                if prev is None or msg_id < prev:
+                    group["first_msg_id"] = msg_id
         elif getattr(item, "is_unanswered", False):
             action.append(item)
         else:
@@ -520,6 +556,23 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
     unread_by_room = _unread_messages_by_room(
         viewer, {g["room_id"] for g in chat_groups if g.get("room_id")}
     )
+    first_unread_by_room: dict[int, int] = {}
+    missing_first = {
+        g["room_id"]
+        for g in chat_groups
+        if g.get("room_id") and not g.get("first_msg_id")
+    }
+    if missing_first and viewer is not None:
+        try:
+            from chat.services import first_unread_message_ids_for_user
+
+            first_unread_by_room = first_unread_message_ids_for_user(
+                viewer, missing_first
+            )
+        except (ProgrammingError, OperationalError):
+            logger.warning("1er message non lu salon indisponible (migration ?)")
+        except Exception:
+            logger.exception("Échec résolution 1er message non lu salon")
     for group in chat_groups:
         unread = unread_by_room.get(group.get("room_id") or 0, 0)
         group["unread_messages"] = unread
@@ -527,6 +580,10 @@ def group_unread_inbox_for_banner(notifications: list) -> dict:
         group["show_content"] = group["count"] == 1
         if not group["show_content"]:
             group["preview"] = ""
+        if not group.get("first_msg_id"):
+            rid = group.get("room_id")
+            if rid and rid in first_unread_by_room:
+                group["first_msg_id"] = first_unread_by_room[rid]
 
     return {
         "action": action,

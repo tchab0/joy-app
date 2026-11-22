@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static poll_audience %}
 
 {% block title %}{{ proposal.title }} — Sondage JOY{% endblock %}
 
 {% block extra_head %}
 {% if room %}
-<script defer src="{% static 'chat/room.js' %}?v=34"></script>
+<script defer src="{% static 'chat/room.js' %}?v=39"></script>
 {% endif %}
 {% endblock %}
 
@@ -24,6 +24,7 @@
      x-data="pollVotes({
        open: {{ proposal.is_open|yesno:'true,false' }},
        csrf: '{{ csrf_token }}',
+       viewer: {{ poll_viewer_json }},
        choices: {
          {% for item in options_data %}
          {{ item.option.pk }}: '{{ item.my_vote|default:'' }}'{% if not forloop.last %},{% endif %}
@@ -32,6 +33,11 @@
        counts: {
          {% for item in options_data %}
          {{ item.option.pk }}: {{ item.counts_json }}{% if not forloop.last %},{% endif %}
+         {% endfor %}
+       },
+       voters: {
+         {% for item in options_data %}
+         {{ item.option.pk }}: {{ item.voters_json }}{% if not forloop.last %},{% endif %}
          {% endfor %}
        },
        urls: {
@@ -62,13 +68,8 @@
       {% if proposal.created_by %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
       Salon « {{ proposal.source_room.title }} »
       {% endif %}
-      {% if proposal.audience == 'all' %}
       <span class="pl-accept__sep" aria-hidden="true">·</span>
-      Ouvert à tous les musiciens
-      {% elif proposal.source_room %}
-      <span class="pl-accept__sep" aria-hidden="true">·</span>
-      Membres du salon
-      {% endif %}
+      {{ proposal.audience|audience_label }}
       {% if proposal.deadline and proposal.is_open %}
       {% if proposal.created_by or proposal.source_room %}<span class="pl-accept__sep" aria-hidden="true">·</span>{% endif %}
       Répondre avant le {{ proposal.deadline|date:"d/m/Y" }}
@@ -86,16 +87,87 @@
     </p>
   </header>
 
-  {% if can_close_poll %}
-  <section class="pl-section" aria-label="Clôturer le sondage">
-    <form method="post" action="{% url 'planning:close_poll' proposal.pk %}"
-          onsubmit="return confirm('Clôturer ce sondage ? Les votes seront figés.');"
-          style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-      {% csrf_token %}
-      <button type="submit" class="pl-btn" style="min-height:48px">
-        Clôturer le sondage
-      </button>
-    </form>
+  {% if can_manage_poll or can_delete_poll %}
+  <section class="pl-section pl-poll-manage" aria-label="Gérer le sondage">
+    <h2 class="pl-poll-manage__title">Gérer ce sondage</h2>
+    {% if can_manage_poll %}
+    <p class="pl-poll-manage__lead">
+      Relancez les personnes qui n’ont pas répondu, modifiez les options,
+      clôturez (archiver) ou supprimez le sondage.
+    </p>
+    {% elif proposal.is_draft %}
+    <p class="pl-poll-manage__lead">
+      Ce sondage est encore en brouillon — vous pouvez le supprimer, ou le lancer plus bas.
+    </p>
+    {% else %}
+    <p class="pl-poll-manage__lead">
+      Vous pouvez supprimer ce sondage.
+    </p>
+    {% endif %}
+    <div class="pl-poll-manage__actions">
+      {% if can_manage_poll %}
+      <form method="post" action="{% url 'planning:remind_poll' proposal.pk %}" class="pl-poll-manage__form">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--primary pl-poll-manage__btn">
+          Relancer les non-répondants
+        </button>
+      </form>
+      <a class="pl-btn pl-poll-manage__btn" href="#poll-edit">
+        Modifier le sondage
+      </a>
+      <form method="post" action="{% url 'planning:close_poll' proposal.pk %}" class="pl-poll-manage__form"
+            onsubmit="return confirm('Clôturer (archiver) ce sondage ? Les votes seront figés.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-poll-manage__btn">
+          Clôturer (archiver)
+        </button>
+      </form>
+      {% endif %}
+      {% if can_delete_poll %}
+      <form method="post" action="{% url 'planning:cancel_poll' proposal.pk %}" class="pl-poll-manage__form"
+            onsubmit="return confirm('Supprimer définitivement ce sondage ? Les réponses seront perdues.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--no pl-poll-manage__btn">
+          Supprimer
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if sibling_polls %}
+  <section class="pl-section pl-poll-siblings" aria-label="Autres sondages du salon">
+    <h2 class="pl-poll-siblings__title">
+      {% if sibling_polls|length == 1 %}
+      Autre sondage du même salon
+      {% else %}
+      Autres sondages du même salon
+      {% endif %}
+    </h2>
+    <p class="pl-poll-siblings__lead">
+      {% if proposal.source_room %}
+      Dans le salon « {{ proposal.source_room.title }} »,
+      {% else %}
+      Dans ce salon,
+      {% endif %}
+      {{ sibling_polls|length }} autre{{ sibling_polls|length|pluralize }}
+      sondage{{ sibling_polls|length|pluralize }}
+      {% if sibling_polls|length == 1 %}est accessible{% else %}sont accessibles{% endif %}.
+    </p>
+    <ul class="pl-poll-siblings__list">
+      {% for sibling in sibling_polls %}
+      <li>
+        <a class="pl-poll-siblings__link" href="{% url 'planning:poll_detail' sibling.pk %}">
+          <span class="pl-poll-siblings__name">{{ sibling.title }}</span>
+          <span class="pl-poll-siblings__status">
+            {% if sibling.is_open %}Ouvert{% elif sibling.status == 'locked' %}Clôturé{% elif sibling.is_draft %}Brouillon{% else %}{{ sibling.get_status_display }}{% endif %}
+            {% if sibling.deadline and sibling.is_open %} · avant le {{ sibling.deadline|date:"d/m" }}{% endif %}
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
   </section>
   {% endif %}
 
@@ -115,6 +187,10 @@
   </section>
   {% endif %}
 
+  {% if can_edit_meta or can_edit_deadline or can_edit_options %}
+  <div id="poll-edit" class="pl-poll-edit-anchor" tabindex="-1"></div>
+  {% endif %}
+
   {% if can_edit_meta %}
   <section class="pl-section" aria-label="Modifier le sondage">
     <h2>Question et audience</h2>
@@ -131,21 +207,12 @@
                   style="width:100%;min-height:4.5rem;box-sizing:border-box">{{ proposal.description }}</textarea>
       </div>
       {% if proposal.source_room_id or proposal.linked_event_id %}
-      <fieldset style="margin-top:.75rem;padding:.75rem;border:1px solid var(--border);border-radius:var(--r)">
-        <legend style="padding:0 .25rem;font-size:.78rem;font-weight:600;color:var(--muted)">Qui peut répondre</legend>
-        <label style="display:flex;align-items:center;gap:.45rem;min-height:44px;color:var(--text)">
-          <input type="radio" name="audience" value="room"
-                 {% if proposal.audience != 'all' %}checked{% endif %}>
-          <span>Membres du salon</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:.45rem;min-height:44px;color:var(--text)">
-          <input type="radio" name="audience" value="all"
-                 {% if proposal.audience == 'all' %}checked{% endif %}>
-          <span>Tous les musiciens</span>
-        </label>
-      </fieldset>
+      {% include "planning/_poll_audience_fieldset.html" with selected=proposal.audience for_event=proposal.linked_event_id show_preview=True proposal=proposal id_prefix="meta_aud" %}
       {% else %}
       <input type="hidden" name="audience" value="all">
+      <p class="pl-row__meta" style="margin:.75rem 0 0">
+        Audience : tout l’orchestre (sondage sans salon lié).
+      </p>
       {% endif %}
       <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;margin-top:1rem">
         Enregistrer
@@ -285,11 +352,16 @@
   <section class="pl-section pl-accept__staff">
     <h2>Lancer le sondage</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
-      Autorise les musiciens à répondre et envoie une notification aux personnes concernées.
+      Choisissez qui reçoit le sondage, puis lancez : les destinataires sont notifiés.
     </p>
     <form method="post" action="{% url 'planning:launch_poll' proposal.pk %}">
       {% csrf_token %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+      {% if proposal.source_room_id or proposal.linked_event_id %}
+      {% include "planning/_poll_audience_fieldset.html" with selected=proposal.audience|default:"all" for_event=proposal.linked_event_id show_preview=True proposal=proposal id_prefix="launch_aud" %}
+      {% else %}
+      <input type="hidden" name="audience" value="all">
+      {% endif %}
+      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;margin-top:.75rem">
         Lancer le sondage de disponibilité
       </button>
     </form>
@@ -300,7 +372,8 @@
   <section class="pl-section pl-accept__staff">
     <h2>Notifications</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
-      Renvoie le push / e-mail aux musiciens du salon (et aux participants déjà inscrits).
+      Renvoie le push / e-mail selon l’audience actuelle
+      ({{ proposal.audience|audience_label }}).
     </p>
     <form method="post" action="{% url 'planning:resend_poll_notifications' proposal.pk %}">
       {% csrf_token %}

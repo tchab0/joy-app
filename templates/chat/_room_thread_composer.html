@@ -113,12 +113,20 @@
           <span aria-hidden="true">👁</span>
         </button>
       </template>
+      <template x-if="!msg.deleted && !msg.hidden && showUnreadDividerBefore(msg)">
+        <div class="chat-unread-sep" role="separator" aria-label="Nouveaux messages">
+          <span class="chat-unread-sep__line" aria-hidden="true"></span>
+          <span class="chat-unread-sep__label">Nouveaux</span>
+          <span class="chat-unread-sep__line" aria-hidden="true"></span>
+        </div>
+      </template>
       <template x-if="!msg.deleted && !msg.hidden">
         <div class="chat-msg"
              :id="'chat-msg-' + msg.id"
              :class="{
                'chat-msg--mine': msg.author_id === currentUserId && !msg.highlight,
                'chat-msg--highlight': msg.highlight,
+               'chat-msg--unread': isLiveUnread(msg),
                'chat-msg--with-unhide': followingHidden(index).length > 0
              }">
           <div class="chat-msg__meta">
@@ -187,8 +195,11 @@
           <template x-if="msg.body">
             <div class="chat-msg__body" x-html="formatBodyHtml(msg.body)"></div>
           </template>
-          <template x-if="msg.highlight && msg.poll_url">
-            <a class="chat-msg__poll-link" :href="msg.poll_url">Répondre au sondage →</a>
+          <template x-if="msg.highlight && msg.poll_url && msg.poll_status !== 'cancelled'">
+            <a class="chat-msg__poll-link"
+               :href="msg.poll_url"
+               :class="msg.poll_status === 'locked' && 'is-closed'"
+               x-text="msg.poll_cta || 'Répondre au sondage →'"></a>
           </template>
           <ul class="chat-atts" x-show="msg.attachments && msg.attachments.length">
             <template x-for="att in msg.attachments" :key="att.id">
@@ -597,19 +608,25 @@
         </div>
 
         <fieldset class="chat-poll-modal__fieldset">
-          <legend>Qui peut répondre</legend>
+          <legend>Qui reçoit ce sondage ?</legend>
           <label class="chat-poll-modal__choice">
             <input type="radio" name="chat-poll-audience" value="room"
                    :checked="pollAudience === 'room'"
                    @change="pollAudience = 'room'">
-            <span>Membres du salon</span>
+            <span>Ce salon seulement</span>
           </label>
           <label class="chat-poll-modal__choice">
             <input type="radio" name="chat-poll-audience" value="all"
                    :checked="pollAudience === 'all'"
                    @change="pollAudience = 'all'">
-            <span>Tous les musiciens</span>
+            <span>Tout l’orchestre</span>
           </label>
+          <p class="chat-poll-modal__hint" x-show="pollAudience === 'room'" x-cloak>
+            Seuls les membres actuels de ce salon seront notifiés.
+          </p>
+          <p class="chat-poll-modal__hint" x-show="pollAudience === 'all'" x-cloak>
+            Tous les musiciens actifs seront notifiés, pas seulement ce salon.
+          </p>
         </fieldset>
 
         <label class="chat-poll-modal__label" for="chat-poll-deadline">Date limite (optionnel)</label>
@@ -623,7 +640,11 @@
         <button type="button" class="chat-poll-modal__submit"
                 :disabled="pollBusy || !pollTitle.trim()"
                 @click="submitPoll()">
-          <span x-text="pollBusy ? 'Lancement…' : 'Lancer le sondage'"></span>
+          <span x-text="pollBusy
+            ? 'Lancement…'
+            : (pollAudience === 'all'
+                ? 'Lancer pour tout l’orchestre'
+                : 'Lancer pour ce salon')"></span>
         </button>
       </div>
     </div>

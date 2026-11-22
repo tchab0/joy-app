@@ -468,14 +468,18 @@ def propose_event(
     contact_telephone: str = "",
     contact_email: str = "",
     deadline=None,
+    audience: str = DateProposal.Audience.ALL,
 ):
     """
     Proposition d’événement par un musicien / adhérent / staff.
 
     Crée l’Event (tentative), un sondage brouillon lié, et laisse le signal
     chat créer un salon staff-only (pas de convocation auto des titulaires).
+
+    ``audience`` défaut ``all`` : sondage de dispo orchestre (cas le plus courant).
     """
     from events.models import Event
+    from planning.services.polls import parse_poll_audience
 
     titre = (titre or "").strip()
     if not titre:
@@ -501,6 +505,9 @@ def propose_event(
     event._skip_titulaire_invite = True
     event.save()
 
+    cleaned_audience = parse_poll_audience(
+        audience, default=DateProposal.Audience.ALL
+    )
     proposal = DateProposal.objects.create(
         title=titre,
         description=(description or "").strip(),
@@ -508,6 +515,7 @@ def propose_event(
         created_by=proposer,
         linked_event=event,
         deadline=deadline,
+        audience=cleaned_audience,
     )
     DateOption.objects.create(
         proposal=proposal,

@@ -112,6 +112,11 @@ urlpatterns = [
         name="resend_poll_notifications",
     ),
     path(
+        "polls/<int:pk>/relancer/",
+        views.RemindPollNonRespondersView.as_view(),
+        name="remind_poll",
+    ),
+    path(
         "admin/polls/<int:pk>/lock/",
         views.LockPollView.as_view(),
         name="lock_poll",
@@ -120,6 +125,11 @@ urlpatterns = [
         "polls/<int:pk>/cloturer/",
         views.ClosePollView.as_view(),
         name="close_poll",
+    ),
+    path(
+        "polls/<int:pk>/supprimer/",
+        views.CancelPollView.as_view(),
+        name="cancel_poll",
     ),
     path(
         "admin/events/<int:pk>/invite/",

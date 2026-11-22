@@ -54,6 +54,49 @@
                x-text="activeRoomPoll().description"></p>
             <p class="chat-poll-sum__lead" x-text="pollSummaryLead(activeRoomPoll())"></p>
 
+            <section class="chat-poll-sum__manage"
+                     x-show="activeRoomPoll().can_edit || activeRoomPoll().can_remind || activeRoomPoll().can_delete"
+                     x-cloak
+                     aria-label="Gérer le sondage">
+              <h4 class="chat-poll-sum__manage-title">Actions du créateur</h4>
+              <div class="chat-poll-sum__manage-actions">
+                <button type="button"
+                        class="chat-poll-sum__manage-btn chat-poll-sum__manage-btn--primary"
+                        x-show="activeRoomPoll().can_remind"
+                        :disabled="pollSummaryBusy"
+                        @click="remindRoomPoll()">
+                  <span x-text="pollSummaryBusy && pollSummaryAction === 'remind'
+                    ? 'Envoi…'
+                    : ('Relancer' + (activeRoomPoll().pending_total
+                        ? (' (' + activeRoomPoll().pending_total + ')')
+                        : ''))"></span>
+                </button>
+                <button type="button"
+                        class="chat-poll-sum__manage-btn"
+                        x-show="activeRoomPoll().can_edit"
+                        :disabled="pollSummaryBusy"
+                        @click="startPollSummaryEdit()">
+                  Modifier
+                </button>
+                <button type="button"
+                        class="chat-poll-sum__manage-btn"
+                        x-show="activeRoomPoll().can_close"
+                        :disabled="pollSummaryBusy"
+                        @click="closeRoomPoll()">
+                  <span x-text="pollSummaryBusy && pollSummaryAction === 'close'
+                    ? 'Clôture…'
+                    : 'Clôturer (archiver)'"></span>
+                </button>
+                <button type="button"
+                        class="chat-poll-sum__manage-btn chat-poll-sum__manage-btn--danger"
+                        x-show="activeRoomPoll().can_delete"
+                        :disabled="pollSummaryBusy"
+                        @click="deleteRoomPoll()">
+                  <span x-text="pollSummaryBusy && pollSummaryAction === 'delete' ? 'Suppression…' : 'Supprimer'"></span>
+                </button>
+              </div>
+            </section>
+
             <template x-for="opt in activeRoomPoll().options" :key="'opt-' + opt.id">
               <article class="chat-poll-sum__option">
                 <h4 class="chat-poll-sum__option-title" x-text="opt.headline"></h4>
@@ -101,7 +144,7 @@
             </section>
 
             <p class="chat-poll-sum__link-row">
-              <a class="chat-poll-sum__link" :href="activeRoomPoll().url">Répondre ou modifier ma réponse</a>
+              <a class="chat-poll-sum__link" :href="activeRoomPoll().url">Répondre ou ouvrir la page du sondage</a>
             </p>
           </div>
         </template>
@@ -151,19 +194,25 @@
           </button>
         </div>
         <fieldset class="chat-poll-modal__fieldset">
-          <legend>Qui peut répondre</legend>
+          <legend>Qui reçoit ce sondage ?</legend>
           <label class="chat-poll-modal__choice">
             <input type="radio" name="chat-poll-edit-audience" value="room"
                    :checked="pollEdit.audience === 'room'"
                    @change="pollEdit.audience = 'room'">
-            <span>Membres du salon</span>
+            <span>Ce salon seulement</span>
           </label>
           <label class="chat-poll-modal__choice">
             <input type="radio" name="chat-poll-edit-audience" value="all"
                    :checked="pollEdit.audience === 'all'"
                    @change="pollEdit.audience = 'all'">
-            <span>Tous les musiciens</span>
+            <span>Tout l’orchestre</span>
           </label>
+          <p class="chat-poll-modal__hint" x-show="pollEdit.audience === 'room'" x-cloak>
+            Seuls les membres actuels de ce salon.
+          </p>
+          <p class="chat-poll-modal__hint" x-show="pollEdit.audience === 'all'" x-cloak>
+            Tous les musiciens actifs de l’orchestre.
+          </p>
         </fieldset>
         <label class="chat-poll-modal__label" for="chat-poll-edit-deadline">Date limite (optionnel)</label>
         <input id="chat-poll-edit-deadline" type="date" class="chat-poll-modal__input"
@@ -173,16 +222,8 @@
       <div class="chat-poll-modal__foot" x-show="activeRoomPoll() && !pollSummaryEditing">
         <a class="chat-poll-modal__cancel chat-poll-sum__foot-link"
            :href="activeRoomPoll() ? activeRoomPoll().url : '#'">Page du sondage</a>
-        <button type="button" class="chat-poll-modal__cancel"
-                x-show="activeRoomPoll() && activeRoomPoll().can_edit"
-                @click="startPollSummaryEdit()">
-          Modifier
-        </button>
-        <button type="button" class="chat-poll-modal__submit"
-                x-show="activeRoomPoll() && activeRoomPoll().can_close"
-                :disabled="pollSummaryBusy"
-                @click="closeRoomPoll()">
-          <span x-text="pollSummaryBusy ? 'Clôture…' : 'Clôturer'"></span>
+        <button type="button" class="chat-poll-modal__submit" @click="closePollSummary()">
+          Fermer
         </button>
       </div>
       <div class="chat-poll-modal__foot" x-show="pollSummaryEditing" x-cloak>

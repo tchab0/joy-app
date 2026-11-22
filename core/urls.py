@@ -16,6 +16,7 @@ urlpatterns = [
     path("contact/", views.contact, name="contact"),
     path("admin-medias/", views.admin_medias, name="admin_medias"),
     path("admin-contact/", views.admin_contact, name="admin_contact"),
+    path("admin-contact/<int:pk>/action/", views.admin_contact_action, name="admin_contact_action"),
     path("admin-contact/<int:pk>/supprimer/", views.admin_contact_delete, name="admin_contact_delete"),
     path("admin-emails/", views.admin_emails, name="admin_emails"),
     path(

@@ -41,6 +41,69 @@ from planning.services.constants import RESPOND_MAP
 from planning.services.invites import invite_titulaires_to_event, notify_event_invite, titulaires_queryset
 from planning.services.rsvp import get_participation_for, set_participation_response
 
+# Libellés d’intention (création / lancement / badges).
+POLL_AUDIENCE_ALL_LABEL = "Tout l’orchestre"
+POLL_AUDIENCE_ROOM_LABEL = "Salon / invités seulement"
+
+
+def parse_poll_audience(
+    raw: str | None,
+    *,
+    default: str = DateProposal.Audience.ROOM,
+) -> str:
+    """Normalise une valeur POST ``audience`` vers ``all`` / ``room``."""
+    value = (raw or "").strip().lower()
+    if value in DateProposal.Audience.values:
+        return value
+    if default in DateProposal.Audience.values:
+        return default
+    return DateProposal.Audience.ROOM
+
+
+def poll_audience_label(audience: str | None) -> str:
+    """Libellé court de l’intention d’audience."""
+    if audience == DateProposal.Audience.ALL:
+        return POLL_AUDIENCE_ALL_LABEL
+    return POLL_AUDIENCE_ROOM_LABEL
+
+
+def poll_audience_help(audience: str | None, *, for_event: bool = False) -> str:
+    """Texte d’aide sous le choix d’audience."""
+    if audience == DateProposal.Audience.ALL:
+        return (
+            "Tous les musiciens actifs seront notifiés et verront "
+            "toutes les dates proposées au calendrier."
+        )
+    if for_event:
+        return (
+            "Seulement les personnes déjà dans le salon de l’événement "
+            "ou déjà invitées — souvent personne au moment de la création."
+        )
+    return (
+        "Seulement les membres actuels de ce salon "
+        "(et les participants déjà inscrits si un événement est lié)."
+    )
+
+
+def poll_recipient_count(proposal: DateProposal) -> int:
+    """Nombre de musiciens qui seraient notifiés pour ce sondage."""
+    return len(poll_notification_recipients(proposal))
+
+
+def poll_launch_success_message(proposal: DateProposal, *, sent: int | None = None) -> str:
+    """Flash après lancement / renvoi, aligné sur l’intention réelle."""
+    label = poll_audience_label(proposal.audience)
+    if sent is None:
+        return f"Sondage lancé — notifications envoyées ({label})."
+    if sent == 0:
+        return (
+            f"Sondage lancé ({label}), mais aucun musicien à notifier. "
+            "Invitez des musiciens ou choisissez « Tout l’orchestre »."
+        )
+    unit = "destinataire" if sent == 1 else "destinataires"
+    return f"Sondage lancé — {sent} {unit} notifié{'s' if sent != 1 else ''} ({label})."
+
+
 def poll_notification_recipients(proposal: DateProposal) -> list:
     """
     Musiciens concernés par un sondage :
@@ -131,6 +194,38 @@ def notify_availability_poll(proposal: DateProposal) -> int:
     )
 
 
+def _non_responders_for_poll(proposal: DateProposal) -> list:
+    """Destinataires qui n’ont pas encore répondu à toutes les options."""
+    return [
+        u
+        for u in poll_notification_recipients(proposal)
+        if not user_has_answered_poll(u, proposal)
+    ]
+
+
+def notify_poll_non_responders(proposal: DateProposal) -> int:
+    """
+    Relance manuelle (créateur / staff) : uniquement les non-répondants
+    (réponse absente ou incomplète).
+    """
+    if proposal.status != DateProposal.Status.OPEN:
+        raise ValueError("Ce sondage n’est plus ouvert.")
+    users = _non_responders_for_poll(proposal)
+    if not users:
+        return 0
+    poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
+    return notify_users(
+        users,
+        title="JOY — À répondre · Relance sondage",
+        body=_poll_notify_body(proposal, reminder=True),
+        url=poll_path,
+        requires_response=True,
+        related_type="proposal",
+        related_id=proposal.pk,
+        notify_type="proposal",
+    )
+
+
 def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
     """
     Rappel J−7 avant la date limite.
@@ -147,11 +242,7 @@ def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
             proposal.pk,
         )
         return 0
-    users = [
-        u
-        for u in poll_notification_recipients(proposal)
-        if not user_has_answered_poll(u, proposal)
-    ]
+    users = _non_responders_for_poll(proposal)
     if not users:
         return 0
     poll_path = reverse("planning:poll_detail", kwargs={"pk": proposal.pk})
@@ -171,6 +262,38 @@ def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
             "Échec rappel deadline proposal_id=%s", proposal.pk
         )
         return 0
+
+
+@transaction.atomic
+def cancel_poll(proposal: DateProposal) -> DateProposal:
+    """
+    Supprime / annule un sondage (statut CANCELLED).
+
+    Soft-delete les messages POLL_LAUNCH liés pour le retirer du fil chat.
+    """
+    if proposal.status == DateProposal.Status.CANCELLED:
+        raise ValueError("Ce sondage est déjà supprimé.")
+    if proposal.status == DateProposal.Status.LOCKED:
+        raise ValueError("Ce sondage est clôturé — il ne peut plus être supprimé.")
+
+    proposal.status = DateProposal.Status.CANCELLED
+    proposal.save(update_fields=["status", "updated_at"])
+
+    try:
+        from chat.models import ChatMessage
+
+        now = timezone.now()
+        ChatMessage.objects.filter(
+            related_proposal_id=proposal.pk,
+            kind=ChatMessage.Kind.POLL_LAUNCH,
+            deleted_at__isnull=True,
+        ).update(deleted_at=now)
+    except Exception:
+        logger.exception(
+            "Échec soft-delete messages POLL_LAUNCH proposal_id=%s",
+            proposal.pk,
+        )
+    return proposal
 
 
 def send_due_poll_deadline_reminders(
@@ -224,10 +347,19 @@ def send_due_poll_deadline_reminders(
 
 
 @transaction.atomic
-def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProposal:
+def launch_availability_poll(
+    proposal: DateProposal,
+    *,
+    launched_by,
+    audience: str | None = None,
+    require_recipients: bool = False,
+) -> DateProposal:
     """
     Autorise / lance le sondage : statut OPEN, alerte (push ou e-mail)
     aux destinataires (salon / orchestre / roster).
+
+    ``audience`` : si fourni, met à jour l’intention avant notify.
+    ``require_recipients`` : refuse le lancement ``room`` sans musicien destinataire.
     """
     if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
         raise ValueError("Sondage déjà lancé")
@@ -239,12 +371,31 @@ def launch_availability_poll(proposal: DateProposal, *, launched_by) -> DateProp
     if not proposal.options.exists():
         raise ValueError("Ajoutez au moins une option")
 
+    update_fields = ["status", "launched_at", "launched_by", "updated_at"]
+    if audience is not None:
+        cleaned = parse_poll_audience(audience, default=proposal.audience)
+        if (
+            cleaned == DateProposal.Audience.ROOM
+            and not proposal.source_room_id
+            and not proposal.linked_event_id
+        ):
+            raise ValueError(
+                "Ce sondage n’est pas lié à un salon — choisissez « Tout l’orchestre »."
+            )
+        proposal.audience = cleaned
+        update_fields.append("audience")
+
+    if require_recipients and proposal.audience == DateProposal.Audience.ROOM:
+        if poll_recipient_count(proposal) == 0:
+            raise ValueError(
+                "Aucun musicien à notifier pour « Salon / invités seulement ». "
+                "Invitez d’abord des musiciens, ou choisissez « Tout l’orchestre »."
+            )
+
     proposal.status = DateProposal.Status.OPEN
     proposal.launched_at = timezone.now()
     proposal.launched_by = launched_by
-    proposal.save(
-        update_fields=["status", "launched_at", "launched_by", "updated_at"]
-    )
+    proposal.save(update_fields=update_fields)
 
     notify_availability_poll(proposal)
 
@@ -467,13 +618,41 @@ def vote_counts_for_option(option: DateOption) -> dict[str, int]:
 
 
 def format_poll_vote_counts(counts: dict[str, int] | None) -> str:
-    """Libellé court visible par tous : Oui / Non / Peut-être."""
+    """Libellé court visible par tous : Oui → Peut-être → Non."""
     c = counts or {}
     return (
         f"Oui {int(c.get('yes', 0))} · "
-        f"Non {int(c.get('no', 0))} · "
-        f"Peut-être {int(c.get('maybe', 0))}"
+        f"Peut-être {int(c.get('maybe', 0))} · "
+        f"Non {int(c.get('no', 0))}"
     )
+
+
+def poll_participation_lead(
+    *,
+    answered: int,
+    audience_count: int,
+    audience: str,
+) -> str:
+    """Phrase de synthèse lisible (participation globale au sondage)."""
+    n = int(answered or 0)
+    total = int(audience_count or 0)
+    who = (
+        "musiciens de l’orchestre"
+        if audience == DateProposal.Audience.ALL
+        else "membres du salon / invités"
+    )
+    if not n:
+        if total:
+            return f"Aucune réponse complète pour l’instant · {total} {who}."
+        return "Aucune réponse pour l’instant."
+    verb = (
+        f"{n} personnes ont répondu à toutes les options"
+        if n > 1
+        else "1 personne a répondu à toutes les options"
+    )
+    if total:
+        return f"{verb} sur {total} {who}."
+    return f"{verb}."
 
 
 def option_positivity_sort_key(counts: dict[str, int] | None):
@@ -510,6 +689,53 @@ def user_can_access_poll(user, proposal: DateProposal) -> bool:
     if event is None:
         return False
     return EventParticipation.objects.filter(event=event, user=user).exists()
+
+
+def sibling_polls_for_user(user, proposal: DateProposal) -> list[DateProposal]:
+    """
+    Autres sondages du même salon source, visibles pour ``user``.
+
+    Sert à clarifier l’accès quand plusieurs sondages coexistent dans un salon
+    (la page détail n’en affiche qu’un à la fois).
+    """
+    if not proposal.source_room_id:
+        return []
+    is_staff = bool(
+        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+    )
+    qs = (
+        DateProposal.objects.filter(source_room_id=proposal.source_room_id)
+        .exclude(pk=proposal.pk)
+        .exclude(status=DateProposal.Status.CANCELLED)
+        .select_related("source_room", "created_by")
+        .order_by("-launched_at", "-pk")
+    )
+    siblings: list[DateProposal] = []
+    for sibling in qs:
+        if sibling.is_draft and not (
+            is_staff or sibling.created_by_id == getattr(user, "pk", None)
+        ):
+            continue
+        if is_staff or user_can_access_poll(user, sibling):
+            siblings.append(sibling)
+    return siblings
+
+
+def poll_embed_room(proposal: DateProposal):
+    """
+    Salon à embarquer sur la page sondage.
+
+    Priorité au salon source (là où les messages POLL_LAUNCH vivent, y compris
+    quand plusieurs sondages coexistent). Sinon salon de l’événement lié.
+    """
+    if proposal.source_room_id:
+        return proposal.source_room
+    event = proposal.linked_event
+    if event is None:
+        return None
+    from chat.services import ensure_event_room
+
+    return ensure_event_room(event)
 
 
 def _polls_accessible_q_for_user(user) -> Q:
@@ -859,6 +1085,7 @@ def poll_room_summary(proposal: DateProposal, viewer) -> dict:
     can_edit = bool(
         user_can_edit_poll_options(viewer, proposal) and proposal.is_open
     )
+    pending_total = len(pending) + len(partial)
     return {
         "id": proposal.pk,
         "title": proposal.title,
@@ -871,6 +1098,9 @@ def poll_room_summary(proposal: DateProposal, viewer) -> dict:
         "is_creator": proposal.created_by_id == getattr(viewer, "pk", None),
         "can_edit": can_edit,
         "can_close": can_edit,
+        "can_remind": can_edit,
+        "can_delete": can_edit,
+        "pending_total": pending_total,
         "url": reverse("planning:poll_detail", args=[proposal.pk]),
         "options": option_payloads,
         "answered": answered,

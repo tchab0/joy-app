@@ -949,6 +949,69 @@ def api_poll_close(request: HttpRequest, room_id: int, poll_id: int) -> JsonResp
 
 @login_required
 @require_POST
+def api_poll_remind(request: HttpRequest, room_id: int, poll_id: int) -> JsonResponse:
+    """Relance les personnes du salon qui n’ont pas encore répondu."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    proposal, error = _room_poll_or_error(request, room, poll_id)
+    if error:
+        return error
+
+    from planning.services.polls import (
+        notify_poll_non_responders,
+        user_can_edit_poll_deadline,
+    )
+
+    if not user_can_edit_poll_deadline(request.user, proposal):
+        return JsonResponse(
+            {"ok": False, "error": "Seul le créateur du sondage peut relancer."},
+            status=403,
+        )
+    try:
+        sent = notify_poll_non_responders(proposal)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "sent": sent})
+
+
+@login_required
+@require_POST
+def api_poll_delete(request: HttpRequest, room_id: int, poll_id: int) -> JsonResponse:
+    """Le créateur (ou le staff) supprime le sondage."""
+    denied = _require_musician(request)
+    if denied:
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    room = get_object_or_404(ChatRoom, pk=room_id, is_active=True)
+    if not user_can_access_room(request.user, room):
+        return JsonResponse({"ok": False, "error": "Accès refusé"}, status=403)
+
+    proposal, error = _room_poll_or_error(request, room, poll_id)
+    if error:
+        return error
+
+    from planning.services.polls import cancel_poll, user_can_edit_poll_deadline
+
+    if not user_can_edit_poll_deadline(request.user, proposal):
+        return JsonResponse(
+            {"ok": False, "error": "Seul le créateur du sondage peut le supprimer."},
+            status=403,
+        )
+    try:
+        cancel_poll(proposal)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "deleted": True})
+
+
+@login_required
+@require_POST
 def api_edit(request: HttpRequest, room_id: int) -> JsonResponse:
     denied = _require_musician(request)
     if denied:

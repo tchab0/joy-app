@@ -1,5 +1,27 @@
 <section class="pl-accept__dates{% if poll_votes_bottom %} pl-accept__dates--bottom{% endif %}"
          aria-label="{% if poll_votes_bottom %}{% if proposal.is_text_poll %}Propositions (bas de page){% else %}Dates proposées (bas de page){% endif %}{% else %}{% if proposal.is_text_poll %}Propositions{% else %}Dates proposées{% endif %}{% endif %}">
+  {% if not poll_votes_bottom and not proposal.is_draft and options_data %}
+  <div class="pl-poll-results" aria-label="Participation">
+    <p class="pl-poll-results__lead">{{ poll_summary_lead }}</p>
+    {% if poll_partial %}
+    <div class="pl-poll-results__waiting">
+      <h3 class="pl-poll-results__waiting-title">Réponse incomplète</h3>
+      <p class="pl-poll-results__waiting-names">
+        {% for person in poll_partial %}{% if not forloop.first %}, {% endif %}{% if person.id == poll_viewer.id %}{{ person.name }} (vous){% else %}{{ person.name }}{% endif %}{% endfor %}{% if poll_partial_more %} · +{{ poll_partial_more }}{% endif %}
+      </p>
+    </div>
+    {% endif %}
+    {% if poll_pending or poll_pending_more %}
+    <div class="pl-poll-results__waiting">
+      <h3 class="pl-poll-results__waiting-title">Pas encore répondu</h3>
+      <p class="pl-poll-results__waiting-names">
+        {% for person in poll_pending %}{% if not forloop.first %}, {% endif %}{% if person.id == poll_viewer.id %}{{ person.name }} (vous){% else %}{{ person.name }}{% endif %}{% endfor %}{% if poll_pending_more %} · +{{ poll_pending_more }}{% endif %}
+      </p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% for item in options_data %}
   <div class="pl-accept__date">
     {% if proposal.is_text_poll or not item.option.starts_at %}
@@ -16,10 +38,54 @@
     <p class="pl-row__meta" style="margin:0 0 .75rem">{{ item.option.label }}</p>
     {% endif %}
     {% endif %}
+
     {% if not proposal.is_draft %}
+    {% if not poll_votes_bottom %}
+    <div class="pl-poll-stat" data-option="{{ item.option.pk }}">
+      <div class="pl-poll-stat__bar"
+           :class="!optionTotal({{ item.option.pk }}) && 'is-empty'"
+           role="img"
+           :aria-label="'Oui ' + countsOf({{ item.option.pk }}).yes + ', Peut-être ' + countsOf({{ item.option.pk }}).maybe + ', Non ' + countsOf({{ item.option.pk }}).no">
+        <span class="pl-poll-stat__seg pl-poll-stat__seg--yes"
+              x-show="optionTotal({{ item.option.pk }})"
+              :style="'width:' + barWidth({{ item.option.pk }}, 'yes') + '%'"
+              {% if item.total %}style="width:{% widthratio item.counts.yes item.total 100 %}%"{% endif %}></span>
+        <span class="pl-poll-stat__seg pl-poll-stat__seg--maybe"
+              x-show="optionTotal({{ item.option.pk }})"
+              :style="'width:' + barWidth({{ item.option.pk }}, 'maybe') + '%'"
+              {% if item.total %}style="width:{% widthratio item.counts.maybe item.total 100 %}%"{% endif %}></span>
+        <span class="pl-poll-stat__seg pl-poll-stat__seg--no"
+              x-show="optionTotal({{ item.option.pk }})"
+              :style="'width:' + barWidth({{ item.option.pk }}, 'no') + '%'"
+              {% if item.total %}style="width:{% widthratio item.counts.no item.total 100 %}%"{% endif %}></span>
+      </div>
+      <ul class="pl-poll-stat__groups">
+        <li>
+          <span class="pl-poll-stat__choice pl-poll-stat__choice--yes"
+                x-text="'Oui · ' + countsOf({{ item.option.pk }}).yes">Oui · {{ item.counts.yes }}</span>
+          <span class="pl-poll-stat__names"
+                x-text="nameList({{ item.option.pk }}, 'yes')">{% if item.yes %}{% for person in item.yes %}{% if not forloop.first %}, {% endif %}{% if person.id == poll_viewer.id %}{{ person.name }} (vous){% else %}{{ person.name }}{% endif %}{% endfor %}{% else %}Personne{% endif %}</span>
+        </li>
+        <li>
+          <span class="pl-poll-stat__choice pl-poll-stat__choice--maybe"
+                x-text="'Peut-être · ' + countsOf({{ item.option.pk }}).maybe">Peut-être · {{ item.counts.maybe }}</span>
+          <span class="pl-poll-stat__names"
+                x-text="nameList({{ item.option.pk }}, 'maybe')">{% if item.maybe %}{% for person in item.maybe %}{% if not forloop.first %}, {% endif %}{% if person.id == poll_viewer.id %}{{ person.name }} (vous){% else %}{{ person.name }}{% endif %}{% endfor %}{% else %}Personne{% endif %}</span>
+        </li>
+        <li>
+          <span class="pl-poll-stat__choice pl-poll-stat__choice--no"
+                x-text="'Non · ' + countsOf({{ item.option.pk }}).no">Non · {{ item.counts.no }}</span>
+          <span class="pl-poll-stat__names"
+                x-text="nameList({{ item.option.pk }}, 'no')">{% if item.no %}{% for person in item.no %}{% if not forloop.first %}, {% endif %}{% if person.id == poll_viewer.id %}{{ person.name }} (vous){% else %}{{ person.name }}{% endif %}{% endfor %}{% else %}Personne{% endif %}</span>
+        </li>
+      </ul>
+    </div>
+    {% else %}
     <p class="pl-option__counts"
        x-text="countsLabel({{ item.option.pk }})">{{ item.counts_label }}</p>
     {% endif %}
+    {% endif %}
+
     {% if proposal.is_open %}
     <div class="pl-row__actions pl-accept__actions">
       <button type="button" class="pl-btn pl-btn--yes"

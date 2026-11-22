@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 from io import StringIO
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -2326,6 +2327,27 @@ class RoomPollSummaryTests(TestCase):
         denied = client.get(reverse("chat:api_polls", args=[self.room.pk]))
         self.assertEqual(denied.status_code, 403)
 
+    def test_poll_launch_message_cta_follows_status(self):
+        launch = (
+            ChatMessage.objects.filter(
+                room=self.room,
+                kind=ChatMessage.Kind.POLL_LAUNCH,
+                related_proposal=self.proposal,
+            )
+            .select_related("related_proposal")
+            .get()
+        )
+        open_payload = serialize_message(launch, viewer=self.author)
+        self.assertEqual(open_payload["poll_status"], DateProposal.Status.OPEN)
+        self.assertEqual(open_payload["poll_cta"], "Répondre au sondage →")
+
+        self.proposal.status = DateProposal.Status.LOCKED
+        self.proposal.save(update_fields=["status", "updated_at"])
+        launch = ChatMessage.objects.select_related("related_proposal").get(pk=launch.pk)
+        locked_payload = serialize_message(launch, viewer=self.author)
+        self.assertEqual(locked_payload["poll_status"], DateProposal.Status.LOCKED)
+        self.assertEqual(locked_payload["poll_cta"], "Voir le sondage (clôturé) →")
+
     def test_creator_can_edit_after_votes_and_close(self):
         swing = self.proposal.options.get(label="Swing")
         bebop = self.proposal.options.get(label="Bebop")
@@ -2397,6 +2419,45 @@ class RoomPollSummaryTests(TestCase):
         page = client.get(reverse("chat:room", args=[self.room.pk]))
         self.assertEqual(page.status_code, 200)
         self.assertNotContains(page, "Dispo dimanche")
+
+    @patch("planning.services.polls.notify_users", return_value=1)
+    def test_creator_can_remind_non_responders_and_delete(self, mock_notify):
+        client = Client()
+        client.login(username="poll_paul", password="pass")
+        denied = client.post(
+            reverse("chat:api_poll_remind", args=[self.room.pk, self.proposal.pk])
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        client.login(username="poll_lea", password="pass")
+        listing = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        poll = listing.json()["polls"][0]
+        self.assertTrue(poll["can_remind"])
+        self.assertTrue(poll["can_delete"])
+        self.assertGreaterEqual(poll["pending_total"], 1)
+
+        reminded = client.post(
+            reverse("chat:api_poll_remind", args=[self.room.pk, self.proposal.pk])
+        )
+        self.assertEqual(reminded.status_code, 200, reminded.content)
+        body = reminded.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["sent"], 1)
+        mock_notify.assert_called_once()
+        recipients = {u.pk for u in mock_notify.call_args.args[0]}
+        # Paul a voté partiellement → encore non-répondant ; Léa aussi.
+        # Audience salon = author + voter ; les deux n’ont pas tout répondu.
+        self.assertTrue(recipients)
+
+        deleted = client.post(
+            reverse("chat:api_poll_delete", args=[self.room.pk, self.proposal.pk])
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.content)
+        self.assertTrue(deleted.json()["ok"])
+        self.proposal.refresh_from_db()
+        self.assertEqual(self.proposal.status, DateProposal.Status.CANCELLED)
+        listing = client.get(reverse("chat:api_polls", args=[self.room.pk]))
+        self.assertEqual(listing.json()["polls"], [])
 
     def test_summary_options_ordered_most_positive_first(self):
         swing = self.proposal.options.get(label="Swing")

@@ -34,6 +34,7 @@ class _ChatRoomDigest:
     room_id: int
     authors: list[str] = field(default_factory=list)
     preview: str = ""
+    first_message_id: int | None = None
 
 
 @dataclass
@@ -306,12 +307,19 @@ def _room_digest_from_messages(room, messages) -> _ChatRoomDigest:
         seen.add(key)
         authors.append(name)
     preview = _chat_notify_preview(messages[-1]) if messages else ""
+    first_id = None
+    if messages:
+        try:
+            first_id = int(messages[0].pk)
+        except (TypeError, ValueError, AttributeError):
+            first_id = None
     return _ChatRoomDigest(
         title=room.title,
         count=len(messages),
         room_id=room.pk,
         authors=authors,
         preview=preview,
+        first_message_id=first_id,
     )
 
 
@@ -374,8 +382,11 @@ def _compose_payload(draft: _UserDigestDraft) -> tuple[str, str, str]:
     chat_url = ""
     if draft.chat_rooms:
         if len(draft.chat_rooms) == 1:
-            parts.append(_format_room_digest_line(draft.chat_rooms[0]))
-            chat_url = chat_room_url(draft.chat_rooms[0].room_id)
+            entry = draft.chat_rooms[0]
+            parts.append(_format_room_digest_line(entry))
+            chat_url = chat_room_url(
+                entry.room_id, message_id=entry.first_message_id
+            )
         else:
             labels = [
                 _format_room_digest_summary(entry) for entry in draft.chat_rooms[:3]
@@ -387,7 +398,9 @@ def _compose_payload(draft: _UserDigestDraft) -> tuple[str, str, str]:
             total = sum(entry.count for entry in draft.chat_rooms)
             parts.append(f"{total} nouveau(x) message(s) : {rooms_txt}.")
             busiest = max(draft.chat_rooms, key=lambda item: item.count)
-            chat_url = chat_room_url(busiest.room_id)
+            chat_url = chat_room_url(
+                busiest.room_id, message_id=busiest.first_message_id
+            )
 
     for item in draft.inbox_items[:8]:
         preview = (item.body or "").strip()

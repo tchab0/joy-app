@@ -88,6 +88,7 @@ function chatRoom(cfg) {
     pollSummaryId: null,
     pollSummaryEditing: false,
     pollSummaryBusy: false,
+    pollSummaryAction: '',
     pollSummaryError: '',
     pollEdit: { title: '', description: '', audience: 'room', deadline: '', kind: 'text', options: [] },
     _pollEditSeq: 0,
@@ -2050,6 +2051,24 @@ function chatRoom(cfg) {
       }
       return null;
     },
+    isLiveUnread(msg) {
+      return this.isMessageUnread(msg, this.ownLastReadMs());
+    },
+    showUnreadDividerBefore(msg) {
+      if (!msg || msg.deleted || msg.hidden) return false;
+      const raw = this.initialLastReadAt;
+      const lastReadMs = raw ? Date.parse(raw) : null;
+      if (raw && !lastReadMs) return false;
+      const unreadMs = Number.isFinite(lastReadMs) ? lastReadMs : null;
+      const list = this.threadList || this.messages || [];
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (!m || m.deleted || m.hidden) continue;
+        if (!this.isMessageUnread(m, unreadMs)) continue;
+        return Number(m.id) === Number(msg.id);
+      }
+      return false;
+    },
     // Message plus haut que le fil → coller le début en haut ; sinon optionnellement le bas.
     scrollOpenToMessage(id, opts) {
       const o = opts || {};
@@ -2062,7 +2081,11 @@ function chatRoom(cfg) {
       }
       const tall = el.offsetHeight > thread.clientHeight * 0.85;
       if (tall || !o.fallbackBottom) {
-        this.scrollToMessage(id, { block: 'start', behavior: 'auto', flash: false });
+        this.scrollToMessage(id, {
+          block: 'start',
+          behavior: 'auto',
+          flash: o.flash === true,
+        });
         return;
       }
       this.scrollBottom(true);
@@ -2078,12 +2101,12 @@ function chatRoom(cfg) {
           await this.openArchive({ includeId: targetMsg });
           return;
         }
-        this.scrollOpenToMessage(targetMsg, { fallbackBottom: false });
+        this.scrollOpenToMessage(targetMsg, { fallbackBottom: false, flash: true });
         return;
       }
       const id = this.findFirstUnreadId();
       if (id) {
-        this.scrollOpenToMessage(id, { fallbackBottom: false });
+        this.scrollOpenToMessage(id, { fallbackBottom: false, flash: true });
         return;
       }
       // Tous lus → dernier message (début s’il est long, sinon bas du fil).
@@ -2091,7 +2114,7 @@ function chatRoom(cfg) {
         ? this.messages[this.messages.length - 1]
         : null;
       if (last && last.id) {
-        this.scrollOpenToMessage(last.id, { fallbackBottom: true });
+        this.scrollOpenToMessage(last.id, { fallbackBottom: true, flash: false });
         return;
       }
       this.measureComposer();
@@ -2402,13 +2425,18 @@ function chatRoom(cfg) {
       if (!poll) return '';
       const n = Number(poll.answered) || 0;
       const total = Number(poll.audience_count) || 0;
-      const who = poll.audience === 'all' ? 'musiciens' : 'membres du salon';
-      const scope = total ? (' sur ' + total + ' ' + who) : '';
-      if (!n) return 'Aucune réponse complète pour l’instant' + (total ? (' · ' + total + ' ' + who) : '') + '.';
+      const who = poll.audience === 'all'
+        ? 'musiciens de l’orchestre'
+        : 'membres du salon / invités';
+      if (!n) {
+        return total
+          ? ('Aucune réponse complète pour l’instant · ' + total + ' ' + who + '.')
+          : 'Aucune réponse pour l’instant.';
+      }
       const verb = n > 1
         ? n + ' personnes ont répondu à toutes les options'
         : '1 personne a répondu à toutes les options';
-      return verb + scope + '.';
+      return total ? (verb + ' sur ' + total + ' ' + who + '.') : (verb + '.');
     },
     pollBarWidth(opt, key) {
       const total = Number(opt && opt.total) || 0;
@@ -2614,10 +2642,11 @@ function chatRoom(cfg) {
       const poll = this.activeRoomPoll();
       if (!poll || this.pollSummaryBusy || !this.apiPollsUrl) return;
       const ok = window.confirm(
-        'Clôturer ce sondage ? La synthèse disparaît du salon pour tout le monde.'
+        'Clôturer (archiver) ce sondage ? La synthèse disparaît du salon pour tout le monde.'
       );
       if (!ok) return;
       this.pollSummaryBusy = true;
+      this.pollSummaryAction = 'close';
       this.pollSummaryError = '';
       try {
         const res = await fetch(this.apiPollsUrl + poll.id + '/close/', {
@@ -2641,6 +2670,83 @@ function chatRoom(cfg) {
         this.pollSummaryError = 'Erreur réseau — réessayez.';
       } finally {
         this.pollSummaryBusy = false;
+        this.pollSummaryAction = '';
+      }
+    },
+    async remindRoomPoll() {
+      const poll = this.activeRoomPoll();
+      if (!poll || this.pollSummaryBusy || !this.apiPollsUrl) return;
+      const pending = Number(poll.pending_total) || 0;
+      if (!pending) {
+        window.alert('Tout le monde a déjà répondu — aucune relance à envoyer.');
+        return;
+      }
+      const ok = window.confirm(
+        'Envoyer une relance aux ' + pending + ' personne' + (pending > 1 ? 's' : '') + ' qui n’ont pas encore répondu ?'
+      );
+      if (!ok) return;
+      this.pollSummaryBusy = true;
+      this.pollSummaryAction = 'remind';
+      this.pollSummaryError = '';
+      try {
+        const res = await fetch(this.apiPollsUrl + poll.id + '/remind/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          this.pollSummaryError = (data && data.error) || 'Impossible d’envoyer la relance.';
+          return;
+        }
+        const sent = Number(data.sent) || 0;
+        this.pollSummaryError = '';
+        window.alert(
+          sent
+            ? 'Relance envoyée à ' + sent + ' personne' + (sent > 1 ? 's' : '') + '.'
+            : 'Tout le monde a déjà répondu — aucune relance envoyée.'
+        );
+        await this.loadRoomPolls();
+      } catch (e) {
+        this.pollSummaryError = 'Erreur réseau — réessayez.';
+      } finally {
+        this.pollSummaryBusy = false;
+        this.pollSummaryAction = '';
+      }
+    },
+    async deleteRoomPoll() {
+      const poll = this.activeRoomPoll();
+      if (!poll || this.pollSummaryBusy || !this.apiPollsUrl) return;
+      const ok = window.confirm(
+        'Supprimer définitivement ce sondage ? Les réponses seront perdues et la synthèse disparaît du salon.'
+      );
+      if (!ok) return;
+      this.pollSummaryBusy = true;
+      this.pollSummaryAction = 'delete';
+      this.pollSummaryError = '';
+      try {
+        const res = await fetch(this.apiPollsUrl + poll.id + '/delete/', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': this.csrfToken },
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          this.pollSummaryError = (data && data.error) || 'Impossible de supprimer.';
+          return;
+        }
+        this.roomPolls = this.roomPolls.filter((item) => item.id !== poll.id);
+        this.pollSummaryId = this.roomPolls.length ? this.roomPolls[0].id : null;
+        this.pollSummaryEditing = false;
+        if (!this.roomPolls.length) {
+          this.pollSummaryOpen = false;
+          this.stopPollSummaryRefresh();
+        }
+      } catch (e) {
+        this.pollSummaryError = 'Erreur réseau — réessayez.';
+      } finally {
+        this.pollSummaryBusy = false;
+        this.pollSummaryAction = '';
       }
     },
     insertEmoji(em) {
