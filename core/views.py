@@ -20,6 +20,7 @@ from .media_gallery import build_media_gallery, gallery_querystring, parse_media
 from .models import ExternalLink, MediaItem, EvenementMedia, MediaVote, ContactMessage, PageBlock, StaffMailing
 from .forms import MediaSoumissionForm, ContactForm, PrestationForm, StaffMailingForm
 from .forms import EXTENSIONS_AUTORISEES
+from .mail_spam import looks_foreign_language
 from .utils_compression import compresser_media
 from .seo import dumps_jsonld, music_event_jsonld, music_group_jsonld, service_jsonld, website_jsonld
 from .page_cms import (
@@ -548,6 +549,52 @@ def _notify_staff_contact(msg: ContactMessage) -> None:
         logger.exception("Échec notification staff contact id=%s", msg.pk)
 
 
+def _contact_free_text(*parts: str) -> str:
+    return "\n".join(p.strip() for p in parts if (p or "").strip())
+
+
+def _discard_foreign_contact(email: str, text: str) -> bool:
+    """Ignore + n’enregistre pas les messages clairement hors français."""
+    if not looks_foreign_language(text):
+        return False
+    logger.info(
+        "Contact formulaire langue étrangère ignoré email=%s preview=%r",
+        email,
+        (text or "")[:80],
+    )
+    return True
+
+
+def _purge_foreign_contact_messages() -> int:
+    """Efface les messages contact déjà stockés rédigés hors français."""
+    deleted = 0
+    qs = ContactMessage.objects.exclude(statut="processed").only(
+        "id",
+        "email",
+        "message",
+        "scene_details",
+        "acces_logistique",
+        "organisation",
+    )
+    for msg in qs.iterator(chunk_size=100):
+        text = _contact_free_text(
+            msg.message or "",
+            msg.scene_details or "",
+            msg.acces_logistique or "",
+            msg.organisation or "",
+        )
+        if not looks_foreign_language(text):
+            continue
+        logger.info(
+            "Contact langue étrangère effacé id=%s email=%s",
+            msg.pk,
+            msg.email,
+        )
+        msg.delete()
+        deleted += 1
+    return deleted
+
+
 def contact(request):
     success = False
     mode = _contact_mode(request)
@@ -559,50 +606,64 @@ def contact(request):
             prestation_form = PrestationForm(request.POST)
             if prestation_form.is_valid():
                 data = prestation_form.cleaned_data
-                msg = ContactMessage.objects.create(
-                    kind=ContactMessage.KIND_PRESTATION,
-                    nom=data["nom"],
-                    organisation=data.get("organisation") or "",
-                    telephone=data["telephone"],
-                    email=data["email"],
-                    profil=data["profil"],
-                    message=data.get("message") or "",
-                    type_evenement=data["type_evenement"],
-                    date_souhaitee=data["date_souhaitee"],
-                    date_flexible=data.get("date_flexible") or False,
-                    date_alternative=data.get("date_alternative"),
-                    ville=data["ville"],
-                    lieu_nom=data.get("lieu_nom") or "",
-                    lieu_adresse=data.get("lieu_adresse") or "",
-                    lieu_type=data["lieu_type"],
-                    heure_debut=data["heure_debut"],
-                    heure_fin=data.get("heure_fin"),
-                    duree_jeu=data["duree_jeu"],
-                    jauge=data["jauge"],
-                    role_ambiance=data["role_ambiance"],
-                    sono=data["sono"],
-                    scene_details=data.get("scene_details") or "",
-                    acces_logistique=data.get("acces_logistique") or "",
-                    budget=data["budget"],
-                    source=data.get("source") or "",
+                free_text = _contact_free_text(
+                    data.get("message") or "",
+                    data.get("scene_details") or "",
+                    data.get("acces_logistique") or "",
+                    data.get("organisation") or "",
                 )
-                _notify_staff_contact(msg)
-                prestation_form = PrestationForm()
-                success = True
+                if _discard_foreign_contact(data["email"], free_text):
+                    prestation_form = PrestationForm()
+                    success = True
+                else:
+                    msg = ContactMessage.objects.create(
+                        kind=ContactMessage.KIND_PRESTATION,
+                        nom=data["nom"],
+                        organisation=data.get("organisation") or "",
+                        telephone=data["telephone"],
+                        email=data["email"],
+                        profil=data["profil"],
+                        message=data.get("message") or "",
+                        type_evenement=data["type_evenement"],
+                        date_souhaitee=data["date_souhaitee"],
+                        date_flexible=data.get("date_flexible") or False,
+                        date_alternative=data.get("date_alternative"),
+                        ville=data["ville"],
+                        lieu_nom=data.get("lieu_nom") or "",
+                        lieu_adresse=data.get("lieu_adresse") or "",
+                        lieu_type=data["lieu_type"],
+                        heure_debut=data["heure_debut"],
+                        heure_fin=data.get("heure_fin"),
+                        duree_jeu=data["duree_jeu"],
+                        jauge=data["jauge"],
+                        role_ambiance=data["role_ambiance"],
+                        sono=data["sono"],
+                        scene_details=data.get("scene_details") or "",
+                        acces_logistique=data.get("acces_logistique") or "",
+                        budget=data["budget"],
+                        source=data.get("source") or "",
+                    )
+                    _notify_staff_contact(msg)
+                    prestation_form = PrestationForm()
+                    success = True
         else:
             contact_form = ContactForm(request.POST)
             if contact_form.is_valid():
                 data = contact_form.cleaned_data
-                msg = ContactMessage.objects.create(
-                    kind=ContactMessage.KIND_CONTACT,
-                    nom=data["nom"],
-                    telephone=data["telephone"],
-                    email=data["email"],
-                    message=data["message"],
-                )
-                _notify_staff_contact(msg)
-                contact_form = ContactForm()
-                success = True
+                if _discard_foreign_contact(data["email"], data["message"]):
+                    contact_form = ContactForm()
+                    success = True
+                else:
+                    msg = ContactMessage.objects.create(
+                        kind=ContactMessage.KIND_CONTACT,
+                        nom=data["nom"],
+                        telephone=data["telephone"],
+                        email=data["email"],
+                        message=data["message"],
+                    )
+                    _notify_staff_contact(msg)
+                    contact_form = ContactForm()
+                    success = True
 
     return render(request, "core/contact.html", {
         "mode": mode,
@@ -615,6 +676,14 @@ def contact(request):
 
 @staff_member_required
 def admin_contact(request):
+    purged = _purge_foreign_contact_messages()
+    if purged:
+        messages.info(
+            request,
+            f"{purged} message{'s' if purged > 1 else ''} en langue étrangère "
+            f"automatiquement effacé{'s' if purged > 1 else ''}.",
+        )
+
     statut = request.GET.get("statut", "")
     kind = request.GET.get("kind", "")
     messages_qs = ContactMessage.objects.all()
