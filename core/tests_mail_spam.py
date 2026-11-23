@@ -8,8 +8,10 @@ from core.mail_spam import (
     looks_english,
     looks_foreign_language,
     looks_french,
+    looks_gibberish,
 )
 from core.models import ContactMessage
+from users.models import UserNotification
 
 User = get_user_model()
 
@@ -72,6 +74,19 @@ class MailSpamDetectionTests(SimpleTestCase):
         self.assertTrue(looks_french(body))
         self.assertFalse(looks_foreign_language(body))
 
+    def test_gibberish_bot_is_foreign(self):
+        body = "hntvzoikjvnflxymqfonklwgtddjld"
+        self.assertTrue(looks_gibberish(body))
+        self.assertTrue(looks_foreign_language(body))
+
+    def test_formtest_english_probe_is_foreign(self):
+        body = (
+            "Hey there,\n\nQuick test: this message came through your contact "
+            "form. If I were a real customer, the clock would already be ticking."
+        )
+        self.assertTrue(looks_english(body))
+        self.assertTrue(looks_foreign_language(body))
+
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -93,6 +108,21 @@ class ContactForeignLanguageFilterTests(TestCase):
                     "Hi, I checked your website and I am looking for a wedding "
                     "band available next month. Please send pricing. Regards."
                 ),
+                "rgpd": "on",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context["success"])
+        self.assertEqual(ContactMessage.objects.count(), 0)
+
+    def test_gibberish_message_discarded(self):
+        resp = self.client.post(
+            self.url,
+            {
+                "nom": "owxpxwmyql",
+                "telephone": "",
+                "email": "bot@formtests.info",
+                "message": "hntvzoikjvnflxymqfonklwgtddjld",
                 "rgpd": "on",
             },
         )
@@ -126,7 +156,7 @@ class ContactForeignLanguageFilterTests(TestCase):
             password="x",
             is_staff=True,
         )
-        ContactMessage.objects.create(
+        foreign = ContactMessage.objects.create(
             kind=ContactMessage.KIND_CONTACT,
             nom="Edward",
             email="edward@example.com",
@@ -135,11 +165,36 @@ class ContactForeignLanguageFilterTests(TestCase):
                 "band available next month. Please send pricing. Regards."
             ),
         )
-        ContactMessage.objects.create(
+        kept = ContactMessage.objects.create(
             kind=ContactMessage.KIND_CONTACT,
             nom="Camille",
             email="camille@example.com",
             message="Bonjour, dispo pour un concert en Vendée le mois prochain ?",
+        )
+        UserNotification.objects.create(
+            user=staff,
+            title="JOY — Message de contact",
+            body="Edward : Hi, I checked your website and I am looking for a wedding band.",
+            related_type="contact",
+            related_id=foreign.pk,
+        )
+        UserNotification.objects.create(
+            user=staff,
+            title="JOY — Message de contact",
+            body="Camille : Bonjour, dispo pour un concert en Vendée le mois prochain ?",
+            related_type="contact",
+            related_id=kept.pk,
+        )
+        # Orpheline anglaise (message déjà effacé hier).
+        UserNotification.objects.create(
+            user=staff,
+            title="JOY — Message de contact",
+            body=(
+                "Owen : Hey there, Quick test: this message came through your "
+                "contact form. If I were a real customer, the clock would tick."
+            ),
+            related_type="contact",
+            related_id=99999,
         )
         client = Client()
         client.force_login(staff)
@@ -147,3 +202,8 @@ class ContactForeignLanguageFilterTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(ContactMessage.objects.count(), 1)
         self.assertEqual(ContactMessage.objects.get().email, "camille@example.com")
+        self.assertEqual(UserNotification.objects.filter(related_type="contact").count(), 1)
+        self.assertEqual(
+            UserNotification.objects.get(related_type="contact").related_id,
+            kept.pk,
+        )

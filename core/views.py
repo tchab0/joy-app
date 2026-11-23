@@ -565,12 +565,28 @@ def _discard_foreign_contact(email: str, text: str) -> bool:
     return True
 
 
+def _delete_contact_notifications(*, related_ids=None, notification_ids=None) -> int:
+    """Supprime les notifications in-app liées aux messages contact."""
+    from users.models import UserNotification
+
+    qs = UserNotification.objects.filter(related_type="contact")
+    if related_ids is not None:
+        qs = qs.filter(related_id__in=list(related_ids))
+    elif notification_ids is not None:
+        qs = qs.filter(pk__in=list(notification_ids))
+    else:
+        return 0
+    deleted, _ = qs.delete()
+    return int(deleted)
+
+
 def _purge_foreign_contact_messages() -> int:
     """Efface les messages contact déjà stockés rédigés hors français."""
     deleted = 0
     qs = ContactMessage.objects.exclude(statut="processed").only(
         "id",
         "email",
+        "nom",
         "message",
         "scene_details",
         "acces_logistique",
@@ -578,6 +594,7 @@ def _purge_foreign_contact_messages() -> int:
     )
     for msg in qs.iterator(chunk_size=100):
         text = _contact_free_text(
+            msg.nom or "",
             msg.message or "",
             msg.scene_details or "",
             msg.acces_logistique or "",
@@ -590,8 +607,27 @@ def _purge_foreign_contact_messages() -> int:
             msg.pk,
             msg.email,
         )
+        _delete_contact_notifications(related_ids=[msg.pk])
         msg.delete()
         deleted += 1
+    return deleted
+
+
+def _purge_foreign_contact_notifications() -> int:
+    """Efface les notifs contact hors français (y compris orphelines)."""
+    from users.models import UserNotification
+
+    to_delete: list[int] = []
+    qs = UserNotification.objects.filter(related_type="contact").only("id", "body")
+    for notif in qs.iterator(chunk_size=100):
+        if not looks_foreign_language(notif.body or ""):
+            continue
+        to_delete.append(notif.pk)
+    if not to_delete:
+        return 0
+    deleted = _delete_contact_notifications(notification_ids=to_delete)
+    if deleted:
+        logger.info("Notifications contact langue étrangère effacées n=%s", deleted)
     return deleted
 
 
@@ -607,6 +643,7 @@ def contact(request):
             if prestation_form.is_valid():
                 data = prestation_form.cleaned_data
                 free_text = _contact_free_text(
+                    data.get("nom") or "",
                     data.get("message") or "",
                     data.get("scene_details") or "",
                     data.get("acces_logistique") or "",
@@ -650,7 +687,8 @@ def contact(request):
             contact_form = ContactForm(request.POST)
             if contact_form.is_valid():
                 data = contact_form.cleaned_data
-                if _discard_foreign_contact(data["email"], data["message"]):
+                free_text = _contact_free_text(data.get("nom") or "", data["message"])
+                if _discard_foreign_contact(data["email"], free_text):
                     contact_form = ContactForm()
                     success = True
                 else:
@@ -716,11 +754,22 @@ def _contact_reply_default_body(msg: ContactMessage) -> str:
 @staff_member_required
 def admin_contact(request):
     purged = _purge_foreign_contact_messages()
-    if purged:
+    purged_notifs = _purge_foreign_contact_notifications()
+    if purged or purged_notifs:
+        bits = []
+        if purged:
+            bits.append(
+                f"{purged} message{'s' if purged > 1 else ''} en langue étrangère"
+            )
+        if purged_notifs:
+            bits.append(
+                f"{purged_notifs} notification{'s' if purged_notifs > 1 else ''} associée"
+                f"{'s' if purged_notifs > 1 else ''}"
+            )
         messages.info(
             request,
-            f"{purged} message{'s' if purged > 1 else ''} en langue étrangère "
-            f"automatiquement effacé{'s' if purged > 1 else ''}.",
+            f"{' et '.join(bits)} automatiquement "
+            f"effacé{'s' if (purged + purged_notifs) > 1 else ''}.",
         )
 
     statut = request.GET.get("statut", "")
@@ -806,6 +855,7 @@ def admin_contact_action(request, pk):
 @staff_member_required
 def admin_contact_delete(request, pk):
     if request.method == "POST":
+        _delete_contact_notifications(related_ids=[pk])
         ContactMessage.objects.filter(pk=pk).delete()
         messages.success(request, "Message supprimé.")
     return _admin_contact_redirect(request)

@@ -64,6 +64,9 @@ _EN_MARKERS = (
     " leads",
     " interested",
     " hi,",
+    " hi ",
+    " hey ",
+    " hey,",
     " hello",
     " regards",
     "checked your",
@@ -73,7 +76,17 @@ _EN_MARKERS = (
     " available ",
     " wedding ",
     " please ",
+    " customer",
+    " contact form",
+    " quick test",
+    " through your",
+    " mobile app",
 )
+
+# Voyelles (FR inclus) vs suites de consonnes — détection charabia / bots.
+_VOWEL_RE = re.compile(r"[aeiouyàâäéèêëïîôùûüœæ]", re.IGNORECASE)
+_CONSONANT_RUN_RE = re.compile(r"[bcdfghjklmnpqrstvwxz]{5,}", re.IGNORECASE)
+_LONG_TOKEN_RE = re.compile(r"[a-zàâäéèêëïîôùûüçœæ]{10,}", re.IGNORECASE)
 
 
 def _normalize(text: str) -> str:
@@ -115,6 +128,25 @@ def looks_french(text: str) -> bool:
     return _french_score(blob) >= 2
 
 
+def looks_gibberish(text: str) -> bool:
+    """True pour chaînes type bot (charabia sans voyelles / mots improbables)."""
+    raw = (text or "").strip()
+    if len(raw) < 12:
+        return False
+    if looks_french(raw) or looks_english(raw):
+        return False
+    letters = re.sub(r"[^a-zàâäéèêëïîôùûüçœæ]", "", raw.lower())
+    if len(letters) >= 16:
+        vratio = len(_VOWEL_RE.findall(letters)) / len(letters)
+        if vratio < 0.28:
+            return True
+    for token in _LONG_TOKEN_RE.findall(raw.lower()):
+        vratio = len(_VOWEL_RE.findall(token)) / len(token)
+        if vratio < 0.28 or _CONSONANT_RUN_RE.search(token):
+            return True
+    return False
+
+
 def looks_foreign_language(text: str) -> bool:
     """True si le texte semble rédigé dans une langue autre que le français.
 
@@ -127,8 +159,10 @@ def looks_foreign_language(text: str) -> bool:
         return True
     if looks_english(raw):
         return True
-    # Latin non anglais mais sans signaux FR (ex. spam ES/DE générique long).
-    if len(raw) >= 40 and not looks_french(raw):
+    if looks_gibberish(raw):
+        return True
+    # Latin sans signaux FR (spam ES/DE, charabia un peu plus long).
+    if len(raw) >= 24 and not looks_french(raw):
         return True
     return False
 
