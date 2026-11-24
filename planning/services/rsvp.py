@@ -264,7 +264,7 @@ def notify_staff_presence_invalidated(
     old_code: str,
     new_code: str,
 ) -> int:
-    """Alerte immédiate staff quand une présence confirmée est annulée / assouplie."""
+    """Alerte prioritaire staff quand une présence confirmée est annulée."""
     from planning.services.notify_dates import is_past_event
 
     event = participation.event
@@ -287,7 +287,9 @@ def notify_staff_presence_invalidated(
     if motif:
         body_bits.append(f"Motif : {motif[:200]}")
     if getattr(event, "statut", None) == Event.Statut.CONFIRME:
-        body_bits.append("Événement déjà confirmé.")
+        body_bits.append("Événement déjà confirmé — à traiter en priorité.")
+    else:
+        body_bits.append("À traiter en priorité.")
     try:
         if getattr(event, "is_rehearsal", False):
             url = reverse("repetitions:detail", kwargs={"pk": event.pk})
@@ -301,12 +303,15 @@ def notify_staff_presence_invalidated(
     try:
         return notify_users(
             staff,
-            title="JOY — Présence annulée",
+            title="JOY — Empêchement prioritaire",
             body=" ".join(body_bits),
             url=url,
             related_type="staff_alert",
             related_id=participation.pk,
             notify_type="staff_alert",
+            # Toujours push/e-mail immédiat + pastille « à traiter » dans le salon.
+            requires_response=True,
+            force_immediate=True,
         )
     except Exception:
         logger.exception(

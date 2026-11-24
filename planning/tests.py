@@ -455,8 +455,11 @@ class RespondTests(PlanningBaseTestCase):
         self.assertEqual(self.participation.status.code, "declined")
         mock_notify.assert_called_once()
         kwargs = mock_notify.call_args.kwargs
-        self.assertIn("Présence annulée", kwargs["title"])
+        self.assertIn("Empêchement prioritaire", kwargs["title"])
         self.assertIn("déjà confirmé", kwargs["body"])
+        self.assertTrue(kwargs.get("force_immediate"))
+        self.assertTrue(kwargs.get("requires_response"))
+        self.assertEqual(kwargs.get("notify_type"), "staff_alert")
         staff_ids = {u.pk for u in mock_notify.call_args.args[0]}
         self.assertIn(self.staff.pk, staff_ids)
         self.assertNotIn(self.musician.pk, staff_ids)
@@ -478,9 +481,11 @@ class RespondTests(PlanningBaseTestCase):
         self.assertEqual(self.participation.comment, "Empêchement familial")
         mock_notify.assert_called_once()
         kwargs = mock_notify.call_args.kwargs
-        self.assertIn("Présence annulée", kwargs["title"])
+        self.assertIn("Empêchement prioritaire", kwargs["title"])
         self.assertIn("Empêchement familial", kwargs["body"])
         self.assertIn("déjà confirmé", kwargs["body"])
+        self.assertTrue(kwargs.get("force_immediate"))
+        self.assertTrue(kwargs.get("requires_response"))
         staff_ids = {u.pk for u in mock_notify.call_args.args[0]}
         self.assertIn(self.staff.pk, staff_ids)
         self.assertNotIn(self.musician.pk, staff_ids)

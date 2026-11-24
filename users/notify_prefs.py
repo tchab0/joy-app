@@ -138,8 +138,9 @@ TYPE_CATALOG: tuple[NotifyTypeSpec, ...] = (
     ),
     NotifyTypeSpec(
         TYPE_STAFF_ALERT,
-        "Annulations de présence",
-        "Un musicien confirme qu’il ne viendra plus.",
+        "Empêchements / annulations de présence",
+        "Un musicien qui s’était annoncé présent signale un empêchement "
+        "(alerte prioritaire immédiate).",
         staff_only=True,
     ),
     NotifyTypeSpec(

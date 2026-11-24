@@ -215,7 +215,7 @@ def is_staff_destined_notification(item) -> bool:
     if related == "feedback" and url.startswith("/admin-retours"):
         return True
     title = (getattr(item, "title", None) or "").strip().lower()
-    if "présence annulée" in title:
+    if "présence annulée" in title or "empêchement prioritaire" in title:
         return True
     if _is_chat_notification(item):
         label = _chat_room_label(item).strip().lower()

@@ -10,7 +10,8 @@
     </header>
     <p class="pl-row__meta" style="margin:0 0 .85rem;line-height:1.45;color:var(--text)">
       Vous aviez confirmé votre présence.
-      <span x-show="eventConfirmed"> L’événement est déjà confirmé — l’équipe sera prévenue tout de suite.</span>
+      <span x-show="eventConfirmed"> L’événement est déjà confirmé — l’équipe reçoit une alerte prioritaire tout de suite.</span>
+      <span x-show="!eventConfirmed"> L’équipe sera prévenue immédiatement.</span>
       Si vous ne pouvez plus venir, ce n’est pas grave : une courte explication l’aide simplement à s’organiser.
     </p>
     <div class="pl-form" style="border-top:none;margin:0;padding:0">

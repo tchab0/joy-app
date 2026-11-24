@@ -248,14 +248,14 @@
                 {% if show_archives %} · Archivée{% endif %}
               </p>
               {% if item.is_unanswered and not show_archives %}
-                <span class="notif-item__action-label">À répondre</span>
+                <span class="notif-item__action-label">{% if item.is_staff_destined %}À traiter{% else %}À répondre{% endif %}</span>
               {% endif %}
               {% if item.url %}
                 <div class="notif-item__tap"
                      data-href="{% url 'account_notification_open' item.pk %}">
                   <h2>{{ item.title }}</h2>
                   <div class="notif-item__body">{{ item.body|notif_body_html }}</div>
-                  <span class="notif-item__cta">{% if item.is_unanswered %}Répondre maintenant →{% else %}Voir le contenu →{% endif %}</span>
+                  <span class="notif-item__cta">{% if item.is_unanswered %}{% if item.is_staff_destined %}Traiter maintenant →{% else %}Répondre maintenant →{% endif %}{% else %}Voir le contenu →{% endif %}</span>
                 </div>
               {% else %}
                 <h2>{{ item.title }}</h2>
@@ -282,7 +282,7 @@
                   {% if item.is_unanswered %}
                   <form method="post" action="{% url 'account_notification_mark_responded' item.pk %}" data-notif-form="mark_responded">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-outline">Marquer répondue</button>
+                    <button type="submit" class="btn btn-outline">{% if item.is_staff_destined %}Marquer traité{% else %}Marquer répondue{% endif %}</button>
                   </form>
                   {% endif %}
                 {% endif %}
