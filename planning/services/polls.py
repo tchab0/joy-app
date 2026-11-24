@@ -353,6 +353,7 @@ def launch_availability_poll(
     launched_by,
     audience: str | None = None,
     require_recipients: bool = False,
+    notify: bool = True,
 ) -> DateProposal:
     """
     Autorise / lance le sondage : statut OPEN, alerte (push ou e-mail)
@@ -360,6 +361,8 @@ def launch_availability_poll(
 
     ``audience`` : si fourni, met à jour l’intention avant notify.
     ``require_recipients`` : refuse le lancement ``room`` sans musicien destinataire.
+    ``notify`` : si False, le statut passe à OPEN sans envoyer les alertes
+    (l’appelant les envoie lui-même, p.ex. après commit en arrière-plan).
     """
     if proposal.status == DateProposal.Status.OPEN and proposal.launched_at:
         raise ValueError("Sondage déjà lancé")
@@ -397,7 +400,8 @@ def launch_availability_poll(
     proposal.launched_by = launched_by
     proposal.save(update_fields=update_fields)
 
-    notify_availability_poll(proposal)
+    if notify:
+        notify_availability_poll(proposal)
 
     return proposal
 
@@ -432,6 +436,44 @@ def _parse_poll_dt(value: str | None):
     return dt
 
 
+# Fenêtre anti-doublon : un POST répété (double-clic, timeout réseau, retry
+# navigateur) pendant que les notifs bloquaient encore la réponse HTTP.
+CHAT_POLL_DEDUP_SECONDS = 30
+
+
+def _recent_chat_poll_duplicate(*, room, author, title: str, option_kind: str):
+    """Sondage non annulé créé très récemment (même salon / auteur / titre)."""
+    if room is None or author is None or not title:
+        return None
+    cutoff = timezone.now() - timedelta(seconds=CHAT_POLL_DEDUP_SECONDS)
+    return (
+        DateProposal.objects.filter(
+            source_room=room,
+            created_by=author,
+            title=title,
+            option_kind=option_kind,
+            created_at__gte=cutoff,
+        )
+        .exclude(status=DateProposal.Status.CANCELLED)
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+
+
+def _poll_launch_message_for(proposal: DateProposal):
+    from chat.models import ChatMessage
+
+    return (
+        ChatMessage.objects.filter(
+            related_proposal=proposal,
+            kind=ChatMessage.Kind.POLL_LAUNCH,
+            deleted_at__isnull=True,
+        )
+        .order_by("pk")
+        .first()
+    )
+
+
 @transaction.atomic
 def create_and_launch_chat_poll(
     *,
@@ -449,6 +491,9 @@ def create_and_launch_chat_poll(
     Crée un sondage depuis un salon chat, le lance immédiatement,
     poste un message POLL_LAUNCH et notifie l’audience.
 
+    Idempotent sur une courte fenêtre : un 2ᵉ appel identique (même salon,
+    auteur, titre, type) renvoie le sondage déjà créé au lieu d’en tripler.
+
     Retourne ``(proposal, message)``.
     """
     from chat.models import ChatMessage
@@ -464,59 +509,75 @@ def create_and_launch_chat_poll(
     if not options:
         raise ValueError("Ajoutez au moins une option.")
 
-    linked_event = None
-    if getattr(room, "event_id", None) and option_kind == DateProposal.OptionKind.DATES:
-        linked_event = room.event
-
-    proposal = DateProposal.objects.create(
-        title=title,
-        description=(description or "").strip(),
-        created_by=author,
-        status=DateProposal.Status.DRAFT,
-        option_kind=option_kind,
-        audience=audience,
-        source_room=room,
-        linked_event=linked_event,
-        deadline=deadline,
+    existing = _recent_chat_poll_duplicate(
+        room=room, author=author, title=title, option_kind=option_kind
     )
+    if existing is not None:
+        message = _poll_launch_message_for(existing)
+        if message is not None:
+            return existing, message
+        # Sondage créé mais message manquant (échec partiel) → le recréer.
+        proposal = existing
+    else:
+        linked_event = None
+        if (
+            getattr(room, "event_id", None)
+            and option_kind == DateProposal.OptionKind.DATES
+        ):
+            linked_event = room.event
 
-    created = 0
-    for raw in options:
-        if not isinstance(raw, dict):
-            continue
-        label = (raw.get("label") or "").strip()
-        if option_kind == DateProposal.OptionKind.TEXT:
-            if not label:
+        proposal = DateProposal.objects.create(
+            title=title,
+            description=(description or "").strip(),
+            created_by=author,
+            status=DateProposal.Status.DRAFT,
+            option_kind=option_kind,
+            audience=audience,
+            source_room=room,
+            linked_event=linked_event,
+            deadline=deadline,
+        )
+
+        created = 0
+        for raw in options:
+            if not isinstance(raw, dict):
                 continue
+            label = (raw.get("label") or "").strip()
+            if option_kind == DateProposal.OptionKind.TEXT:
+                if not label:
+                    continue
+                DateOption.objects.create(
+                    proposal=proposal,
+                    starts_at=None,
+                    ends_at=None,
+                    label=label[:120],
+                    sort_order=created,
+                )
+                created += 1
+                continue
+            starts = _parse_poll_dt(raw.get("starts_at") or raw.get("starts"))
+            if starts is None:
+                continue
+            ends = _parse_poll_dt(raw.get("ends_at") or raw.get("ends"))
             DateOption.objects.create(
                 proposal=proposal,
-                starts_at=None,
-                ends_at=None,
+                starts_at=starts,
+                ends_at=ends,
                 label=label[:120],
                 sort_order=created,
             )
             created += 1
-            continue
-        starts = _parse_poll_dt(raw.get("starts_at") or raw.get("starts"))
-        if starts is None:
-            continue
-        ends = _parse_poll_dt(raw.get("ends_at") or raw.get("ends"))
-        DateOption.objects.create(
-            proposal=proposal,
-            starts_at=starts,
-            ends_at=ends,
-            label=label[:120],
-            sort_order=created,
-        )
-        created += 1
 
-    if created == 0:
-        proposal.delete()
-        if option_kind == DateProposal.OptionKind.TEXT:
-            raise ValueError("Ajoutez au moins une option texte.")
-        raise ValueError("Ajoutez au moins une option de date.")
+        if created == 0:
+            proposal.delete()
+            if option_kind == DateProposal.OptionKind.TEXT:
+                raise ValueError("Ajoutez au moins une option texte.")
+            raise ValueError("Ajoutez au moins une option de date.")
 
-    launch_availability_poll(proposal, launched_by=author)
+    if proposal.status != DateProposal.Status.OPEN or not proposal.launched_at:
+        # notify=False : les push/e-mails partent après commit, en thread,
+        # pour ne pas faire timeout/retry le POST client (cause de triplons).
+        launch_availability_poll(proposal, launched_by=author, notify=False)
 
     body_lines = [f"📊 Sondage : {proposal.title}"]
     if proposal.description:
@@ -534,6 +595,25 @@ def create_and_launch_chat_poll(
         thread_event_id=thread_event_id,
         require_thread=False,
     )
+
+    proposal_id = proposal.pk
+
+    def _notify_in_background():
+        import threading
+
+        def _run():
+            try:
+                fresh = DateProposal.objects.filter(pk=proposal_id).first()
+                if fresh is not None:
+                    notify_availability_poll(fresh)
+            except Exception:
+                logger.exception(
+                    "Échec notification sondage salon proposal_id=%s", proposal_id
+                )
+
+        threading.Thread(target=_run, daemon=True, name="joy-poll-notify").start()
+
+    transaction.on_commit(_notify_in_background)
     return proposal, message
 
 def apply_locked_option_votes_to_participations(

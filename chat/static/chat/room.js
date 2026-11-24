@@ -2380,6 +2380,7 @@ function chatRoom(cfg) {
           : 'Ajoutez au moins une date.';
         return;
       }
+      // Verrou immédiat (avant tout await) pour neutraliser double/triple clic.
       this.pollBusy = true;
       this.pollError = '';
       const fd = new FormData();
@@ -2408,11 +2409,13 @@ function chatRoom(cfg) {
           this.ingestMessage(data.message);
           this.$nextTick(() => this.scrollToBottom(true));
         }
-        this.pollBusy = false;
         this.pollOpen = false;
         this.loadRoomPolls();
       } catch (e) {
-        this.pollError = 'Erreur réseau — réessayez.';
+        // Garder le modal ouvert pour afficher l’erreur (pollError est dans
+        // le composer). Rafraîchir la liste : le serveur a peut-être déjà créé.
+        this.pollError = 'Erreur réseau — vérifiez le fil / la synthèse avant de relancer (évite les doublons).';
+        this.loadRoomPolls();
       } finally {
         this.pollBusy = false;
       }

@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=39"></script>
+<script defer src="{% static 'chat/room.js' %}?v=41"></script>
 {% endblock %}
 
 {% block content %}
@@ -456,7 +456,7 @@
                 <template x-if="selectedDay === '{{ day.iso }}'">
                   <div class="pl-day-events__chat-live"
                        x-data="calendarChatEmbed('{% url 'chat:room_embed' event.cal_chat.room_id %}')"
-                       x-init="load()">
+                       x-init="boot()">
                     <p class="pl-day-events__msgs-empty" x-show="loading" x-cloak>Chargement du salon…</p>
                     <p class="pl-day-events__msgs-empty" x-show="error" x-cloak x-text="error"></p>
                     <div x-ref="mount"></div>
@@ -960,6 +960,11 @@ function calendarChatEmbed(url) {
     loading: true,
     error: '',
     _loaded: false,
+    /** Alpine appelle le cleanup renvoyé par boot() quand x-if démonte le nœud. */
+    boot() {
+      this.load();
+      return () => this.destroy();
+    },
     async load() {
       if (this._loaded) return;
       this.loading = true;
@@ -973,6 +978,10 @@ function calendarChatEmbed(url) {
         const html = await r.text();
         const mount = this.$refs.mount;
         if (!mount) return;
+        // Nettoyer d’éventuels téléports orphelins avant ré-init.
+        if (window.Alpine && typeof Alpine.destroyTree === 'function') {
+          try { Alpine.destroyTree(mount); } catch (_) {}
+        }
         mount.innerHTML = html;
         if (window.Alpine && typeof Alpine.initTree === 'function') {
           Alpine.initTree(mount);
