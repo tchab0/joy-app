@@ -1,4 +1,5 @@
 from django.core import mail
+from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -156,6 +157,7 @@ class StaffUnreadNotificationsTests(TestCase):
             is_musician=False,
         )
         self.client = Client()
+        cache.clear()
 
     def test_staff_lists_pending_unread_and_unanswered(self):
         notify_users(
@@ -226,7 +228,7 @@ class StaffUnreadNotificationsTests(TestCase):
         r = self.client.post(
             reverse("account_notification_mark_read", args=[notif.pk]),
         )
-        self.assertRedirects(r, reverse("account_notifications"))
+        self.assertRedirects(r, reverse("planning:dashboard"))
         notif.refresh_from_db()
         self.assertIsNotNone(notif.read_at)
 
@@ -240,7 +242,7 @@ class StaffUnreadNotificationsTests(TestCase):
         r = self.client.post(
             reverse("account_notification_archive", args=[notif.pk]),
         )
-        self.assertRedirects(r, reverse("account_notifications"))
+        self.assertRedirects(r, reverse("planning:dashboard"))
         notif.refresh_from_db()
         self.assertIsNotNone(notif.archived_at)
         self.assertIsNotNone(notif.read_at)
@@ -492,6 +494,65 @@ class StaffUnreadNotificationsTests(TestCase):
         self.assertRedirects(r, reverse("planning:dashboard"))
         notif.refresh_from_db()
         self.assertIsNotNone(notif.read_at)
+
+    def test_mark_read_stays_on_inbox_when_others_remain(self):
+        notify_users([self.musician], title="Un", body="a", url="/planning/")
+        notify_users([self.musician], title="Deux", body="b", url="/planning/")
+        notif = (
+            UserNotification.objects.filter(user=self.musician).order_by("pk").first()
+        )
+        self.client.force_login(self.musician)
+        cache.clear()
+        r = self.client.post(
+            reverse("account_notification_mark_read", args=[notif.pk]),
+        )
+        self.assertRedirects(r, reverse("account_notifications"))
+
+    def test_mark_read_stays_when_response_still_due(self):
+        notify_users(
+            [self.musician],
+            title="Invite",
+            body="Réponds",
+            url="/planning/",
+            requires_response=True,
+        )
+        notif = UserNotification.objects.get(user=self.musician)
+        self.client.force_login(self.musician)
+        cache.clear()
+        r = self.client.post(
+            reverse("account_notification_mark_read", args=[notif.pk]),
+        )
+        self.assertRedirects(r, reverse("account_notifications"))
+
+    def test_mark_all_read_returns_to_coulisses_when_inbox_empty(self):
+        notify_users([self.musician], title="Un", body="a", url="/planning/")
+        notify_users([self.musician], title="Deux", body="b", url="/planning/")
+        self.client.force_login(self.musician)
+        r = self.client.post(reverse("account_notifications_mark_all_read"))
+        self.assertRedirects(r, reverse("planning:dashboard"))
+
+    def test_open_without_url_returns_coulisses_when_nothing_left(self):
+        notif = UserNotification.objects.create(
+            user=self.musician,
+            title="Info",
+            body="Sans lien",
+            url="",
+        )
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("account_notification_open", args=[notif.pk]))
+        self.assertRedirects(r, reverse("planning:dashboard"))
+
+    def test_open_without_url_stays_on_inbox_when_others_remain(self):
+        UserNotification.objects.create(
+            user=self.musician, title="A", body="a", url=""
+        )
+        UserNotification.objects.create(
+            user=self.musician, title="B", body="b", url="/planning/"
+        )
+        first = UserNotification.objects.get(user=self.musician, title="A")
+        self.client.force_login(self.musician)
+        r = self.client.get(reverse("account_notification_open", args=[first.pk]))
+        self.assertRedirects(r, reverse("account_notifications"))
 
 
 @override_settings(

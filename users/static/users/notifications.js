@@ -63,19 +63,24 @@
     }
     window.setTimeout(function () {
       row.classList.add("is-gone");
-      const parent = row.parentElement;
       row.remove();
-      if (!parent) return;
-      const left = parent.querySelector("[data-notif-swipe]");
-      if (!left) {
-        const banner = parent.closest("[data-notif-banner]");
-        if (banner) {
-          banner.remove();
-          return;
-        }
-        window.location.reload();
-      }
     }, 200);
+  }
+
+  function finishIfEmpty(parent) {
+    if (!parent || parent.querySelector("[data-notif-swipe]")) return;
+    const banner = parent.closest("[data-notif-banner]");
+    if (banner) {
+      banner.remove();
+      return;
+    }
+    const page = parent.closest("[data-notif-page]");
+    const href = page && page.getAttribute("data-empty-href");
+    if (href) {
+      window.location.assign(href);
+      return;
+    }
+    window.location.reload();
   }
 
   function runAction(row, action) {
@@ -121,10 +126,18 @@
       return;
     }
 
+    const parent = row.parentElement;
     dismissRow(row, action === "mark_read" ? "right" : "left");
-    postMany(urls, csrf).catch(function () {
-      window.location.reload();
+    const animated = new Promise(function (resolve) {
+      window.setTimeout(resolve, 220);
     });
+    Promise.all([postMany(urls, csrf), animated])
+      .then(function () {
+        finishIfEmpty(parent);
+      })
+      .catch(function () {
+        window.location.reload();
+      });
   }
 
   function resetCard(row, card) {

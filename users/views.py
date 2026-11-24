@@ -509,14 +509,42 @@ def account_notifications(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _salon_still_has_items(user) -> bool:
+    """Notifications encore au salon : non lues, ou lues mais encore à répondre."""
+    from django.db.models import Q
+
+    from users.models import UserNotification
+
+    return (
+        UserNotification.objects.filter(user=user, archived_at__isnull=True)
+        .filter(
+            Q(read_at__isnull=True)
+            | Q(requires_response=True, responded_at__isnull=True)
+        )
+        .exists()
+    )
+
+
+def _coulisses_home_if_salon_empty(request: HttpRequest) -> str | None:
+    """Accueil Coulisses quand le salon n’a plus rien à lire ni à répondre."""
+    if _salon_still_has_items(request.user):
+        return None
+    if not user_can_access_planning(request.user):
+        return None
+    return reverse("planning:dashboard")
+
+
 def _notifications_redirect(request: HttpRequest) -> str:
-    """Retour inbox, ou ``next`` relatif sûr (ex. planning après bannière Coulisses)."""
+    """Retour inbox, ou ``next`` relatif sûr (ex. planning après bannière Coulisses).
+
+    Salon vide → accueil Coulisses (calendrier).
+    """
     nxt = request.POST.get("next") or request.GET.get("next") or ""
     if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
     if request.POST.get("vue") == "archives" or request.GET.get("vue") == "archives":
         return reverse("account_notifications") + "?vue=archives"
-    return reverse("account_notifications")
+    return _coulisses_home_if_salon_empty(request) or reverse("account_notifications")
 
 
 def _wants_json(request: HttpRequest) -> bool:
@@ -653,4 +681,7 @@ def account_notification_open(request: HttpRequest, pk: int) -> HttpResponse:
     target = (notif.url or "").strip()
     if target.startswith("/") and not target.startswith("//"):
         return redirect(target)
+    home = _coulisses_home_if_salon_empty(request)
+    if home:
+        return redirect(home)
     return redirect("account_notifications")
