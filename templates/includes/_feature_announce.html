@@ -1,0 +1,176 @@
+{% if feature_announce %}
+<div id="joy-feature-announce"
+     class="joy-fa-root"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="joy-fa-title"
+     data-key="{{ feature_announce.key }}"
+     data-dismiss-url="{% url 'account_page_lead_dismiss' %}">
+  <div class="joy-fa-backdrop" data-joy-fa-dismiss tabindex="-1" aria-hidden="true"></div>
+  <div class="joy-fa-panel">
+    <header class="joy-fa-head">
+      <h2 id="joy-fa-title">{{ feature_announce.title }}</h2>
+      <button type="button" class="joy-fa-close" data-joy-fa-dismiss aria-label="Fermer">×</button>
+    </header>
+    <div class="joy-fa-body">
+      <p class="joy-fa-intro">{{ feature_announce.intro }}</p>
+      <ol class="joy-fa-steps">
+        {% for step in feature_announce.steps %}
+        <li class="joy-fa-step">
+          <span class="joy-fa-step__n" aria-hidden="true">{{ forloop.counter }}</span>
+          <div>
+            <strong class="joy-fa-step__title">{{ step.title }}</strong>
+            <p class="joy-fa-step__body">{{ step.body }}</p>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+    <footer class="joy-fa-foot">
+      <button type="button" class="btn btn-outline joy-fa-btn" data-joy-fa-dismiss>
+        {{ feature_announce.dismiss_label }}
+      </button>
+      <a class="btn joy-fa-btn joy-fa-btn--primary" href="{{ feature_announce.cta_url }}" data-joy-fa-dismiss>
+        {{ feature_announce.cta_label }}
+      </a>
+    </footer>
+  </div>
+</div>
+<style>
+  .joy-fa-root {
+    position: fixed; inset: 0; z-index: 240;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 1rem;
+  }
+  @media (min-width: 640px) {
+    .joy-fa-root { align-items: center; }
+  }
+  .joy-fa-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.5);
+  }
+  .joy-fa-panel {
+    position: relative;
+    width: 100%; max-width: 28rem; max-height: 90vh;
+    display: flex; flex-direction: column;
+    background: var(--surface); color: var(--text);
+    border-radius: var(--r);
+    box-shadow: 0 20px 50px rgba(0,0,0,.28);
+    overflow: hidden;
+  }
+  .joy-fa-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem;
+    padding: 1rem 1.15rem;
+    background: var(--text); color: #fff;
+  }
+  .joy-fa-head h2 {
+    margin: 0; font-family: var(--font-d); font-size: 1.2rem; line-height: 1.25;
+    color: #fff;
+  }
+  .joy-fa-close {
+    background: none; border: none; color: rgba(255,255,255,.75);
+    font-size: 1.6rem; line-height: 1; cursor: pointer; padding: .15rem .35rem;
+    min-width: 44px; min-height: 44px;
+  }
+  .joy-fa-close:hover, .joy-fa-close:focus-visible { color: #fff; }
+  .joy-fa-body {
+    padding: 1.1rem 1.15rem 0.5rem;
+    overflow: auto; color: var(--text);
+  }
+  .joy-fa-intro {
+    margin: 0 0 1rem; color: var(--text); font-size: .95rem; line-height: 1.45;
+  }
+  .joy-fa-steps {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: .85rem;
+  }
+  .joy-fa-step {
+    display: flex; gap: .75rem; align-items: flex-start;
+  }
+  .joy-fa-step__n {
+    flex-shrink: 0;
+    width: 1.75rem; height: 1.75rem;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(194,90,54,.12); color: var(--accent);
+    font-weight: 700; font-size: .85rem;
+  }
+  .joy-fa-step__title {
+    display: block; color: var(--text); font-size: .95rem; margin-bottom: .2rem;
+  }
+  .joy-fa-step__body {
+    margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.4;
+  }
+  .joy-fa-foot {
+    padding: 1rem 1.15rem;
+    display: flex; flex-wrap: wrap; gap: .65rem; justify-content: flex-end;
+    border-top: 1px solid rgba(0,0,0,.08);
+  }
+  .joy-fa-btn { min-height: 44px; }
+  .joy-fa-btn--primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .joy-fa-btn--primary:hover,
+  .joy-fa-btn--primary:focus-visible {
+    background: var(--accent-h); border-color: var(--accent-h); color: #fff;
+  }
+</style>
+<script>
+(function () {
+  var root = document.getElementById("joy-feature-announce");
+  if (!root) return;
+  var key = root.getAttribute("data-key") || "";
+  var url = root.getAttribute("data-dismiss-url") || "";
+  var done = false;
+
+  function csrf() {
+    var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    var input = document.querySelector("[name=csrfmiddlewaretoken]");
+    return input ? input.value : "";
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    if (root.parentNode) root.parentNode.removeChild(root);
+    try {
+      document.dispatchEvent(new CustomEvent("joy-feature-announce-done"));
+    } catch (e) {}
+    if (!url || !key) return;
+    try {
+      fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf(),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ key: key }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  root.querySelectorAll("[data-joy-fa-dismiss]").forEach(function (el) {
+    el.addEventListener("click", function (ev) {
+      // Laisser le navigateur suivre le lien CTA après dismiss.
+      if (el.tagName === "A" && el.getAttribute("href")) {
+        finish();
+        return;
+      }
+      ev.preventDefault();
+      finish();
+    });
+  });
+
+  document.addEventListener("keydown", function onEsc(ev) {
+    if (ev.key === "Escape") {
+      document.removeEventListener("keydown", onEsc);
+      finish();
+    }
+  });
+})();
+</script>
+{% endif %}

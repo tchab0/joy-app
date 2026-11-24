@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import quote
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 from django.urls import reverse
 from django.utils import timezone
@@ -33,33 +34,36 @@ def ensure_calendar_feed_token(user) -> str:
     token = (getattr(user, "calendar_feed_token", None) or "").strip()
     if token:
         return token
+    User = get_user_model()
     for _ in range(5):
         candidate = new_calendar_feed_token()
         updated = (
-            type(user)
-            .objects.filter(pk=user.pk)
+            User.objects.filter(pk=user.pk)
             .filter(Q(calendar_feed_token__isnull=True) | Q(calendar_feed_token=""))
             .update(calendar_feed_token=candidate)
         )
         if updated:
             user.calendar_feed_token = candidate
             return candidate
-        user.refresh_from_db(fields=["calendar_feed_token"])
-        token = (user.calendar_feed_token or "").strip()
+        # Recharger via le modèle réel (request.user peut être un SimpleLazyObject).
+        fresh = User.objects.filter(pk=user.pk).only("calendar_feed_token").first()
+        token = ((fresh.calendar_feed_token if fresh else "") or "").strip()
         if token:
+            user.calendar_feed_token = token
             return token
     # Collision improbable : forcer une valeur unique.
     candidate = new_calendar_feed_token()
+    User.objects.filter(pk=user.pk).update(calendar_feed_token=candidate)
     user.calendar_feed_token = candidate
-    user.save(update_fields=["calendar_feed_token"])
     return candidate
 
 
 def regenerate_calendar_feed_token(user) -> str:
     """Invalide l’ancien abonnement et renvoie un nouveau jeton."""
+    User = get_user_model()
     candidate = new_calendar_feed_token()
+    User.objects.filter(pk=user.pk).update(calendar_feed_token=candidate)
     user.calendar_feed_token = candidate
-    user.save(update_fields=["calendar_feed_token"])
     return candidate
 
 

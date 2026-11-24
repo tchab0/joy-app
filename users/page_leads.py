@@ -1,8 +1,16 @@
-"""Aides / textes explicatifs en haut de page — masquage et restauration."""
+"""Aides / textes explicatifs en haut de page — masquage et restauration.
+
+Les clés ``feature.*`` sont des annonces one-shot (popup) : elles partagent
+le stockage ``dismissed_page_leads`` mais ne sont pas restaurées avec les
+textes d’aide de page.
+"""
 
 from __future__ import annotations
 
 from django.db import DatabaseError
+from django.urls import reverse
+
+from users.roles import user_can_access_planning
 
 # Clé → libellé Mon compte (ordre d’affichage).
 PAGE_LEAD_LABELS: dict[str, str] = {
@@ -37,7 +45,16 @@ PAGE_LEAD_LABELS: dict[str, str] = {
     "users.admin_tours": "Staff — guides d’aide",
 }
 
+# Annonces fonctionnelles (popup une fois) — hors restauration « textes d’aide ».
+FEATURE_ANNOUNCE_LABELS: dict[str, str] = {
+    "feature.calendar_sync": "Synchro agenda perso",
+}
+
+FEATURE_ANNOUNCE_ORDER: tuple[str, ...] = ("feature.calendar_sync",)
+
 KNOWN_PAGE_LEAD_KEYS = frozenset(PAGE_LEAD_LABELS)
+KNOWN_FEATURE_ANNOUNCE_KEYS = frozenset(FEATURE_ANNOUNCE_LABELS)
+KNOWN_DISMISS_KEYS = KNOWN_PAGE_LEAD_KEYS | KNOWN_FEATURE_ANNOUNCE_KEYS
 
 
 def get_dismissed_page_leads(user) -> set[str]:
@@ -53,9 +70,9 @@ def get_dismissed_page_leads(user) -> set[str]:
 
 
 def dismiss_page_lead(user, key: str) -> bool:
-    """Ajoute une clé aux aides masquées. Retourne False si clé inconnue."""
+    """Ajoute une clé (aide de page ou annonce feature). Retourne False si inconnue."""
     key = (key or "").strip()
-    if key not in KNOWN_PAGE_LEAD_KEYS:
+    if key not in KNOWN_DISMISS_KEYS:
         return False
     current = list(get_dismissed_page_leads(user))
     if key in current:
@@ -70,16 +87,18 @@ def dismiss_page_lead(user, key: str) -> bool:
 
 
 def restore_all_page_leads(user) -> int:
-    """Réaffiche toutes les aides. Retourne le nombre qui étaient masquées."""
+    """Réaffiche les aides de page (pas les annonces feature.*)."""
     dismissed = get_dismissed_page_leads(user)
-    if not dismissed:
+    page_only = {k for k in dismissed if k in KNOWN_PAGE_LEAD_KEYS}
+    if not page_only:
         return 0
+    keep = [k for k in dismissed if k not in KNOWN_PAGE_LEAD_KEYS]
     try:
-        user.dismissed_page_leads = []
+        user.dismissed_page_leads = keep
         user.save(update_fields=["dismissed_page_leads"])
     except DatabaseError:
         return 0
-    return len(dismissed)
+    return len(page_only)
 
 
 def dismissed_page_leads_for_account(user) -> list[tuple[str, str]]:
@@ -90,3 +109,65 @@ def dismissed_page_leads_for_account(user) -> list[tuple[str, str]]:
         for key, label in PAGE_LEAD_LABELS.items()
         if key in dismissed
     ]
+
+
+def _calendar_sync_announce_payload() -> dict:
+    return {
+        "key": "feature.calendar_sync",
+        "title": "Nouveau : synchro avec votre agenda",
+        "intro": (
+            "Vous pouvez maintenant abonner Google Agenda, Apple ou Outlook "
+            "aux dates JOY. Les concerts confirmés s’ajoutent tout seuls "
+            "(sans les répétitions)."
+        ),
+        "steps": [
+            {
+                "title": "Ouvrir Mon compte",
+                "body": "Allez dans Mon compte → bloc « Agenda perso » (lien aussi depuis le calendrier).",
+            },
+            {
+                "title": "Choisir un flux",
+                "body": (
+                    "Orchestre = toutes les dates confirmées. "
+                    "Mes dates = seulement celles où vous êtes invité·e, « peut-être » ou dispo."
+                ),
+            },
+            {
+                "title": "S’abonner",
+                "body": (
+                    "Sur mobile : bouton « S’abonner (webcal) ». "
+                    "Sur Google Agenda (ordinateur) : Autres agendas → + → À partir de l’URL → coller l’URL."
+                ),
+            },
+        ],
+        "cta_label": "Voir Agenda perso",
+        "cta_url": f"{reverse('account_home')}#agenda-perso",
+        "dismiss_label": "Compris",
+    }
+
+
+_FEATURE_ANNOUNCE_BUILDERS = {
+    "feature.calendar_sync": _calendar_sync_announce_payload,
+}
+
+
+def pending_feature_announce(user) -> dict | None:
+    """Prochaine annonce feature à afficher (musiciens, hors mdp provisoire)."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return None
+    if getattr(user, "must_change_password", False):
+        return None
+    if not user_can_access_planning(user):
+        return None
+    dismissed = get_dismissed_page_leads(user)
+    for key in FEATURE_ANNOUNCE_ORDER:
+        if key in dismissed:
+            continue
+        builder = _FEATURE_ANNOUNCE_BUILDERS.get(key)
+        if builder is None:
+            continue
+        try:
+            return builder()
+        except Exception:
+            return None
+    return None

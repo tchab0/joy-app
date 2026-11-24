@@ -284,31 +284,47 @@
     } catch (e) {}
   }
 
+  function whenFeatureAnnounceDone(cb) {
+    if (!document.getElementById("joy-feature-announce")) {
+      cb();
+      return;
+    }
+    document.addEventListener("joy-feature-announce-done", function onDone() {
+      document.removeEventListener("joy-feature-announce-done", onDone);
+      cb();
+    });
+  }
+
   function boot() {
     var config = getConfig();
     if (!config || !config.tours) return;
 
-    if (config.force && config.tours[config.force]) {
-      writeState(null);
-      config._queue = (config.pending || []).filter(function (a) {
-        return a !== config.force;
-      });
-      stripTourQuery();
-      showStep(config, config.force, 0);
-      return;
+    function start() {
+      if (config.force && config.tours[config.force]) {
+        writeState(null);
+        config._queue = (config.pending || []).filter(function (a) {
+          return a !== config.force;
+        });
+        stripTourQuery();
+        showStep(config, config.force, 0);
+        return;
+      }
+
+      var state = readState();
+      if (state && state.audience && config.tours[state.audience]) {
+        config._queue = state.queue || [];
+        showStep(config, state.audience, state.step || 0);
+        return;
+      }
+
+      if (config.pending && config.pending.length) {
+        config._queue = config.pending.slice(1);
+        showStep(config, config.pending[0], 0);
+      }
     }
 
-    var state = readState();
-    if (state && state.audience && config.tours[state.audience]) {
-      config._queue = state.queue || [];
-      showStep(config, state.audience, state.step || 0);
-      return;
-    }
-
-    if (config.pending && config.pending.length) {
-      config._queue = config.pending.slice(1);
-      showStep(config, config.pending[0], 0);
-    }
+    // La popup d’annonce feature a priorité sur le guide coach marks.
+    whenFeatureAnnounceDone(start);
   }
 
   if (document.readyState === "loading") {

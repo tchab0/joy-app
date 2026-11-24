@@ -3,7 +3,7 @@
 from django.core.cache import cache
 
 from users.nav_cache import NAV_BANNER_CACHE_TTL, nav_banner_cache_key
-from users.page_leads import get_dismissed_page_leads
+from users.page_leads import get_dismissed_page_leads, pending_feature_announce
 from users.roles import user_can_access_planning
 
 # Namespaces du menu Coulisses (lien nav → planning).
@@ -59,6 +59,7 @@ def nav_access(request):
             "is_staff_surface": False,
             "product_tour_config": None,
             "dismissed_page_leads": set(),
+            "feature_announce": None,
             "pending_polls": [],
             "pending_polls_count": 0,
             "unread_inbox": [],
@@ -149,6 +150,7 @@ def nav_access(request):
         ),
         "product_tour_config": build_tour_config(request),
         "dismissed_page_leads": get_dismissed_page_leads(user),
+        "feature_announce": pending_feature_announce(user),
         "pending_polls": pending_polls,
         "pending_polls_count": len(pending_polls),
         "unread_inbox": unread_inbox,

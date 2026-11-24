@@ -511,12 +511,13 @@
   gtag('config', '{{ GA_MEASUREMENT_ID }}', { anonymize_ip: true });
 </script>
 {% endif %}
+{% include "includes/_feature_announce.html" %}
 {% if product_tour_config %}
   {{ product_tour_config|json_script:"joy-tour-config" }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css" integrity="sha384-eyrYgcjChmzD338JTHFZssgJHOqqOZbajet8yZpCw8ESroLDi28BarMEKCImNGHC" crossorigin="anonymous">
-  <link rel="stylesheet" href="{% static 'users/tour.css' %}?v=10">
+  <link rel="stylesheet" href="{% static 'users/tour.css' %}?v=11">
   <script defer src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js" integrity="sha384-n0+N1F84TRb1beKh+tkD92wsVYiC9StnuPt7veT8Izt/qjUKUwNJEKy8Zhjb9tnk" crossorigin="anonymous"></script>
-  <script src="{% static 'users/tour.js' %}?v=10" defer></script>
+  <script src="{% static 'users/tour.js' %}?v=11" defer></script>
 {% endif %}
 {% block extra_js %}{% endblock %}
 <script>

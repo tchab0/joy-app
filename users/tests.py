@@ -147,3 +147,55 @@ class LoginFlowTests(TestCase):
         )
         self.assertEqual(r.status_code, 302)
         self.assertTrue(self.client.session.get("_auth_user_id"))
+
+
+class CalendarSyncFeatureAnnounceTests(TestCase):
+    def setUp(self):
+        self.musician = User.objects.create_user(
+            username="announce_musi",
+            password="pass12345",
+            is_musician=True,
+        )
+        self.outsider = User.objects.create_user(
+            username="announce_out",
+            password="pass12345",
+        )
+        self.client = Client()
+
+    def test_announce_shown_for_musician_once(self):
+        self.client.login(username="announce_musi", password="pass12345")
+        r = self.client.get(reverse("account_home"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "joy-feature-announce")
+        self.assertContains(r, "synchro avec votre agenda")
+        self.assertContains(r, "feature.calendar_sync")
+
+        dismiss = self.client.post(
+            reverse("account_page_lead_dismiss"),
+            data='{"key":"feature.calendar_sync"}',
+            content_type="application/json",
+        )
+        self.assertEqual(dismiss.status_code, 200)
+
+        r2 = self.client.get(reverse("account_home"))
+        self.assertEqual(r2.status_code, 200)
+        self.assertNotContains(r2, "joy-feature-announce")
+        self.musician.refresh_from_db()
+        self.assertIn("feature.calendar_sync", self.musician.dismissed_page_leads or [])
+
+    def test_announce_hidden_for_non_musician(self):
+        self.client.login(username="announce_out", password="pass12345")
+        r = self.client.get(reverse("account_home"))
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "joy-feature-announce")
+
+    def test_restore_page_leads_keeps_feature_announce_dismissed(self):
+        from users.page_leads import dismiss_page_lead, restore_all_page_leads
+
+        dismiss_page_lead(self.musician, "planning.dashboard")
+        dismiss_page_lead(self.musician, "feature.calendar_sync")
+        n = restore_all_page_leads(self.musician)
+        self.assertEqual(n, 1)
+        self.musician.refresh_from_db()
+        self.assertIn("feature.calendar_sync", self.musician.dismissed_page_leads)
+        self.assertNotIn("planning.dashboard", self.musician.dismissed_page_leads)
