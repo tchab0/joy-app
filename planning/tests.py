@@ -485,6 +485,77 @@ class RespondTests(PlanningBaseTestCase):
 
 
 class PollTests(PlanningBaseTestCase):
+    def test_create_poll_triple_submit_reuses_draft(self):
+        """Double/triple clic admin → un seul brouillon, pas trois."""
+        self.client.login(username="staff1", password="pass12345")
+        starts = (timezone.now() + timedelta(days=14)).strftime("%Y-%m-%dT20:00")
+        payload = {
+            "title": "Triplon admin",
+            "description": "Test anti-doublon",
+            "deadline": (timezone.localdate() + timedelta(days=7)).isoformat(),
+            "option_starts_0": starts,
+            "option_label_0": "Vendredi",
+        }
+        r1 = self.client.post(reverse("planning:create_poll"), payload)
+        r2 = self.client.post(reverse("planning:create_poll"), payload)
+        r3 = self.client.post(reverse("planning:create_poll"), payload)
+        self.assertEqual(r1.status_code, 302)
+        self.assertEqual(r2.status_code, 302)
+        self.assertEqual(r3.status_code, 302)
+        twins = DateProposal.objects.filter(title="Triplon admin")
+        self.assertEqual(twins.count(), 1)
+        only = twins.get()
+        self.assertEqual(only.status, DateProposal.Status.DRAFT)
+        self.assertIn(
+            reverse("planning:poll_detail", args=[only.pk]),
+            r2["Location"],
+        )
+
+    @patch("chat.services.broadcast_message")
+    def test_create_and_launch_chat_poll_is_idempotent(self, _broadcast):
+        """POST répété (retry réseau) ne crée pas 3 sondages salon."""
+        from chat.models import ChatMessage
+        from chat.services import create_private_room
+        from planning.services import create_and_launch_chat_poll
+
+        room = create_private_room(
+            title="Salon anti-doublon",
+            created_by=self.staff,
+            invited_users=[self.musician],
+        )
+        opts = [{"label": "Oui"}, {"label": "Non"}]
+        kwargs = dict(
+            room=room,
+            author=self.staff,
+            title="On joue samedi ?",
+            option_kind=DateProposal.OptionKind.TEXT,
+            audience=DateProposal.Audience.ROOM,
+            options=opts,
+        )
+        with patch("planning.services.polls.notify_availability_poll"):
+            p1, m1 = create_and_launch_chat_poll(**kwargs)
+            p2, m2 = create_and_launch_chat_poll(**kwargs)
+            p3, m3 = create_and_launch_chat_poll(**kwargs)
+        self.assertEqual(p1.pk, p2.pk)
+        self.assertEqual(p1.pk, p3.pk)
+        self.assertEqual(m1.pk, m2.pk)
+        self.assertEqual(m1.pk, m3.pk)
+        self.assertEqual(
+            DateProposal.objects.filter(
+                title="On joue samedi ?", source_room=room
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            ChatMessage.objects.filter(
+                room=room,
+                kind=ChatMessage.Kind.POLL_LAUNCH,
+                related_proposal=p1,
+                deleted_at__isnull=True,
+            ).count(),
+            1,
+        )
+
     def test_create_and_vote_and_lock(self):
         self.client.login(username="staff1", password="pass12345")
         starts = (timezone.now() + timedelta(days=14)).strftime("%Y-%m-%dT20:00")

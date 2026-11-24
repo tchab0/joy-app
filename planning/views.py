@@ -1376,6 +1376,28 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
                 "(pas de salon lié).",
             )
             return redirect("planning:admin")
+        # Anti-doublon : un double/triple clic sur « Créer » ne doit pas
+        # multiplier les brouillons identiques.
+        cutoff = timezone.now() - timedelta(seconds=30)
+        recent = (
+            DateProposal.objects.filter(
+                title=title,
+                created_by=request.user,
+                source_room__isnull=True,
+                linked_event__isnull=True,
+                status=DateProposal.Status.DRAFT,
+                created_at__gte=cutoff,
+            )
+            .order_by("-created_at", "-pk")
+            .first()
+        )
+        if recent is not None and recent.options.exists():
+            messages.info(
+                request,
+                "Ce sondage vient déjà d’être créé — ouverture du brouillon existant.",
+            )
+            return redirect("planning:poll_detail", pk=recent.pk)
+
         # Brouillon : le staff doit lancer explicitement le sondage.
         proposal = DateProposal.objects.create(
             title=title,
