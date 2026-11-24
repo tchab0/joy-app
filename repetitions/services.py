@@ -269,21 +269,31 @@ def set_rehearsal_absence(
     comment: str = "",
 ) -> EventParticipation:
     """Présent par défaut (confirmed) ; absent = declined."""
+    from django.db import transaction
+
     if not is_rehearsal_event(participation.event):
         raise ValueError("Cet événement n’est pas une répétition")
     ensure_participation_statuses()
-    old_code = participation.status.code if participation.status_id else None
     comment = (comment or "").strip()
-    leaving_confirmed = bool(absent) and old_code == "confirmed"
-    participation.status = get_status("declined" if absent else "confirmed")
-    if absent:
-        if comment:
-            participation.comment = comment
-        elif not participation.comment:
-            participation.comment = "Absent à la répétition"
-    elif old_code in ("declined", "replacement_needed"):
-        participation.comment = ""
-    participation.save(update_fields=["status", "comment", "updated_at"])
+
+    with transaction.atomic():
+        participation = (
+            EventParticipation.objects.select_for_update()
+            .select_related("status", "event", "user")
+            .get(pk=participation.pk)
+        )
+        old_code = participation.status.code if participation.status_id else None
+        leaving_confirmed = bool(absent) and old_code == "confirmed"
+        participation.status = get_status("declined" if absent else "confirmed")
+        if absent:
+            if comment:
+                participation.comment = comment
+            elif not participation.comment:
+                participation.comment = "Absent à la répétition"
+        elif old_code in ("declined", "replacement_needed"):
+            participation.comment = ""
+        participation.save(update_fields=["status", "comment", "updated_at"])
+
     if leaving_confirmed:
         notify_staff_presence_invalidated(
             participation, old_code="confirmed", new_code="declined"

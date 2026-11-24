@@ -1204,6 +1204,34 @@ class StaffProposeLaunchPollTests(PlanningBaseTestCase):
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
         self.assertEqual(proposal.audience, DateProposal.Audience.ALL)
 
+    def test_double_propose_same_payload_creates_one_event(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        concert_type = EventType.objects.create(nom="Concert")
+        day = (timezone.localdate() + timedelta(days=22)).isoformat()
+        payload = {
+            "titre": "Guinguette double",
+            "date": day,
+            "time": "18:00",
+            "type_id": concert_type.pk,
+            "venue_mode": "existing",
+            "venue_id": self.venue.pk,
+            "deadline": (timezone.localdate() + timedelta(days=7)).isoformat(),
+            "launch_poll": "1",
+            "audience": "all",
+        }
+        self.client.login(username="staff1", password="pass12345")
+        r1 = self.client.post(reverse("planning:propose_event"), payload)
+        r2 = self.client.post(reverse("planning:propose_event"), payload)
+        self.assertEqual(r1.status_code, 302)
+        self.assertEqual(r2.status_code, 302)
+        events = Event.objects.filter(titre="Guinguette double")
+        self.assertEqual(events.count(), 1)
+        self.assertEqual(
+            DateProposal.objects.filter(linked_event=events.get()).count(), 1
+        )
+
 
 class PollDeadlineEditTests(PlanningBaseTestCase):
     def test_author_can_update_deadline(self):

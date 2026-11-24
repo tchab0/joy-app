@@ -634,7 +634,9 @@
         <h2 id="pl-create-title">Proposer un événement</h2>
         <button type="button" class="pl-btn" @click="closeModal()" aria-label="Fermer">✕</button>
       </header>
-      <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}">
+      <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}"
+            x-data="{ submitting: false }"
+            @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
         {% csrf_token %}
         <input type="hidden" name="date" :value="formDate">
         <div>
@@ -714,7 +716,9 @@
           (tout l’orchestre) devra être lancé par un membre du staff.
         </p>
         {% endif %}
-        <button type="submit" class="pl-btn pl-btn--primary">Proposer l’événement</button>
+        <button type="submit" class="pl-btn pl-btn--primary" :disabled="submitting">
+          <span x-text="submitting ? 'Envoi…' : 'Proposer l’événement'">Proposer l’événement</span>
+        </button>
       </form>
     </div>
   </div>

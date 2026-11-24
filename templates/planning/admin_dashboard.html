@@ -21,7 +21,8 @@
   <section class="pl-section">
     <h2>Nouveau sondage de dates</h2>
     <form class="pl-form" method="post" action="{% url 'planning:create_poll' %}"
-          x-data="{ n: 2 }">
+          x-data="{ n: 2, submitting: false }"
+          @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
       {% csrf_token %}
       <div>
         <label for="title">Titre</label>
@@ -57,7 +58,10 @@
         </div>
       </template>
       <button type="button" class="pl-btn" @click="n++" style="align-self:flex-start">+ Option</button>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Créer le sondage</button>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start"
+              :disabled="submitting">
+        <span x-text="submitting ? 'Création…' : 'Créer le sondage'">Créer le sondage</span>
+      </button>
     </form>
   </section>
 

@@ -54,6 +54,23 @@ def notify_users(
     if not body:
         return 0
 
+    from core.ratelimit import claim_notify_once
+
+    # Même objet lié + même contenu → un seul fan-out (anti double-clic / retry).
+    if not claim_notify_once(
+        related_type=related_type,
+        related_id=related_id,
+        title=title,
+        body=body,
+    ):
+        logger.info(
+            "notify_users doublon ignoré type=%s id=%s title=%r",
+            related_type,
+            related_id,
+            title[:80],
+        )
+        return 0
+
     site = getattr(settings, "SITE_URL", "https://jazz-orchestra-yonnais.fr").rstrip(
         "/"
     )
@@ -85,7 +102,7 @@ def notify_users(
             ):
                 # Jamais d’alerte staff (absences, contact…) vers un musicien pur.
                 continue
-            notif = _persist_inbox(
+            notif, created = _persist_inbox(
                 user,
                 title=title,
                 body=body,
@@ -94,6 +111,9 @@ def notify_users(
                 related_type=related_type,
                 related_id=related_id,
             )
+            if not created:
+                # Inbox déjà peuplée récemment — pas de second push/e-mail.
+                continue
             from users.notify_prefs import should_deliver_immediately
 
             if not should_deliver_immediately(
@@ -779,29 +799,55 @@ def _persist_inbox(
     requires_response: bool = False,
     related_type: str = "",
     related_id: int | None = None,
-):
-    """Crée la notification in-app ; tolère un schéma pas encore migré."""
+) -> tuple[object | None, bool]:
+    """
+    Crée la notification in-app ; tolère un schéma pas encore migré.
+
+    Retourne ``(notif, created)``. Si une notif identique existe déjà dans
+    la fenêtre anti-doublon, renvoie l’existante avec ``created=False``.
+    """
     try:
+        from datetime import timedelta
+
+        from core.ratelimit import NOTIFY_DEDUP_WINDOW
         from users.models import UserNotification
+
+        rtype = (related_type or "")[:20]
+        title_s = title[:200]
+        if rtype and related_id is not None:
+            recent = (
+                UserNotification.objects.filter(
+                    user=user,
+                    related_type=rtype,
+                    related_id=related_id,
+                    title=title_s,
+                    created_at__gte=timezone.now()
+                    - timedelta(seconds=NOTIFY_DEDUP_WINDOW),
+                )
+                .order_by("-id")
+                .first()
+            )
+            if recent is not None:
+                return recent, False
 
         notif = UserNotification.objects.create(
             user=user,
-            title=title[:200],
+            title=title_s,
             body=body,
             url=(url or "")[:500],
             requires_response=bool(requires_response),
-            related_type=(related_type or "")[:20],
+            related_type=rtype,
             related_id=related_id,
         )
         invalidate_nav_banner(user)
-        return notif
+        return notif, True
     except (ProgrammingError, OperationalError):
         logger.warning(
             "Inbox notifications indisponible (migration manquante ?) — "
             "user_id=%s",
             getattr(user, "pk", None),
         )
-        return None
+        return None, False
 
 
 def _relative_push_url(url: str) -> str:

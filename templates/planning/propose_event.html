@@ -5,11 +5,11 @@
 
 {% block extra_css %}
 {% include "planning/_styles.html" %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
 {% endblock %}
 
 {% block content %}
-<div class="pl" x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '' }">
+<div class="pl" x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '', submitting: false }">
   <header class="pl-head">
     <h1>Proposer un événement</h1>
     {% page_lead "planning.propose_event" class="page-lead--in-head" %}
@@ -20,7 +20,8 @@
 
   {% include "planning/_module_nav.html" with active="calendrier" %}
 
-  <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}">
+  <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}"
+        @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
     {% csrf_token %}
     <div>
       <label for="prop_titre">Titre</label>
@@ -65,13 +66,15 @@
       Le sondage de disponibilité sera préparé pour <strong>tout l’orchestre</strong>.
       Un membre du staff le lancera ensuite.
     </p>
-    <button type="submit" class="pl-btn pl-btn--primary">Envoyer la proposition</button>
+    <button type="submit" class="pl-btn pl-btn--primary" :disabled="submitting">
+      <span x-text="submitting ? 'Envoi…' : 'Envoyer la proposition'">Envoyer la proposition</span>
+    </button>
   </form>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="{% static 'planning/venue_map.js' %}?v=2"></script>
 <script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endblock %}

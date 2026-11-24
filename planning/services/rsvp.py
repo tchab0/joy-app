@@ -104,42 +104,54 @@ def set_participation_response(
     maybe_remind_at=None,
     maybe_remind_weekly: bool | None = None,
 ) -> EventParticipation:
+    from django.db import transaction
+
     if response not in RESPOND_MAP:
         raise ValueError("Réponse invalide")
-    old_code = participation.status.code if participation.status_id else None
-    new_code = RESPOND_MAP[response]
     comment = (comment or "").strip()
-    # Dispo → Non (invalidation) ok ; Dispo → Peut-être interdit.
-    if old_code == "confirmed" and new_code == "maybe":
-        raise ValueError(
-            "Une présence confirmée ne peut pas passer en « peut-être »."
-        )
-    leaving_confirmed = old_code == "confirmed" and new_code == "declined"
-    participation.status = get_status(new_code)
-    if comment:
-        participation.comment = comment
 
-    update_fields = ["status", "comment", "updated_at"]
-    if new_code == "maybe":
-        remind_date = _parse_maybe_remind_at(maybe_remind_at)
-        weekly = bool(maybe_remind_weekly) if maybe_remind_weekly is not None else (
-            remind_date is None
+    with transaction.atomic():
+        participation = (
+            EventParticipation.objects.select_for_update()
+            .select_related("status", "event", "user")
+            .get(pk=participation.pk)
         )
-        apply_maybe_remind_schedule(
-            participation,
-            remind_at=remind_date,
-            remind_weekly=weekly,
-        )
-        update_fields.extend(
-            ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
-        )
-    else:
-        clear_maybe_remind_schedule(participation)
-        update_fields.extend(
-            ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
-        )
+        old_code = participation.status.code if participation.status_id else None
+        new_code = RESPOND_MAP[response]
+        # Dispo → Non (invalidation) ok ; Dispo → Peut-être interdit.
+        if old_code == "confirmed" and new_code == "maybe":
+            raise ValueError(
+                "Une présence confirmée ne peut pas passer en « peut-être »."
+            )
+        leaving_confirmed = old_code == "confirmed" and new_code == "declined"
+        participation.status = get_status(new_code)
+        if comment:
+            participation.comment = comment
 
-    participation.save(update_fields=update_fields)
+        update_fields = ["status", "comment", "updated_at"]
+        if new_code == "maybe":
+            remind_date = _parse_maybe_remind_at(maybe_remind_at)
+            weekly = (
+                bool(maybe_remind_weekly)
+                if maybe_remind_weekly is not None
+                else (remind_date is None)
+            )
+            apply_maybe_remind_schedule(
+                participation,
+                remind_at=remind_date,
+                remind_weekly=weekly,
+            )
+            update_fields.extend(
+                ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
+            )
+        else:
+            clear_maybe_remind_schedule(participation)
+            update_fields.extend(
+                ["maybe_remind_at", "maybe_remind_weekly", "maybe_last_reminded_at"]
+            )
+
+        participation.save(update_fields=update_fields)
+
     if leaving_confirmed:
         notify_staff_presence_invalidated(
             participation, old_code=old_code, new_code=new_code

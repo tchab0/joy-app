@@ -65,11 +65,13 @@ function respondButtons(pk, initialCode, opts) {
       await this._submit(response, '');
     },
     async confirmInvalidate() {
+      if (this.busy) return;
       const text = (this.justification || '').trim();
       const ok = await this._submit(this.pendingResponse, text);
       if (ok) this.closeInvalidate();
     },
     async confirmMaybeRemindDate() {
+      if (this.busy) return;
       const d = (this.maybeRemindDate || '').trim();
       if (!d) {
         this.maybeRemindError = 'Choisissez une date, ou « Je ne sais pas ».';
@@ -90,12 +92,14 @@ function respondButtons(pk, initialCode, opts) {
       if (ok) this.closeMaybeRemind();
     },
     async confirmMaybeRemindWeekly() {
+      if (this.busy) return;
       const ok = await this._submit('maybe', '', {
         maybe_remind_weekly: true,
       });
       if (ok) this.closeMaybeRemind();
     },
     async _submit(response, comment, extra) {
+      if (this.busy) return false;
       const url = this.respondUrl();
       if (!url) {
         window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Erreur' }));
@@ -117,7 +121,13 @@ function respondButtons(pk, initialCode, opts) {
           },
           body: JSON.stringify(body),
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 409 || d.duplicate) {
+          window.dispatchEvent(new CustomEvent('pl-toast', {
+            detail: d.error || 'Déjà enregistré',
+          }));
+          return true;
+        }
         if (d.ok) {
           this.code = d.status.code;
           this.label = d.status.label;
@@ -170,11 +180,13 @@ function rehearsalAbsence(url, initialAbsent) {
       this.showInvalidate = true;
     },
     async confirmInvalidate() {
+      if (this.busy) return;
       const text = (this.justification || '').trim();
       const ok = await this._submit(true, text);
       if (ok) this.closeInvalidate();
     },
     async _submit(absent, comment) {
+      if (this.busy) return false;
       this.busy = true;
       this.invalidateError = '';
       try {
@@ -186,7 +198,11 @@ function rehearsalAbsence(url, initialAbsent) {
           },
           body: JSON.stringify({ absent, comment: comment || '' }),
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 409 || d.duplicate) {
+          this.$dispatch('pl-toast', d.error || 'Déjà enregistré');
+          return true;
+        }
         if (d.ok) {
           this.absent = d.absent;
           this.$dispatch('pl-toast', d.absent ? 'Absence enregistrée' : 'Absence annulée');

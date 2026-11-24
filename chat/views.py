@@ -821,6 +821,22 @@ def api_poll(request: HttpRequest, room_id: int) -> JsonResponse:
     if not isinstance(options, list):
         return JsonResponse({"ok": False, "error": "Options invalides."}, status=400)
 
+    import hashlib
+
+    from core.ratelimit import claim_once
+
+    sig = hashlib.sha256(
+        f"{title}|{option_kind}|{audience}|{options_raw}|{deadline_raw}".encode()
+    ).hexdigest()[:24]
+    if not claim_once("chat_poll", f"{request.user.pk}:{room_id}:{sig}", 45):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Sondage déjà lancé (double envoi évité).",
+            },
+            status=409,
+        )
+
     try:
         _proposal, message = create_and_launch_chat_poll(
             room=room,

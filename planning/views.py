@@ -19,6 +19,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from django.views import View
 from django.views.generic import TemplateView
 
+from core.safe_redirect import is_safe_local_path
 from events.models import Event, EventType, Organisme, Venue
 from events.organisme import remember_organisme
 from events.weather import attach_weather
@@ -612,6 +613,33 @@ class ProposeEventView(CanProposeEventMixin, View):
             return _fail(str(exc))
 
         public = False
+
+        from core.ratelimit import claim_once
+
+        dedupe_key = f"{request.user.pk}:{titre.casefold()}:{starts.isoformat()}"
+        if not claim_once("propose_event", dedupe_key, 45):
+            existing = (
+                Event.objects.filter(
+                    titre=titre,
+                    proposed_by=request.user,
+                    date_debut=starts,
+                )
+                .exclude(statut=Event.Statut.ANNULE)
+                .order_by("-id")
+                .first()
+            )
+            messages.warning(
+                request,
+                "Cette proposition vient d’être enregistrée (double envoi évité).",
+            )
+            is_staff_user = request.user.is_staff or request.user.is_superuser
+            if existing and is_staff_user:
+                return redirect("planning:event_roster", pk=existing.pk)
+            if existing and user_can_access_planning(request.user):
+                return redirect("planning:event_detail", pk=existing.pk)
+            if user_can_access_planning(request.user):
+                return redirect(_calendar_url(day_raw))
+            return redirect("account_member_area")
 
         poll_audience = parse_poll_audience(
             request.POST.get("audience"),
@@ -1376,6 +1404,38 @@ class CreatePollView(PlanningStaffRequiredMixin, View):
                 "(pas de salon lié).",
             )
             return redirect("planning:admin")
+
+        from core.ratelimit import claim_once
+
+        option_sig = "|".join(
+            sorted(
+                (request.POST.get(f"option_starts_{i}") or "").strip()
+                for i in range(20)
+                if (request.POST.get(f"option_starts_{i}") or "").strip()
+            )
+        )
+        dedupe_key = (
+            f"{request.user.pk}:{title.casefold()}:{deadline.isoformat()}:{option_sig}"
+        )
+        if not claim_once("create_poll", dedupe_key, 45):
+            existing = (
+                DateProposal.objects.filter(
+                    title=title,
+                    created_by=request.user,
+                    deadline=deadline,
+                )
+                .exclude(status=DateProposal.Status.CANCELLED)
+                .order_by("-id")
+                .first()
+            )
+            messages.warning(
+                request,
+                "Ce sondage vient d’être créé (double envoi évité).",
+            )
+            if existing:
+                return redirect("planning:poll_detail", pk=existing.pk)
+            return redirect("planning:admin")
+
         # Brouillon : le staff doit lancer explicitement le sondage.
         proposal = DateProposal.objects.create(
             title=title,
@@ -1696,7 +1756,7 @@ class LockPollView(PlanningStaffRequiredMixin, View):
 
         def _done(default_name: str, **kwargs):
             next_url = (request.POST.get("next") or "").strip()
-            if next_url.startswith("/") and not next_url.startswith("//"):
+            if is_safe_local_path(next_url, request):
                 return redirect(next_url)
             return redirect(default_name, **kwargs)
 
@@ -1843,7 +1903,7 @@ class InviteMusicianView(PlanningStaffRequiredMixin, View):
         except ValueError as exc:
             messages.error(request, str(exc))
             next_url = request.POST.get("next") or ""
-            if next_url.startswith("/") and not next_url.startswith("//"):
+            if is_safe_local_path(next_url, request):
                 return redirect(next_url)
             return redirect("planning:event_roster", pk=pk)
         if created:
@@ -1861,7 +1921,7 @@ class InviteMusicianView(PlanningStaffRequiredMixin, View):
         else:
             messages.info(request, f"{user} était déjà invité.")
         next_url = request.POST.get("next") or ""
-        if next_url.startswith("/") and not next_url.startswith("//"):
+        if is_safe_local_path(next_url, request):
             return redirect(next_url)
         return redirect("planning:event_roster", pk=pk)
 

@@ -42,6 +42,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.middleware.NoIndexPrivateMiddleware",
+    "core.middleware.DenyDuplicateSubmitMiddleware",
     "stats.middleware.UsageTrackingMiddleware",
 ]
 

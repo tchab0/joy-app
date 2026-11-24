@@ -12,10 +12,14 @@ User = get_user_model()
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    EMAIL_SENDING_ENABLED=True,
     VAPID_PUBLIC_KEY="",
     VAPID_PRIVATE_KEY="",
 )
 class NotifyFallbackTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
     def test_email_fallback_without_push(self):
         user = User.objects.create_user(
             username="notif1",
@@ -75,6 +79,31 @@ class NotifyFallbackTests(TestCase):
         n.refresh_from_db()
         self.assertFalse(n.is_unanswered)
         self.assertIsNotNone(n.responded_at)
+
+    def test_duplicate_related_notify_is_suppressed(self):
+        staff = User.objects.create_user(
+            username="staff_dedupe",
+            email="staff_dedupe@example.com",
+            password="x",
+            is_staff=True,
+        )
+        kwargs = dict(
+            title="JOY — Présence annulée",
+            body="Hervé ne pourra pas venir.",
+            url="/planning/",
+            related_type="staff_alert",
+            related_id=354,
+            notify_type="staff_alert",
+        )
+        self.assertEqual(notify_users([staff], **kwargs), 1)
+        self.assertEqual(notify_users([staff], **kwargs), 0)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                user=staff, related_type="staff_alert", related_id=354
+            ).count(),
+            1,
+        )
 
     def test_staff_alert_skipped_for_musician(self):
         musician = User.objects.create_user(

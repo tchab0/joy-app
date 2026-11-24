@@ -2400,6 +2400,12 @@ function chatRoom(cfg) {
           credentials: 'same-origin',
         });
         const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          // Double envoi : le serveur a déjà créé le sondage.
+          this.pollOpen = false;
+          this.loadRoomPolls();
+          return;
+        }
         if (!res.ok || !data.ok) {
           this.pollError = (data && data.error) || 'Impossible de lancer le sondage.';
           return;
