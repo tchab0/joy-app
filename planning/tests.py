@@ -4155,3 +4155,158 @@ class UnifiedProposalAndPollWorkflowTests(PlanningBaseTestCase):
         self.assertFalse(ev2.public)
         self.assertEqual(poll2.status, DateProposal.Status.CANCELLED)
 
+
+
+class CalendarFeedIcsTests(PlanningBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        self.concert = Event.objects.create(
+            titre="Concert JOY",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=10),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        self.tentative = Event.objects.create(
+            titre="Proposition",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=12),
+            statut=Event.Statut.TENTATIVE,
+            public=False,
+        )
+        from planning.services import (
+            ensure_calendar_feed_token,
+            invite_musician_to_event,
+            set_participation_response,
+        )
+
+        self.token = ensure_calendar_feed_token(self.musician)
+        self.part, _ = invite_musician_to_event(
+            self.concert, self.musician, send_notification=False
+        )
+        set_participation_response(self.part, "yes")
+
+    def test_invalid_token_404(self):
+        r = self.client.get(
+            reverse("planning:ics_orchestra", kwargs={"token": "nope-token-too-short"})
+        )
+        self.assertEqual(r.status_code, 404)
+        r = self.client.get(
+            reverse(
+                "planning:ics_orchestra",
+                kwargs={"token": "x" * 32},
+            )
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_orchestra_feed_excludes_rehearsal_and_tentative(self):
+        r = self.client.get(
+            reverse("planning:ics_orchestra", kwargs={"token": self.token})
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "text/calendar; charset=utf-8")
+        body = r.content.decode("utf-8")
+        self.assertIn("BEGIN:VCALENDAR", body)
+        self.assertIn("X-WR-CALNAME:JOY — Orchestre", body)
+        self.assertIn("Concert JOY", body)
+        self.assertNotIn("Répète vendredi", body)
+        self.assertNotIn("Proposition", body)
+
+    def test_mine_feed_filters_rsvp(self):
+        from planning.services import invite_musician_to_event, set_participation_response
+
+        other = Event.objects.create(
+            titre="Autre concert",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=15),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        declined_ev = Event.objects.create(
+            titre="Concert décliné",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=16),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        invited_part, _ = invite_musician_to_event(
+            other, self.musician, send_notification=False
+        )
+        self.assertEqual(invited_part.status.code, "invited")
+        declined_part, _ = invite_musician_to_event(
+            declined_ev, self.musician, send_notification=False
+        )
+        set_participation_response(declined_part, "no")
+
+        r = self.client.get(
+            reverse("planning:ics_mine", kwargs={"token": self.token})
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode("utf-8")
+        self.assertIn("Concert JOY", body)
+        self.assertIn("STATUS:CONFIRMED", body)
+        self.assertIn("Autre concert", body)
+        self.assertIn("STATUS:TENTATIVE", body)
+        self.assertNotIn("Concert décliné", body)
+        self.assertNotIn("Répète vendredi", body)
+
+    def test_regenerate_invalidates_old_token(self):
+        from planning.services import regenerate_calendar_feed_token
+
+        old = self.token
+        new = regenerate_calendar_feed_token(self.musician)
+        self.assertNotEqual(old, new)
+        self.assertEqual(
+            self.client.get(
+                reverse("planning:ics_orchestra", kwargs={"token": old})
+            ).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("planning:ics_orchestra", kwargs={"token": new})
+            ).status_code,
+            200,
+        )
+
+    def test_account_shows_feeds_and_regenerate_post(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("account_home"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Agenda perso")
+        self.assertContains(r, "orchestre.ics")
+        self.assertContains(r, "mes-dates.ics")
+        old = self.musician.calendar_feed_token
+        r2 = self.client.post(
+            reverse("account_home"),
+            {"action": "regenerate_calendar_feed"},
+        )
+        self.assertEqual(r2.status_code, 302)
+        self.musician.refresh_from_db()
+        self.assertNotEqual(self.musician.calendar_feed_token, old)
+
+    def test_event_ics_ok_for_confirmed_concert(self):
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:event_ics", args=[self.concert.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Concert JOY", r.content.decode("utf-8"))
+
+    def test_event_ics_refuses_rehearsal_and_tentative(self):
+        self.client.login(username="musi", password="pass12345")
+        self.assertEqual(
+            self.client.get(
+                reverse("planning:event_ics", args=[self.event.pk])
+            ).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("planning:event_ics", args=[self.tentative.pk])
+            ).status_code,
+            404,
+        )

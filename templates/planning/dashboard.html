@@ -17,6 +17,11 @@
 
   {% include "planning/_module_nav.html" with active="mes_dates" %}
 
+  <p class="pl-row__meta" style="margin:0 0 .9rem">
+    <a href="{% url 'account_home' %}#agenda-perso" style="color:var(--accent)">Synchro agenda perso</a>
+    — abonner Google / Apple / Outlook aux dates JOY.
+  </p>
+
   {% if open_date_polls %}
   <section class="pl-section pl-section--panel" aria-label="Sondages de dates en cours">
     <h2>Sondages en cours · dates à confirmer</h2>

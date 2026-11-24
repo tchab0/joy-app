@@ -23,6 +23,75 @@
     </div>
     {% endif %}
 
+    {% if can_planning and calendar_feeds %}
+    <div class="account-block" id="agenda-perso">
+      <h2 class="account-heading">Agenda perso</h2>
+      <p class="account-desc">
+        Abonnez votre Google Agenda, Apple ou Outlook aux dates JOY
+        (concerts confirmés, sans les répétitions). Les agendas se mettent à jour seuls.
+      </p>
+      <div class="account-cal-feeds">
+        <div class="account-cal-feed">
+          <h3 class="account-cal-feed__title">Orchestre</h3>
+          <p class="account-desc">Toutes les dates confirmées de l’orchestre.</p>
+          <div class="account-actions">
+            <a class="btn btn-outline" href="{{ calendar_feeds.orchestra_webcal }}">S’abonner (webcal)</a>
+            <button type="button" class="btn btn-outline" data-copy="{{ calendar_feeds.orchestra_https }}">Copier l’URL</button>
+          </div>
+          <input class="account-cal-feed__url" type="text" readonly value="{{ calendar_feeds.orchestra_https }}" aria-label="URL flux orchestre">
+        </div>
+        <div class="account-cal-feed">
+          <h3 class="account-cal-feed__title">Mes dates</h3>
+          <p class="account-desc">Uniquement les dates où vous êtes invité·e, « peut-être » ou dispo.</p>
+          <div class="account-actions">
+            <a class="btn btn-outline" href="{{ calendar_feeds.mine_webcal }}">S’abonner (webcal)</a>
+            <button type="button" class="btn btn-outline" data-copy="{{ calendar_feeds.mine_https }}">Copier l’URL</button>
+          </div>
+          <input class="account-cal-feed__url" type="text" readonly value="{{ calendar_feeds.mine_https }}" aria-label="URL flux mes dates">
+        </div>
+      </div>
+      <details class="account-cal-help">
+        <summary>Comment faire (Google Agenda, Apple, Outlook)</summary>
+        <ol>
+          <li><strong>Google Agenda</strong> (ordinateur) : Autres agendas → le « + » → À partir de l’URL → coller l’URL https.</li>
+          <li><strong>Apple</strong> : ouvrir le bouton « S’abonner (webcal) », ou Réglages → Calendrier → Comptes → Ajouter un abonnement.</li>
+          <li><strong>Outlook</strong> : Ajouter un calendrier → S’abonner à partir du web → coller l’URL.</li>
+        </ol>
+        <p class="account-desc" style="margin:0">Ces liens sont personnels : ne les partagez pas. En cas de fuite, régénérez-les ci-dessous.</p>
+      </details>
+      <form method="post" action="{% url 'account_home' %}" style="margin-top:1rem"
+            onsubmit="return confirm('Régénérer le lien ? Les anciens abonnements cesseront de se mettre à jour.');">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="regenerate_calendar_feed">
+        <button type="submit" class="btn btn-outline" style="min-height:44px">Régénérer les liens</button>
+      </form>
+    </div>
+    <script>
+    (function () {
+      document.querySelectorAll('#agenda-perso [data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var url = btn.getAttribute('data-copy') || '';
+          if (!url) return;
+          function ok() {
+            var prev = btn.textContent;
+            btn.textContent = 'Copié';
+            setTimeout(function () { btn.textContent = prev; }, 1600);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(ok).catch(function () {
+              var input = btn.closest('.account-cal-feed').querySelector('.account-cal-feed__url');
+              if (input) { input.select(); document.execCommand('copy'); ok(); }
+            });
+          } else {
+            var input = btn.closest('.account-cal-feed').querySelector('.account-cal-feed__url');
+            if (input) { input.select(); document.execCommand('copy'); ok(); }
+          }
+        });
+      });
+    })();
+    </script>
+    {% endif %}
+
     <div class="account-block">
       <h2 class="account-heading">Réglages</h2>
       <div class="account-actions" data-tour="account-replay">
@@ -117,6 +186,62 @@
   .account-block > .btn,
   .account-logout .btn {
     min-height: 44px;
+  }
+  .account-cal-feeds {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    margin-bottom: 1rem;
+  }
+  .account-cal-feed {
+    padding: .9rem 1rem;
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .account-cal-feed__title {
+    font-family: var(--font-d);
+    font-size: 1.05rem;
+    margin: 0 0 .35rem;
+    color: var(--text);
+  }
+  .account-cal-feed__url {
+    display: block;
+    width: 100%;
+    margin-top: .75rem;
+    padding: .65rem .75rem;
+    min-height: 44px;
+    border: 1px solid rgba(0,0,0,.12);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--muted);
+    font-size: .82rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .account-cal-help {
+    color: var(--text);
+    font-size: .92rem;
+  }
+  .account-cal-help summary {
+    cursor: pointer;
+    color: var(--accent);
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .account-cal-help ol {
+    margin: .5rem 0 .75rem 1.2rem;
+    padding: 0;
+    color: var(--text);
+  }
+  .account-cal-help li { margin-bottom: .4rem; }
+  @media (min-width: 720px) {
+    .account-cal-feeds {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
   }
   .account-logout {
     padding-top: 1rem;

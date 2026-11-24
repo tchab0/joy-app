@@ -131,6 +131,20 @@ from planning.services.substitutes import (
     propose_substitute,
     respond_substitute_request,
 )
+from planning.services.ics import (  # noqa: F401
+    absolute_ics_url,
+    build_calendar_feed,
+    build_event_ics,
+    ensure_calendar_feed_token,
+    event_allows_personal_calendar,
+    google_calendar_url,
+    ics_filename,
+    mine_feed_events,
+    orchestra_feed_events,
+    regenerate_calendar_feed_token,
+    roadmaps_for_events,
+    webcal_url,
+)
 
 
 def __getattr__(name: str):

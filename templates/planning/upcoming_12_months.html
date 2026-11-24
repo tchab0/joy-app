@@ -34,6 +34,11 @@
 
   {% include "planning/_module_nav.html" with active="calendrier" %}
 
+  <p class="pl-row__meta" style="margin:0 0 .9rem">
+    <a href="{% url 'account_home' %}#agenda-perso" style="color:var(--accent)">Synchro agenda perso</a>
+    — abonner Google / Apple / Outlook (sans les répés).
+  </p>
+
   <div class="pl-year-nav">
     <a class="pl-btn" href="?year={{ prev_year }}" aria-label="Période précédente">← {{ prev_year }}</a>
     <span class="pl-year-nav__current">{{ range_label }}</span>

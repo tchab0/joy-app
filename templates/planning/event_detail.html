@@ -168,6 +168,8 @@
   </a>
   {% endif %}
 
+  {% include "planning/_add_to_calendar.html" with event=event %}
+
   {% if setlist %}
   <details id="setlist" class="pl-section pl-setlist-fold" style="margin-top:1.25rem">
     <summary class="pl-setlist-fold__summary">

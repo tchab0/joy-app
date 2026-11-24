@@ -1,5 +1,5 @@
-{# Lien agenda perso — uniquement si événement confirmé. #}
-{% if event.statut == 'confirme' %}
+{# Lien agenda perso — événement confirmé hors répétition. #}
+{% if event.statut == 'confirme' and not event.is_rehearsal %}
 <a class="pl-day-events__salon"
    href="{% url 'planning:event_ics' event.pk %}"
    download>

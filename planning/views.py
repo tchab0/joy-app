@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import AccessMixin
 from django.db.models import Count, Prefetch, Q
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -99,6 +99,13 @@ from planning.services import (
     user_can_edit_poll_options,
     update_poll_options,
     vote_counts_for_option,
+    build_calendar_feed,
+    build_event_ics,
+    event_allows_personal_calendar,
+    ics_filename,
+    mine_feed_events,
+    orchestra_feed_events,
+    roadmaps_for_events,
 )
 from users.roles import (
     CanProposeEventMixin,
@@ -554,6 +561,77 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
 
 # Alias conservé pour les URLs / tests existants.
 PlanningUpcomingView = PlanningYearCalendarView
+
+
+def _ics_http_response(body: str, *, filename: str) -> HttpResponse:
+    response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    response["Cache-Control"] = "private, max-age=300"
+    return response
+
+
+def _user_for_calendar_token(token: str):
+    token = (token or "").strip()
+    if not token or len(token) < 16:
+        return None
+    try:
+        user = User.objects.get(calendar_feed_token=token, is_active=True)
+    except User.DoesNotExist:
+        return None
+    if not user_can_access_planning(user):
+        return None
+    return user
+
+
+class CalendarFeedOrchestraView(View):
+    """Flux ICS orchestre (token secret, sans session)."""
+
+    def get(self, request, token: str):
+        if _user_for_calendar_token(token) is None:
+            return HttpResponse(status=404)
+        events = orchestra_feed_events()
+        body = build_calendar_feed(
+            events,
+            name="JOY — Orchestre",
+            roadmaps=roadmaps_for_events(events),
+        )
+        return _ics_http_response(body, filename="joy-orchestre.ics")
+
+
+class CalendarFeedMineView(View):
+    """Flux ICS « mes dates » (token secret, sans session)."""
+
+    def get(self, request, token: str):
+        user = _user_for_calendar_token(token)
+        if user is None:
+            return HttpResponse(status=404)
+        events, status_map = mine_feed_events(user)
+        body = build_calendar_feed(
+            events,
+            name="JOY — Mes dates",
+            event_status_fn=lambda ev: status_map.get(ev.pk, "TENTATIVE"),
+            roadmaps=roadmaps_for_events(events),
+        )
+        return _ics_http_response(body, filename="joy-mes-dates.ics")
+
+
+class EventIcsView(MusicianRequiredMixin, View):
+    """Téléchargement .ics d’un événement confirmé (hors répétition)."""
+
+    def get(self, request, pk: int):
+        event = get_object_or_404(
+            Event.objects.select_related("type", "venue"), pk=pk
+        )
+        if not event_allows_personal_calendar(event):
+            return HttpResponse(status=404)
+        from planning.services import get_roadmap
+
+        roadmap = get_roadmap(event)
+        try:
+            body = build_event_ics(event, roadmap=roadmap)
+        except ValueError:
+            return HttpResponse(status=404)
+        return _ics_http_response(body, filename=ics_filename(event))
 
 
 class CalendarWeatherView(MusicianRequiredMixin, View):

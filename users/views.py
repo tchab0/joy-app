@@ -282,6 +282,23 @@ def account_home(request: HttpRequest) -> HttpResponse:
             messages.info(request, "Aucun texte d’aide n’était masqué.")
         return redirect("account_home")
 
+    if (
+        request.method == "POST"
+        and request.POST.get("action") == "regenerate_calendar_feed"
+    ):
+        if not user_can_access_planning(request.user):
+            messages.error(request, "Accès planning requis.")
+            return redirect("account_home")
+        from planning.services import regenerate_calendar_feed_token
+
+        regenerate_calendar_feed_token(request.user)
+        messages.success(
+            request,
+            "Nouveau lien d’abonnement généré. "
+            "Mettez à jour Google Agenda / Apple / Outlook avec le nouveau lien.",
+        )
+        return redirect(f"{reverse('account_home')}#agenda-perso")
+
     from users.tour_service import build_tour_config
 
     unread_notifications = 0
@@ -296,13 +313,34 @@ def account_home(request: HttpRequest) -> HttpResponse:
 
     roles = get_user_roles(request.user)
     tour_cfg = build_tour_config(request)
+    can_planning = user_can_access_planning(request.user)
+    calendar_feeds = None
+    if can_planning:
+        from planning.services import (
+            absolute_ics_url,
+            ensure_calendar_feed_token,
+            webcal_url,
+        )
+
+        token = ensure_calendar_feed_token(request.user)
+        orch_path = reverse("planning:ics_orchestra", kwargs={"token": token})
+        mine_path = reverse("planning:ics_mine", kwargs={"token": token})
+        orch_https = absolute_ics_url(orch_path)
+        mine_https = absolute_ics_url(mine_path)
+        calendar_feeds = {
+            "orchestra_https": orch_https,
+            "orchestra_webcal": webcal_url(orch_https),
+            "mine_https": mine_https,
+            "mine_webcal": webcal_url(mine_https),
+        }
     context = {
         "roles": [ROLE_LABELS[r] for r in roles if r in ROLE_LABELS],
-        "can_planning": user_can_access_planning(request.user),
+        "can_planning": can_planning,
         "can_members": user_can_access_member_area(request.user),
         "staff_notify_form": staff_notify_form,
         "dismissed_leads": dismissed_page_leads_for_account(request.user),
         "unread_notifications": unread_notifications,
+        "calendar_feeds": calendar_feeds,
         "can_replay_musician_tour": bool(
             tour_cfg and tour_cfg.get("can_replay", {}).get("musician")
         ),

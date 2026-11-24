@@ -19,8 +19,23 @@ urlpatterns = [
         name="upcoming_12_months",
     ),
     path("api/weather/", views.CalendarWeatherView.as_view(), name="calendar_weather"),
+    path(
+        "ics/<str:token>/orchestre.ics",
+        views.CalendarFeedOrchestraView.as_view(),
+        name="ics_orchestra",
+    ),
+    path(
+        "ics/<str:token>/mes-dates.ics",
+        views.CalendarFeedMineView.as_view(),
+        name="ics_mine",
+    ),
     path("proposer/", views.ProposeEventView.as_view(), name="propose_event"),
     path("events/<int:pk>/", views.EventDetailView.as_view(), name="event_detail"),
+    path(
+        "events/<int:pk>/ics/",
+        views.EventIcsView.as_view(),
+        name="event_ics",
+    ),
     path(
         "events/<int:pk>/feuille-de-route/",
         views.EventRoadmapView.as_view(),

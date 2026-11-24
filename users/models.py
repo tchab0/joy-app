@@ -151,6 +151,18 @@ class User(AbstractUser):
         blank=True,
         help_text="Clés des textes d’aide masqués en haut de page.",
     )
+    calendar_feed_token = models.CharField(
+        "Jeton abonnement agenda",
+        max_length=64,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        help_text=(
+            "Secret pour les flux ICS (orchestre / mes dates). "
+            "Régénérable depuis Mon compte."
+        ),
+    )
 
     class Meta:
         verbose_name = "utilisateur"

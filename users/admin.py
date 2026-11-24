@@ -187,6 +187,17 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
         (
+            "Agenda perso (ICS)",
+            {
+                "fields": ("calendar_feed_token",),
+                "classes": ("collapse",),
+                "description": (
+                    "Jeton secret des flux d’abonnement. "
+                    "Vider ou régénérer depuis Mon compte pour invalider les abonnements."
+                ),
+            },
+        ),
+        (
             "Double authentification",
             {
                 "fields": (
