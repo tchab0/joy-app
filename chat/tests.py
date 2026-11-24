@@ -1853,6 +1853,8 @@ class ThematicRoomTests(TestCase):
         r = client.get(reverse("chat:list"))
         self.assertContains(r, reverse("chat:thematic_create"))
         self.assertContains(r, "Salon thématique")
+        # Masqué en mode musicien (toggle MUSICIEN) via joy-staff-ui
+        self.assertContains(r, 'class="chat-toolbar__staff joy-staff-ui"')
         self.assertContains(r, reverse("chat:private_create"))
 
     def test_remove_thematic_member_helper(self):
