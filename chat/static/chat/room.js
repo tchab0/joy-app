@@ -2412,10 +2412,9 @@ function chatRoom(cfg) {
         this.pollOpen = false;
         this.loadRoomPolls();
       } catch (e) {
-        // Ne pas encourager un retry immédiat : le serveur a peut-être déjà
-        // créé le sondage alors que la réponse HTTP s’est perdue.
-        this.pollError = 'Erreur réseau — vérifiez le fil avant de relancer (évite les doublons).';
-        this.pollOpen = false;
+        // Garder le modal ouvert pour afficher l’erreur (pollError est dans
+        // le composer). Rafraîchir la liste : le serveur a peut-être déjà créé.
+        this.pollError = 'Erreur réseau — vérifiez le fil / la synthèse avant de relancer (évite les doublons).';
         this.loadRoomPolls();
       } finally {
         this.pollBusy = false;
