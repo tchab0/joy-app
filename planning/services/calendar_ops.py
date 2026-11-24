@@ -567,6 +567,115 @@ def attach_calendar_roadmaps(events) -> list:
     return events
 
 
+def event_calendar_presence_state(
+    event,
+    user=None,
+    *,
+    is_past: bool = False,
+) -> dict:
+    """
+    État personnel (point vert/rouge + besoin de réponse) pour une entrée calendrier.
+
+    - Par défaut le musicien est considéré présent (vert).
+    - Rouge si absent (declined / replacement_needed, ou vote « no » sur sondage).
+    - ``needs_response`` = vrai pour un événement (hors répé, hors passé, hors annulé)
+      auquel le musicien n’a pas encore répondu sur sa présence/absence.
+    """
+    s = getattr(event, "cal_summary", None) or {}
+    part = getattr(event, "cal_participation", None)
+    layer = s.get("layer") or "other"
+    statut = s.get("statut") or getattr(event, "statut", "") or ""
+    is_rehearsal = bool(
+        s.get("is_rehearsal") or getattr(event, "is_rehearsal", False)
+    )
+    is_poll_option = bool(
+        s.get("is_poll_option") or getattr(event, "is_poll_option", False)
+    )
+    is_cancelled = statut == Event.Statut.ANNULE
+    is_musician = (
+        True
+        if user is None
+        else bool(
+            getattr(user, "is_musician", False)
+            and getattr(user, "is_active", True)
+        )
+    )
+
+    has_part_response = False
+    if is_poll_option:
+        poll_vote = (s.get("my_poll_vote") or "").strip()
+        is_absent = poll_vote == "no"
+        answered = bool(poll_vote)
+    elif is_rehearsal:
+        is_absent = bool(part and part.get("is_absent"))
+        answered = True
+    elif s.get("is_proposal"):
+        code = (part.get("status_code") or "") if part else ""
+        poll_vote = (
+            (s.get("my_poll_vote") or "").strip()
+            if s.get("has_open_poll")
+            else ""
+        )
+        if poll_vote:
+            is_absent = poll_vote == "no"
+            answered = True
+        elif code in ("declined", "replacement_needed"):
+            is_absent = True
+            answered = True
+            has_part_response = True
+        elif code in ("confirmed", "maybe"):
+            is_absent = False
+            answered = True
+            has_part_response = True
+        elif s.get("has_open_poll"):
+            is_absent = False
+            answered = False
+        else:
+            # Proposition encore en brouillon (sondage non lancé) : pas de vote attendu.
+            is_absent = False
+            answered = True
+    else:
+        code = (part.get("status_code") or "") if part else ""
+        if code in ("declined", "replacement_needed"):
+            is_absent = True
+            answered = True
+            has_part_response = True
+        elif code in ("confirmed", "maybe"):
+            is_absent = False
+            answered = True
+            has_part_response = True
+        else:
+            is_absent = False
+            answered = False
+
+    can_respond = is_musician or bool(
+        part and part.get("status_code") == "invited"
+    )
+    needs_response = bool(
+        not is_rehearsal
+        and not is_past
+        and not is_cancelled
+        and can_respond
+        and not answered
+    )
+
+    event_id = None if is_poll_option else getattr(event, "pk", None)
+    option_id = getattr(event, "option_id", None) or s.get("option_id")
+    return {
+        "event_id": event_id,
+        "option_id": option_id,
+        "layer": layer,
+        "is_rehearsal": is_rehearsal,
+        "is_poll_option": is_poll_option,
+        "is_past": bool(is_past),
+        "is_cancelled": is_cancelled,
+        "is_absent": is_absent,
+        "status": "absent" if is_absent else "present",
+        "needs_response": needs_response,
+        "has_part_response": has_part_response,
+    }
+
+
 def chat_link_for_event(event, user) -> dict | None:
     """Salon + non lus pour un événement, ou None si pas d’accès."""
     return calendar_chat_links_for_user([event], user).get(event.pk)

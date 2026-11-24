@@ -21,6 +21,7 @@
        rehearsalCreateUrl: '{% url "repetitions:staff_create" %}'
      })"
      @keydown.escape.window="closeAll(); hoverDay = null"
+     @pl-cal-presence.window="onPresenceChange($event.detail)"
      @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
 
   <header class="pl-head">
@@ -49,6 +50,9 @@
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--confirmed" aria-hidden="true"></span> Événement confirmé</li>
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--proposal" aria-hidden="true"></span> Proposition</li>
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--rehearsal" aria-hidden="true"></span> Répétition</li>
+    <li class="pl-legend__item"><span class="pl-cal__dot pl-cal__dot--present" aria-hidden="true"></span> Présent</li>
+    <li class="pl-legend__item"><span class="pl-cal__dot pl-cal__dot--absent" aria-hidden="true"></span> Absent</li>
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--needs-response" aria-hidden="true"></span> Réponse attendue</li>
   </ul>
 
   <div class="pl-year">
@@ -69,13 +73,14 @@
                  @mouseenter="onDayHover('{{ day.iso }}', dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
                  @mouseleave="onDayLeave('{{ day.iso }}')">
               <button type="button"
-                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if day.has_confirmed %} has-confirmed{% endif %}{% if day.has_proposal %} has-proposal{% endif %}{% if day.has_rehearsal %} has-rehearsal{% endif %}{% if can_propose_event or is_planning_staff %} can-add{% endif %}"
+                      class="pl-cal__day{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.events %} has-events{% endif %}{% if day.has_confirmed %} has-confirmed{% endif %}{% if day.has_proposal %} has-proposal{% endif %}{% if day.has_rehearsal %} has-rehearsal{% endif %}{% if day.needs_response %} needs-response{% endif %}{% if can_propose_event or is_planning_staff %} can-add{% endif %}"
                       :class="{
                         'layer-dim': !dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}) && {{ day.events|length }} > 0,
-                        'layer-empty': !dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})
+                        'layer-empty': !dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}),
+                        'needs-response': dayNeedsResponse('{{ day.iso }}', {{ day.needs_response|yesno:'true,false' }})
                       }"
                       role="gridcell"
-                      aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% endif %}{% if can_propose_event or is_planning_staff %} — ajouter{% endif %}"
+                      aria-label="{{ day.date|date:'l d F Y' }}{% if day.events %} — {{ day.events|length }} événement{{ day.events|length|pluralize }}{% if day.is_absent %} (absent){% else %} (présent){% endif %}{% if day.needs_response %} — réponse attendue{% endif %}{% endif %}{% if can_propose_event or is_planning_staff %} — ajouter{% endif %}"
                       {% if day.events|length == 1 and day.events.0.cal_summary.is_rehearsal %}
                       data-direct-url="{% if day.events.0.cal_chat %}{% url 'chat:room' day.events.0.cal_chat.room_id %}{% else %}{% url 'repetitions:detail' day.events.0.pk %}{% endif %}"
                       {% endif %}
@@ -83,6 +88,15 @@
                       @focus="onDayHover('{{ day.iso }}', dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }}))"
                       @blur="onDayLeave('{{ day.iso }}')">
                 <span class="pl-cal__num">{{ day.day }}</span>
+                {% if day.events %}
+                <span class="pl-cal__dot{% if day.is_absent %} pl-cal__dot--absent{% else %} pl-cal__dot--present{% endif %}"
+                      x-show="dayVisible({{ day.has_confirmed|yesno:'true,false' }}, {{ day.has_proposal|yesno:'true,false' }}, {{ day.has_rehearsal|yesno:'true,false' }}, {{ day.has_other|yesno:'true,false' }})"
+                      :class="{
+                        'pl-cal__dot--present': !dayIsAbsent('{{ day.iso }}', {{ day.is_absent|yesno:'true,false' }}),
+                        'pl-cal__dot--absent': dayIsAbsent('{{ day.iso }}', {{ day.is_absent|yesno:'true,false' }})
+                      }"
+                      aria-hidden="true"></span>
+                {% endif %}
                 {% if can_propose_event or is_planning_staff %}
                 <span class="pl-cal__add" aria-hidden="true">+</span>
                 {% endif %}
@@ -414,7 +428,7 @@
               {% if not s.is_rehearsal or part %}
               <section class="pl-day-events__presence" aria-label="Ma présence"
                 {% if s.is_rehearsal %}
-                x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' event.pk %}', {{ part.is_absent|yesno:'true,false' }})"
+                x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' event.pk %}', {{ part.is_absent|yesno:'true,false' }}, {{ event.pk }})"
                 {% else %}
                 x-data="respondButtons({% if part %}{{ part.id }}{% else %}null{% endif %}, '{% if part %}{{ part.status_code }}{% else %}invited{% endif %}', { eventPk: {{ event.pk }}, eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if part %}{{ part.poste_label|escapejs }}{% endif %}' })"
                 {% endif %}>
@@ -727,6 +741,7 @@
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 
+{{ calendar_presence_map|json_script:"pl-cal-presence-data" }}
 <script>
 /** Un remplacant multi-postes ne reste sélectionnable que sur un pupitre à la fois. */
 function initMissingInviteLocks(root) {
@@ -803,11 +818,17 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
   try { savedLayer = localStorage.getItem('pl-cal-layer') || 'all'; } catch (e) {}
   // Migration ancien calque « concerts » → « confirmed »
   if (savedLayer === 'concerts') savedLayer = 'confirmed';
+  let initialPresence = {};
+  try {
+    const el = document.getElementById('pl-cal-presence-data');
+    if (el && el.textContent) initialPresence = JSON.parse(el.textContent) || {};
+  } catch (e) {}
   return {
     canCreate,
     canCreateRehearsal,
     year,
     rehearsalCreateUrl,
+    presenceByDay: initialPresence,
     staffUi: !document.body.classList.contains('joy-mode-musician'),
     layer: savedLayer,
     selectedDay: (new URLSearchParams(window.location.search)).get('day') || null,
@@ -865,6 +886,61 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
       if (this.layer === 'proposals') return !!hasProposal;
       if (this.layer === 'rehearsals') return !!hasRehearsal;
       return true;
+    },
+    visiblePresenceItems(iso) {
+      const items = this.presenceByDay && this.presenceByDay[iso];
+      if (!Array.isArray(items) || !items.length) return [];
+      return items.filter((item) => this.eventVisible(item.layer || 'other'));
+    },
+    dayIsAbsent(iso, fallback) {
+      const items = this.visiblePresenceItems(iso);
+      if (!items.length) return !!fallback;
+      return items.every((item) => !!item.is_absent);
+    },
+    dayNeedsResponse(iso, fallback) {
+      const items = this.visiblePresenceItems(iso);
+      if (!items.length) return false;
+      if (!this.presenceByDay || !this.presenceByDay[iso]) return !!fallback;
+      return items.some((item) => !!item.needs_response);
+    },
+    onPresenceChange(detail) {
+      if (!detail || !this.presenceByDay) return;
+      Object.keys(this.presenceByDay).forEach((iso) => {
+        const items = this.presenceByDay[iso];
+        if (!Array.isArray(items)) return;
+        items.forEach((item) => {
+          if (detail.eventId && item.event_id === detail.eventId) {
+            if (detail.isRehearsal || item.is_rehearsal) {
+              item.is_absent = !!detail.absent;
+              item.status = item.is_absent ? 'absent' : 'present';
+              item.needs_response = false;
+            } else if (detail.statusCode) {
+              item.is_absent = (
+                detail.statusCode === 'declined' ||
+                detail.statusCode === 'replacement_needed'
+              );
+              item.status = item.is_absent ? 'absent' : 'present';
+              item.has_part_response = detail.statusCode !== 'invited';
+              item.needs_response = (
+                !item.is_past &&
+                !item.is_cancelled &&
+                detail.statusCode === 'invited'
+              );
+            }
+          }
+          if (detail.optionId && item.option_id === detail.optionId) {
+            if (item.is_poll_option || !item.has_part_response) {
+              item.is_absent = detail.pollChoice === 'no';
+              item.status = item.is_absent ? 'absent' : 'present';
+              item.needs_response = (
+                !item.is_past &&
+                !item.is_cancelled &&
+                !detail.pollChoice
+              );
+            }
+          }
+        });
+      });
     },
     canCreateRehearsalActive() {
       return !!(this.canCreateRehearsal && this.staffUi);

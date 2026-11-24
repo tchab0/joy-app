@@ -42,6 +42,7 @@ from planning.services import (
     attach_calendar_rehearsal_plans,
     attach_calendar_summaries,
     attach_calendar_roadmaps,
+    event_calendar_presence_state,
     attach_open_poll_info_to_events,
     attach_roster_substitutes,
     cast_date_vote,
@@ -245,7 +246,12 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _build_rolling_calendar(
-    start_year: int, start_month: int, events_by_day: dict[date, list], count: int = 12
+    start_year: int,
+    start_month: int,
+    events_by_day: dict[date, list],
+    count: int = 12,
+    *,
+    user=None,
 ) -> list[dict]:
     """Grille de ``count`` mois glissants à partir de start_year/start_month."""
     today = timezone.localdate()
@@ -261,11 +267,13 @@ def _build_rolling_calendar(
                     days.append(None)
                     continue
                 day = date(year, month, day_num)
+                is_past = day < today
                 day_events = events_by_day.get(day, [])
                 has_confirmed = False
                 has_proposal = False
                 has_rehearsal = False
                 has_other = False
+                presence_items = []
                 for e in day_events:
                     s = getattr(e, "cal_summary", None) or {}
                     if s.get("is_rehearsal"):
@@ -276,6 +284,22 @@ def _build_rolling_calendar(
                         has_confirmed = True
                     else:
                         has_other = True
+                    p_state = event_calendar_presence_state(
+                        e, user=user, is_past=is_past
+                    )
+                    e.cal_presence = p_state
+                    presence_items.append(p_state)
+                is_absent_day = bool(presence_items) and all(
+                    item["is_absent"] for item in presence_items
+                )
+                presence_status = (
+                    ("absent" if is_absent_day else "present")
+                    if presence_items
+                    else ""
+                )
+                needs_response = any(
+                    item["needs_response"] for item in presence_items
+                )
                 days.append(
                     {
                         "date": day,
@@ -283,13 +307,17 @@ def _build_rolling_calendar(
                         "day": day_num,
                         "events": day_events,
                         "is_today": day == today,
-                        "is_past": day < today,
+                        "is_past": is_past,
                         "has_confirmed": has_confirmed,
                         "has_proposal": has_proposal,
                         "has_rehearsal": has_rehearsal,
                         "has_other": has_other,
                         # Alias conservé (tests / CSS historiques « concert »).
                         "has_concert": has_confirmed,
+                        "presence_status": presence_status,
+                        "is_absent": is_absent_day,
+                        "needs_response": needs_response,
+                        "presence_items": presence_items,
                     }
                 )
             weeks.append(days)
@@ -464,6 +492,16 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         need_form_data = can_propose
         start_label = f"{_FRENCH_MONTHS[start_month]} {year}"
         end_label = f"{_FRENCH_MONTHS[end_month]} {end_year}"
+        months = _build_rolling_calendar(
+            year, start_month, events_by_day, count=12, user=user
+        )
+        calendar_presence_map = {
+            day["iso"]: day["presence_items"]
+            for month in months
+            for week in month["weeks"]
+            for day in week
+            if day and day["presence_items"]
+        }
         context.update(
             {
                 "calendar_year": year,
@@ -472,9 +510,8 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
                 "start_month": start_month,
                 "range_label": f"{start_label} — {end_label}",
                 "weekday_labels": _WEEKDAY_LABELS,
-                "months": _build_rolling_calendar(
-                    year, start_month, events_by_day, count=12
-                ),
+                "months": months,
+                "calendar_presence_map": calendar_presence_map,
                 "is_planning_staff": is_staff,
                 "can_propose_event": can_propose,
                 "venues": (

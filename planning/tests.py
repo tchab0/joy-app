@@ -3679,3 +3679,151 @@ class PollAudienceIntentTests(PlanningBaseTestCase):
         proposal = DateProposal.objects.get(linked_event=event)
         self.assertEqual(proposal.audience, DateProposal.Audience.ROOM)
         self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+
+
+class CalendarPresenceDotsAndBlinkTests(PlanningBaseTestCase):
+    """Points vert/rouge (présent par défaut) + clignotement des événements sans réponse."""
+
+    @staticmethod
+    def _day_in_months(months, target_iso: str) -> dict | None:
+        for month in months:
+            for week in month["weeks"]:
+                for day in week:
+                    if day and day["iso"] == target_iso:
+                        return day
+        return None
+
+    def test_rehearsal_default_present_green_dot_no_blink_and_absent_red_dot(self):
+        # Par défaut sur une répé : présent (point vert) et ne clignote pas.
+        rehearsal_day = timezone.localtime(self.event.date_debut).date()
+        today = timezone.localdate()
+        window_year = (
+            rehearsal_day.year
+            if rehearsal_day.month >= today.month
+            else rehearsal_day.year - 1
+        )
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        self.assertEqual(r.status_code, 200)
+        day_ctx = self._day_in_months(r.context["months"], rehearsal_day.isoformat())
+        self.assertIsNotNone(day_ctx)
+        self.assertEqual(day_ctx["presence_status"], "present")
+        self.assertFalse(day_ctx["is_absent"])
+        self.assertFalse(day_ctx["needs_response"])
+        self.assertContains(r, "pl-cal__dot--present")
+
+        # Même un musicien non convoqué à la répé est considéré présent par défaut.
+        self.client.login(username="sub1", password="pass12345")
+        r_sub = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        sub_day = self._day_in_months(
+            r_sub.context["months"], rehearsal_day.isoformat()
+        )
+        self.assertEqual(sub_day["presence_status"], "present")
+        self.assertFalse(sub_day["needs_response"])
+
+        # Absence déclarée → point rouge, pas de clignotement.
+        set_participation_response(self.participation, "no")
+        self.client.login(username="musi", password="pass12345")
+        r2 = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day_ctx2 = self._day_in_months(
+            r2.context["months"], rehearsal_day.isoformat()
+        )
+        self.assertEqual(day_ctx2["presence_status"], "absent")
+        self.assertTrue(day_ctx2["is_absent"])
+        self.assertFalse(day_ctx2["needs_response"])
+        self.assertContains(r2, "pl-cal__dot--absent")
+
+    def test_event_blinks_until_answered_and_updates_dot_color(self):
+        concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        concert = Event.objects.create(
+            titre="Concert Printemps",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=18),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        concert_day = timezone.localtime(concert.date_debut).date()
+        today = timezone.localdate()
+        window_year = (
+            concert_day.year
+            if concert_day.month >= today.month
+            else concert_day.year - 1
+        )
+
+        # 1) Aucune participation encore : présent par défaut (vert) + case clignotante.
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day_ctx = self._day_in_months(r.context["months"], concert_day.isoformat())
+        self.assertEqual(day_ctx["presence_status"], "present")
+        self.assertFalse(day_ctx["is_absent"])
+        self.assertTrue(day_ctx["needs_response"])
+        self.assertContains(r, "needs-response")
+
+        # 2) Invité sans réponse : toujours clignotant + point vert.
+        from planning.services import invite_musician_to_event
+
+        part, _ = invite_musician_to_event(
+            concert, self.musician, send_notification=False
+        )
+        r_inv = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day_inv = self._day_in_months(
+            r_inv.context["months"], concert_day.isoformat()
+        )
+        self.assertEqual(day_inv["presence_status"], "present")
+        self.assertTrue(day_inv["needs_response"])
+
+        # 3) Réponse Non : point rouge + arrêt du clignotement.
+        set_participation_response(part, "no")
+        r_no = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day_no = self._day_in_months(
+            r_no.context["months"], concert_day.isoformat()
+        )
+        self.assertEqual(day_no["presence_status"], "absent")
+        self.assertTrue(day_no["is_absent"])
+        self.assertFalse(day_no["needs_response"])
+
+        # 4) Réponse Oui : point vert + arrêt du clignotement.
+        set_participation_response(part, "yes")
+        r_yes = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day_yes = self._day_in_months(
+            r_yes.context["months"], concert_day.isoformat()
+        )
+        self.assertEqual(day_yes["presence_status"], "present")
+        self.assertFalse(day_yes["is_absent"])
+        self.assertFalse(day_yes["needs_response"])
+
+    def test_open_poll_marker_blinks_when_unvoted_and_turns_red_on_no(self):
+        from planning.models import DateVote
+        from planning.services import cast_date_vote, launch_availability_poll
+
+        proposal = DateProposal.objects.create(
+            title="Sondage Automne",
+            status=DateProposal.Status.DRAFT,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ALL,
+            deadline=timezone.localdate() + timedelta(days=5),
+        )
+        opt = DateOption.objects.create(
+            proposal=proposal,
+            starts_at=timezone.now() + timedelta(days=24),
+        )
+        launch_availability_poll(proposal, launched_by=self.staff)
+        opt_day = timezone.localtime(opt.starts_at).date()
+        today = timezone.localdate()
+        window_year = (
+            opt_day.year if opt_day.month >= today.month else opt_day.year - 1
+        )
+
+        self.client.login(username="musi", password="pass12345")
+        r1 = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day1 = self._day_in_months(r1.context["months"], opt_day.isoformat())
+        self.assertEqual(day1["presence_status"], "present")
+        self.assertTrue(day1["needs_response"])
+
+        cast_date_vote(opt, self.musician, DateVote.Choice.NO)
+        r2 = self.client.get(reverse("planning:dashboard"), {"year": window_year})
+        day2 = self._day_in_months(r2.context["months"], opt_day.isoformat())
+        self.assertEqual(day2["presence_status"], "absent")
+        self.assertTrue(day2["is_absent"])
+        self.assertFalse(day2["needs_response"])

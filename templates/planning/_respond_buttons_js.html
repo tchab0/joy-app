@@ -132,6 +132,9 @@ function respondButtons(pk, initialCode, opts) {
           this.code = d.status.code;
           this.label = d.status.label;
           if (d.participation_id) this.pk = d.participation_id;
+          window.dispatchEvent(new CustomEvent('pl-cal-presence', {
+            detail: { eventId: this.eventPk, statusCode: d.status.code }
+          }));
           window.dispatchEvent(new CustomEvent('pl-toast', { detail: 'Réponse enregistrée' }));
           return true;
         }
@@ -152,9 +155,10 @@ function respondButtons(pk, initialCode, opts) {
   };
 }
 
-function rehearsalAbsence(url, initialAbsent) {
+function rehearsalAbsence(url, initialAbsent, eventPk) {
   return {
     absent: !!initialAbsent,
+    eventPk: eventPk || null,
     busy: false,
     showInvalidate: false,
     eventConfirmed: true,
@@ -205,6 +209,11 @@ function rehearsalAbsence(url, initialAbsent) {
         }
         if (d.ok) {
           this.absent = d.absent;
+          if (this.eventPk) {
+            window.dispatchEvent(new CustomEvent('pl-cal-presence', {
+              detail: { eventId: this.eventPk, absent: !!d.absent, isRehearsal: true }
+            }));
+          }
           this.$dispatch('pl-toast', d.absent ? 'Absence enregistrée' : 'Absence annulée');
           return true;
         }
@@ -223,7 +232,7 @@ function rehearsalAbsence(url, initialAbsent) {
   };
 }
 
-function absenceToggle(url, initialAbsent) {
-  return rehearsalAbsence(url, initialAbsent);
+function absenceToggle(url, initialAbsent, eventPk) {
+  return rehearsalAbsence(url, initialAbsent, eventPk);
 }
 </script>

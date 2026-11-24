@@ -20,6 +20,7 @@ from planning.services.calendar_ops import (
     attach_calendar_setlists,
     attach_calendar_rehearsal_plans,
     attach_calendar_roadmaps,
+    event_calendar_presence_state,
     chat_link_for_event,
 )
 from planning.services.equipment import (

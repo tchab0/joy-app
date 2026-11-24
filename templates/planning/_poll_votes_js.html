@@ -122,6 +122,9 @@ function pollVotes(cfg) {
             };
           }
           this._moveSelfVote(optionId, d.choice);
+          window.dispatchEvent(new CustomEvent('pl-cal-presence', {
+            detail: { optionId: Number(optionId), pollChoice: d.choice }
+          }));
           this.onToast('Réponse enregistrée');
           if (this.allAnswered() && !this.complete) {
             this.complete = true;
