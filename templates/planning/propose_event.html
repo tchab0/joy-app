@@ -9,34 +9,85 @@
 {% endblock %}
 
 {% block content %}
-<div class="pl" x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '', submitting: false }">
+<div class="pl" x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '', submitting: false, extraDates: [] }">
   <header class="pl-head">
     <h1>Proposer un événement</h1>
     {% page_lead "planning.propose_event" class="page-lead--in-head" %}
-      Votre proposition ouvre un salon réservé au staff.
-      Un membre du staff lancera ensuite le sondage de disponibilité.
+      Proposez un concert ou une intervention avec une ou plusieurs dates possibles.
     {% endpage_lead %}
   </header>
 
   {% include "planning/_module_nav.html" with active="calendrier" %}
 
+  <div class="pl-guide" role="note">
+    <span class="pl-guide__step">Comment ça marche (3 étapes)</span>
+    <p class="pl-guide__text">
+      <strong style="color:var(--text)">1. Proposition :</strong> votre demande est envoyée au staff (elle reste invisible du reste de l’orchestre pour l’instant).<br>
+      <strong style="color:var(--text)">2. Sondage :</strong> le staff ouvre le sondage de disponibilité à tout l’orchestre sur la ou les dates proposées.<br>
+      <strong style="color:var(--text)">3. Confirmation :</strong> le staff retient la date définitive ; les réponses au sondage deviennent automatiquement les présences.
+    </p>
+  </div>
+
   <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}"
         @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
     {% csrf_token %}
     <div>
-      <label for="prop_titre">Titre</label>
+      <label for="prop_titre">Titre de l’événement</label>
       <input type="text" name="titre" id="prop_titre" required placeholder="ex. Concert printemps">
     </div>
-    <div class="pl-form__row pl-form__row--2">
-      <div>
-        <label for="prop_date">Date</label>
-        <input type="date" name="date" id="prop_date" required value="{{ preset_date }}">
+
+    <div>
+      <label>Date(s) proposée(s)</label>
+      <p class="pl-row__meta" style="margin:0 0 .4rem">
+        Si l’organisateur hésite entre plusieurs créneaux, ajoutez toutes les dates possibles dès maintenant.
+      </p>
+      <div class="pl-form__row pl-form__row--2">
+        <div>
+          <label for="prop_date">Date 1</label>
+          <input type="date" name="date" id="prop_date" required value="{{ preset_date }}">
+        </div>
+        <div>
+          <label for="prop_time">Heure</label>
+          <input type="time" name="time" id="prop_time" value="20:00" required>
+        </div>
       </div>
-      <div>
-        <label for="prop_time">Heure</label>
-        <input type="time" name="time" id="prop_time" value="20:00" required>
+      <div style="margin-top:.4rem">
+        <label for="prop_date_label">Précision sur ce créneau <span class="pl-row__meta">(optionnel)</span></label>
+        <input type="text" name="date_label" id="prop_date_label" maxlength="120" placeholder="ex. Soirée, Option A…">
       </div>
+
+      <template x-for="(slot, idx) in extraDates" :key="slot.id">
+        <div class="pl-slot-row">
+          <div class="pl-form__row pl-form__row--2">
+            <div>
+              <label :for="'prop_ex_date_' + idx">Autre date possible (<span x-text="idx + 2"></span>)</label>
+              <input type="date" :name="'extra_date_' + idx" :id="'prop_ex_date_' + idx" x-model="slot.date" required>
+            </div>
+            <div>
+              <label :for="'prop_ex_time_' + idx">Heure</label>
+              <input type="time" :name="'extra_time_' + idx" :id="'prop_ex_time_' + idx" x-model="slot.time" required>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
+            <div style="flex:1 1 12rem;min-width:0">
+              <label :for="'prop_ex_label_' + idx">Précision <span class="pl-row__meta">(optionnel)</span></label>
+              <input type="text" :name="'extra_label_' + idx" :id="'prop_ex_label_' + idx" x-model="slot.label" maxlength="120" placeholder="ex. Matinée, Option B…">
+            </div>
+            <button type="button" class="pl-btn" style="min-height:44px"
+                    @click="extraDates.splice(idx, 1)">
+              Retirer
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <button type="button" class="pl-btn" style="margin-top:.55rem;min-height:44px"
+              x-show="extraDates.length < 10"
+              @click="extraDates.push({ id: Date.now() + Math.random(), date: '', time: '20:00', label: '' })">
+        + Ajouter une autre date possible
+      </button>
     </div>
+
     <div>
       <label for="prop_type">Type</label>
       <select name="type_id" id="prop_type" required
@@ -54,20 +105,15 @@
       <textarea name="description" id="prop_desc" rows="3"></textarea>
     </div>
     <div>
-      <label for="prop_deadline">Date limite de réponse</label>
+      <label for="prop_deadline">Date limite de réponse souhaitée</label>
       <input type="date" name="deadline" id="prop_deadline" required>
       <p class="pl-row__meta" style="margin:.35rem 0 0">
-        Avant cette date, les destinataires du sondage devront indiquer leur disponibilité
-        (modifiable ensuite par le staff).
+        Date avant laquelle les musiciens devront voter sur le sondage (ajustable par le staff).
       </p>
     </div>
     <input type="hidden" name="audience" value="all">
-    <p class="pl-row__meta" style="margin:0">
-      Le sondage de disponibilité sera préparé pour <strong>tout l’orchestre</strong>.
-      Un membre du staff le lancera ensuite.
-    </p>
-    <button type="submit" class="pl-btn pl-btn--primary" :disabled="submitting">
-      <span x-text="submitting ? 'Envoi…' : 'Envoyer la proposition'">Envoyer la proposition</span>
+    <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px" :disabled="submitting">
+      <span x-text="submitting ? 'Envoi…' : 'Envoyer la proposition au staff'">Envoyer la proposition au staff</span>
     </button>
   </form>
 </div>

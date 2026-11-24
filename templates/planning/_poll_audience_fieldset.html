@@ -1,7 +1,9 @@
 {% load poll_audience %}
-{# Choix d’intention d’audience.
-   Options : name, selected (all|room), for_event, show_preview, proposal,
-   alpine_model, required (défaut true), id_prefix #}
+{% comment %}
+Choix d’intention d’audience.
+Options : name, selected (all|room), for_event, show_preview, proposal,
+alpine_model, required (défaut true), id_prefix
+{% endcomment %}
 {% with field_name=name|default:"audience" sel=selected|default:"all" prefix=id_prefix|default:"poll_aud" %}
 <style>
   .pl-poll-audience {

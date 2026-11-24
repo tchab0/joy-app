@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block extra_head %}
-<script defer src="{% static 'chat/room.js' %}?v=39"></script>
+<script defer src="{% static 'chat/room.js' %}?v=40"></script>
 {% endblock %}
 
 {% block content %}
@@ -47,13 +47,21 @@
     <button type="button" class="pl-layers__btn" :class="layer === 'rehearsals' && 'is-active'" @click="setLayer('rehearsals')" aria-label="Répétitions"><span class="pl-layers__short">Répét.</span><span class="pl-layers__full">Répétitions</span></button>
   </div>
   <ul class="pl-legend" aria-label="Légende">
-    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--confirmed" aria-hidden="true"></span> Événement confirmé</li>
-    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--proposal" aria-hidden="true"></span> Proposition</li>
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--confirmed" aria-hidden="true"></span> Confirmé (date retenue)</li>
+    <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--proposal" aria-hidden="true"></span> Proposition (sondage en cours)</li>
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--rehearsal" aria-hidden="true"></span> Répétition</li>
     <li class="pl-legend__item"><span class="pl-cal__dot pl-cal__dot--present" aria-hidden="true"></span> Présent</li>
     <li class="pl-legend__item"><span class="pl-cal__dot pl-cal__dot--absent" aria-hidden="true"></span> Absent</li>
     <li class="pl-legend__item"><span class="pl-legend__swatch pl-legend__swatch--needs-response" aria-hidden="true"></span> Réponse attendue</li>
   </ul>
+  <details class="pl-guide" style="padding:.45rem .8rem;margin:0 0 .9rem">
+    <summary class="pl-guide__summary" style="font-size:.83rem">Comprendre les propositions, sondages et événements confirmés</summary>
+    <p class="pl-guide__text" style="margin-top:.35rem;font-size:.83rem">
+      <strong style="color:var(--text)">Proposition :</strong> date à l’étude — votez uniquement dans le sondage de disponibilité. Tant qu’un sondage n’est pas lancé par le staff, seuls l’auteur et le staff voient la proposition.<br>
+      <strong style="color:var(--text)">Confirmé :</strong> date retenue par le staff — vos votes au sondage deviennent automatiquement votre présence, modifiable ensuite sur la fiche.<br>
+      <strong style="color:var(--text)">Répétition :</strong> présence prévue par défaut ; signalez simplement une absence en cas d’empêchement.
+    </p>
+  </details>
 
   <div class="pl-year">
     {% for month in months %}
@@ -146,7 +154,7 @@
                     Setlist : pas encore de morceaux
                     {% endif %}
                   </p>
-                  {% else %}
+                  {% elif not s.is_proposal %}
                   {% if is_planning_staff %}
                   <div class="joy-staff-ui">
                   <p class="pl-cal-tip__line">
@@ -165,6 +173,9 @@
                   </div>
                   {% endif %}
                   {% endif %}
+                  {% endif %}
+                  {% if s.is_awaiting_staff and not s.is_confirmed %}
+                  <p class="pl-cal-tip__line">En attente du staff (non envoyé à l’orchestre)</p>
                   {% endif %}
                   {% if s.is_poll_option or s.has_open_poll %}
                   {% if not s.is_confirmed %}
@@ -253,14 +264,19 @@
                 </div>
                 {% endif %}
                 {% else %}
-                {% if s.has_open_poll and not s.is_confirmed %}
+                {% if s.is_awaiting_staff and not s.is_confirmed %}
+                <div>
+                  <dt>Statut</dt>
+                  <dd>En attente du staff — invisible du reste de l’orchestre tant que le sondage n’est pas lancé.</dd>
+                </div>
+                {% elif s.has_open_poll and not s.is_confirmed %}
                 <div>
                   <dt>Sondage</dt>
                   <dd>
                     {% if s.poll_answered %}
-                      Vote enregistré
+                      Vote enregistré (date non encore confirmée)
                     {% else %}
-                      Sondage ouvert — votez pour cette date
+                      Sondage en cours — votez sur les dates proposées
                     {% endif %}
                   </dd>
                 </div>
@@ -271,7 +287,7 @@
                 </div>
                 {% endif %}
                 {% endif %}
-                {% if s.is_concert %}
+                {% if s.is_concert and s.is_confirmed %}
                 <div>
                   <dt>Météo</dt>
                   <dd data-calendar-weather="{{ event.pk }}" hidden></dd>
@@ -352,7 +368,7 @@
                     {% endif %}
                   </dd>
                 </div>
-                {% else %}
+                {% elif not s.is_proposal %}
                 {% if is_planning_staff %}
                 <div class="joy-staff-ui">
                   <dt>Présents</dt>
@@ -425,7 +441,7 @@
               </dl>
               {% if not s.is_poll_option %}
               {% with part=event.cal_participation %}
-              {% if not s.is_rehearsal or part %}
+              {% if not s.is_proposal and not s.is_rehearsal or not s.is_proposal and part %}
               <section class="pl-day-events__presence" aria-label="Ma présence"
                 {% if s.is_rehearsal %}
                 x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' event.pk %}', {{ part.is_absent|yesno:'true,false' }}, {{ event.pk }})"
@@ -458,7 +474,9 @@
               </section>
               {% endif %}
               {% endwith %}
+              {% endif %}
 
+              {% if not s.is_poll_option %}
               {% if event.cal_chat %}
               <section class="pl-day-events__chat" aria-label="Salon">
                 <div class="pl-day-events__presence-head">
@@ -520,7 +538,7 @@
                 <span>Voir</span>
               </a>
               {% endif %}
-              {% elif is_planning_staff %}
+              {% elif is_planning_staff and not s.is_proposal %}
               <a class="pl-day-events__salon pl-day-events__salon--staff" href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">
                 <span>Setlist</span>
                 <span>Créer</span>
@@ -531,6 +549,26 @@
                 <span>Feuille de route</span>
                 <span>Voir</span>
               </a>
+              {% endif %}
+              {% if s.is_awaiting_staff and not s.is_confirmed %}
+              {% if is_planning_staff and s.draft_poll_id %}
+              <form class="pl-day-events__confirm" method="post"
+                    action="{% url 'planning:launch_poll' s.draft_poll_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="audience" value="all">
+                <input type="hidden" name="next"
+                       value="{% url 'planning:dashboard' %}?year={{ calendar_year }}&day={{ day.iso }}">
+                <button type="submit" class="pl-btn pl-btn--primary" style="width:100%;min-height:44px">
+                  Ouvrir le sondage à l’orchestre
+                </button>
+              </form>
+              {% endif %}
+              {% if s.draft_poll_id %}
+              <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.draft_poll_id %}">
+                <span>Proposition en brouillon</span>
+                <span>Voir / modifier</span>
+              </a>
+              {% endif %}
               {% endif %}
               {% if s.has_open_poll and not s.is_confirmed %}
               <a class="pl-day-events__salon" href="{% url 'planning:poll_detail' s.poll_id %}">
@@ -645,54 +683,124 @@
     <div class="pl-modal-backdrop" @click="closeModal()"></div>
     <div class="pl-modal" @click.stop>
       <header class="pl-modal__head">
-        <h2 id="pl-create-title">Proposer un événement</h2>
+        <h2 id="pl-create-title">{% if is_planning_staff %}Ajouter un événement{% else %}Proposer un événement{% endif %}</h2>
         <button type="button" class="pl-btn" @click="closeModal()" aria-label="Fermer">✕</button>
       </header>
       <form class="pl-form" method="post" action="{% url 'planning:propose_event' %}"
             x-data="{ submitting: false }"
             @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
         {% csrf_token %}
-        <input type="hidden" name="date" :value="formDate">
+
+        {% if is_planning_staff %}
         <div>
-          <label>Date</label>
-          <p class="pl-row__meta" x-text="formDateLabel"></p>
+          <label>Que souhaitez-vous faire ?</label>
+          <div class="pl-intent-grid" role="radiogroup" aria-label="Mode de création">
+            <label class="pl-intent-card" :class="creationMode === 'poll' && 'is-active'">
+              <input type="radio" name="creation_mode" value="poll" x-model="creationMode">
+              <span>
+                <span class="pl-intent-card__title">Sonder l’orchestre (date à confirmer)</span>
+                <span class="pl-intent-card__desc">Propose 1 ou plusieurs dates possibles et envoie le sondage à tout l’orchestre.</span>
+              </span>
+            </label>
+            <label class="pl-intent-card" :class="creationMode === 'confirmed' && 'is-active'">
+              <input type="radio" name="creation_mode" value="confirmed" x-model="creationMode">
+              <span>
+                <span class="pl-intent-card__title">Date déjà confirmée (date ferme)</span>
+                <span class="pl-intent-card__desc">Crée directement l’événement confirmé au calendrier, sans sondage préalable.</span>
+              </span>
+            </label>
+          </div>
         </div>
+        {% else %}
+        <div class="pl-guide" style="margin-bottom:.25rem">
+          <span class="pl-guide__step">Proposition au staff</span>
+          <p class="pl-guide__text">
+            Votre proposition reste invisible des autres musiciens tant que le staff ne valide pas et n’ouvre pas le sondage à l’orchestre.
+          </p>
+        </div>
+        {% endif %}
+
         <div>
           <label for="ev_titre">Titre</label>
           <input type="text" name="titre" id="ev_titre" required placeholder="ex. Concert printemps">
         </div>
-        <div class="pl-form__row pl-form__row--2">
-          <div>
-            <label for="ev_time">Heure</label>
-            <input type="time" name="time" id="ev_time" value="20:00" required>
+
+        <div>
+          <div class="pl-form__row pl-form__row--2">
+            <div>
+              <label for="ev_date" x-text="creationMode === 'confirmed' ? 'Date' : 'Date 1'"></label>
+              <input type="date" name="date" id="ev_date" x-model="formDate" required>
+            </div>
+            <div>
+              <label for="ev_time">Heure</label>
+              <input type="time" name="time" id="ev_time" value="20:00" required>
+            </div>
           </div>
-          <div>
-            <label for="ev_type">Type</label>
-            <select name="type_id" id="ev_type" required
-                    @change="typeLabel = $event.target.selectedOptions[0]?.text || ''">
-              <option value="">Choisir…</option>
-              {% for t in event_types %}
-              <option value="{{ t.pk }}">{{ t.nom }}</option>
-              {% endfor %}
-            </select>
-          </div>
+
+          <template x-if="creationMode !== 'confirmed'">
+            <div>
+              <template x-for="(slot, idx) in extraDates" :key="slot.id">
+                <div class="pl-slot-row">
+                  <div class="pl-form__row pl-form__row--2">
+                    <div>
+                      <label :for="'ev_ex_date_' + idx">Autre date possible (<span x-text="idx + 2"></span>)</label>
+                      <input type="date" :name="'extra_date_' + idx" :id="'ev_ex_date_' + idx" x-model="slot.date" required>
+                    </div>
+                    <div>
+                      <label :for="'ev_ex_time_' + idx">Heure</label>
+                      <input type="time" :name="'extra_time_' + idx" :id="'ev_ex_time_' + idx" x-model="slot.time" required>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
+                    <div style="flex:1 1 10rem;min-width:0">
+                      <label :for="'ev_ex_label_' + idx">Précision <span class="pl-row__meta">(opt.)</span></label>
+                      <input type="text" :name="'extra_label_' + idx" :id="'ev_ex_label_' + idx" x-model="slot.label" maxlength="120" placeholder="ex. Soirée, Option B…">
+                    </div>
+                    <button type="button" class="pl-btn" style="min-height:44px"
+                            @click="extraDates.splice(idx, 1)">
+                      Retirer
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <button type="button" class="pl-btn" style="margin-top:.5rem;min-height:44px"
+                      x-show="extraDates.length < 10"
+                      @click="extraDates.push({ id: Date.now() + Math.random(), date: '', time: '20:00', label: '' })">
+                + Ajouter une autre date possible
+              </button>
+            </div>
+          </template>
         </div>
+
+        <div>
+          <label for="ev_type">Type</label>
+          <select name="type_id" id="ev_type" required
+                  @change="typeLabel = $event.target.selectedOptions[0]?.text || ''">
+            <option value="">Choisir…</option>
+            {% for t in event_types %}
+            <option value="{{ t.pk }}">{{ t.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         {% include "planning/_venue_parent_fields.html" with id_prefix="ev" show_parent=is_planning_staff %}
         {% include "planning/_organisme_field.html" with id_prefix="ev" %}
         <div>
-          <label for="ev_desc">Description</label>
+          <label for="ev_desc">Description <span class="pl-row__meta">(optionnel)</span></label>
           <textarea name="description" id="ev_desc" rows="2"></textarea>
         </div>
-        <div>
-          <label for="ev_deadline">Date limite de réponse</label>
-          <input type="date" name="deadline" id="ev_deadline" required>
+
+        <div x-show="creationMode !== 'confirmed'">
+          <label for="ev_deadline">Date limite de réponse au sondage</label>
+          <input type="date" name="deadline" id="ev_deadline" :required="creationMode !== 'confirmed'">
           <p class="pl-row__meta" style="margin:.35rem 0 0">
-            Avant cette date, les destinataires du sondage doivent indiquer leur disponibilité.
+            Avant cette date, les musiciens indiquent leurs disponibilités sur chaque créneau proposé.
           </p>
         </div>
+
         {% if is_planning_staff %}
         <div x-show="typeLabel && !/r[eé]p[eé]tition/i.test(typeLabel)" x-cloak style="display:grid;gap:.75rem">
-          <p class="pl-row__meta" style="margin:0">Coordonnées du contact</p>
+          <p class="pl-row__meta" style="margin:0">Coordonnées du contact <span class="pl-row__meta">(optionnel)</span></p>
           <div>
             <label for="ev_contact_nom">Contact</label>
             <input type="text" name="contact_nom" id="ev_contact_nom" placeholder="Nom de la personne">
@@ -708,31 +816,22 @@
             </div>
           </div>
         </div>
-        <div x-data="{ launchNow: false, pollAudience: 'all' }">
-          <label class="pl-check" for="ev_launch_poll">
-            <input type="checkbox" name="launch_poll" id="ev_launch_poll" value="1"
-                   x-model="launchNow">
-            <span>Autoriser et envoyer le sondage de disponibilité maintenant</span>
+        <input type="hidden" name="audience" value="all">
+        <div x-show="creationMode === 'poll'" x-cloak>
+          <label class="pl-check" for="ev_keep_draft" style="min-height:44px">
+            <input type="checkbox" name="keep_draft" id="ev_keep_draft" value="1" x-model="keepDraft">
+            <span>Préparer en brouillon staff uniquement (ne pas notifier l’orchestre tout de suite)</span>
           </label>
-          <p class="pl-row__meta" style="margin:.35rem 0 0">
-            Un salon réservé au staff sera créé.
-            Sans case cochée, le sondage reste en brouillon jusqu’à lancement manuel.
-          </p>
-          {% include "planning/_poll_audience_fieldset.html" with for_event=True selected="all" alpine_model="pollAudience" id_prefix="ev_aud" %}
-          <p class="pl-row__meta" style="margin:.35rem 0 0" x-show="launchNow" x-cloak>
-            Le sondage sera envoyé immédiatement selon l’audience choisie ci-dessus.
-          </p>
         </div>
+        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px" :disabled="submitting">
+          <span x-text="submitting ? 'Envoi…' : (creationMode === 'confirmed' ? 'Créer l’événement confirmé' : (keepDraft ? 'Enregistrer en brouillon staff' : 'Créer et lancer le sondage'))">Créer et lancer le sondage</span>
+        </button>
         {% else %}
         <input type="hidden" name="audience" value="all">
-        <p class="pl-row__meta" style="margin:0">
-          Un salon réservé au staff sera créé. Le sondage de disponibilité
-          (tout l’orchestre) devra être lancé par un membre du staff.
-        </p>
-        {% endif %}
-        <button type="submit" class="pl-btn pl-btn--primary" :disabled="submitting">
-          <span x-text="submitting ? 'Envoi…' : 'Proposer l’événement'">Proposer l’événement</span>
+        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px" :disabled="submitting">
+          <span x-text="submitting ? 'Envoi…' : 'Envoyer la proposition au staff'">Envoyer la proposition au staff</span>
         </button>
+        {% endif %}
       </form>
     </div>
   </div>
@@ -837,6 +936,9 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     choiceOpen: false,
     formDate: '',
     formDateLabel: '',
+    creationMode: 'poll',
+    keepDraft: false,
+    extraDates: [],
     typeLabel: '',
     venueMode: 'existing',
     parentMode: 'none',
@@ -849,6 +951,12 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
           this.choiceOpen = false;
         }
       });
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('create') === '1' && this.canCreate) {
+        const d = params.get('date') || new Date().toISOString().slice(0, 10);
+        this.openCreate(d);
+        return;
+      }
       if (!this.selectedDay) return;
       this.revealSelectedDay();
     },
@@ -1012,6 +1120,9 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
       if (!this.canCreate) return;
       this.choiceOpen = false;
       this.setFormDate(iso);
+      this.creationMode = 'poll';
+      this.keepDraft = false;
+      this.extraDates = [];
       this.typeLabel = '';
       this.venueMode = 'existing';
       this.parentMode = 'none';
@@ -1024,6 +1135,7 @@ function yearCalendar({ canCreate, canCreateRehearsal, year, rehearsalCreateUrl 
     },
     closeModal() {
       this.modalOpen = false;
+      this.extraDates = [];
       this.typeLabel = '';
       this.venueMode = 'existing';
       this.parentMode = 'none';

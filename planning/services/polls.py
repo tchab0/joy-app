@@ -38,7 +38,12 @@ from planning.services.calendar_ops import (
     _user_display_label,
 )
 from planning.services.constants import RESPOND_MAP
-from planning.services.invites import invite_titulaires_to_event, notify_event_invite, titulaires_queryset
+from planning.services.invites import (
+    ensure_open_participation,
+    invite_titulaires_to_event,
+    notify_event_invite,
+    titulaires_queryset,
+)
 from planning.services.rsvp import get_participation_for, set_participation_response
 
 # Libellés d’intention (création / lancement / badges).
@@ -265,11 +270,18 @@ def notify_poll_deadline_reminder(proposal: DateProposal) -> int:
 
 
 @transaction.atomic
-def cancel_poll(proposal: DateProposal) -> DateProposal:
+def cancel_poll(
+    proposal: DateProposal,
+    *,
+    cancel_linked_tentative: bool = True,
+) -> DateProposal:
     """
     Supprime / annule un sondage (statut CANCELLED).
 
     Soft-delete les messages POLL_LAUNCH liés pour le retirer du fil chat.
+    Si ``cancel_linked_tentative`` est vrai et que l’événement lié est encore
+    ``tentative`` sans autre sondage actif, l’événement est aussi passé en
+    ``annule`` pour disparaître du calendrier.
     """
     if proposal.status == DateProposal.Status.CANCELLED:
         raise ValueError("Ce sondage est déjà supprimé.")
@@ -278,6 +290,25 @@ def cancel_poll(proposal: DateProposal) -> DateProposal:
 
     proposal.status = DateProposal.Status.CANCELLED
     proposal.save(update_fields=["status", "updated_at"])
+
+    if cancel_linked_tentative and proposal.linked_event_id:
+        event = proposal.linked_event
+        if event is not None and event.statut == Event.Statut.TENTATIVE:
+            has_other_active = (
+                DateProposal.objects.filter(
+                    linked_event=event,
+                    status__in=[
+                        DateProposal.Status.DRAFT,
+                        DateProposal.Status.OPEN,
+                    ],
+                )
+                .exclude(pk=proposal.pk)
+                .exists()
+            )
+            if not has_other_active:
+                event.statut = Event.Statut.ANNULE
+                event.public = False
+                event.save(update_fields=["statut", "public"])
 
     try:
         from chat.models import ChatMessage
@@ -294,6 +325,65 @@ def cancel_poll(proposal: DateProposal) -> DateProposal:
             proposal.pk,
         )
     return proposal
+
+
+@transaction.atomic
+def cancel_event(event) -> Event:
+    """
+    Annule un événement (statut ANNULE, dépublié) et annule tous les sondages
+    encore en brouillon ou ouverts qui lui sont rattachés.
+    """
+    for poll in DateProposal.objects.filter(
+        linked_event=event,
+        status__in=[DateProposal.Status.DRAFT, DateProposal.Status.OPEN],
+    ):
+        cancel_poll(poll, cancel_linked_tentative=False)
+
+    event.statut = Event.Statut.ANNULE
+    event.public = False
+    event.save(update_fields=["statut", "public"])
+    return event
+
+
+def user_can_view_planning_event(user, event) -> bool:
+    """
+    Visibilité d’un Event dans le calendrier / détail planning :
+    - Annulé : masqué du calendrier.
+    - Confirmé ou répétition : visible par tous les musiciens ayant accès au planning.
+    - Tentative (proposition) : visible uniquement par le staff et l’auteur
+      tant qu’aucun sondage n’est OPEN ; une fois un sondage OPEN, visible
+      par l’audience de ce sondage.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    statut = getattr(event, "statut", "")
+    if statut == Event.Statut.ANNULE:
+        return False
+    if _is_rehearsal_type(event) or statut != Event.Statut.TENTATIVE:
+        return True
+    if user.is_staff or user.is_superuser:
+        return True
+    if getattr(event, "proposed_by_id", None) == user.pk:
+        return True
+
+    prefetched = getattr(event, "from_proposals", None)
+    proposals = (
+        list(prefetched.all())
+        if prefetched is not None
+        else list(
+            DateProposal.objects.filter(linked_event=event).select_related(
+                "created_by", "linked_event"
+            )
+        )
+    )
+    for proposal in proposals:
+        if proposal.created_by_id == user.pk:
+            return True
+        if proposal.status == DateProposal.Status.OPEN and user_can_access_poll(
+            user, proposal
+        ):
+            return True
+    return False
 
 
 def send_due_poll_deadline_reminders(
@@ -439,15 +529,18 @@ def create_and_launch_chat_poll(
     author,
     title: str,
     description: str = "",
-    option_kind: str = DateProposal.OptionKind.DATES,
+    option_kind: str | None = None,
     audience: str = DateProposal.Audience.ROOM,
     options: list[dict],
     deadline: date | None = None,
     thread_event_id=None,
 ):
     """
-    Crée un sondage depuis un salon chat, le lance immédiatement,
+    Crée un sondage rapide depuis un salon chat, le lance immédiatement,
     poste un message POLL_LAUNCH et notifie l’audience.
+
+    Un sondage lancé depuis le chat reste interne au salon (``linked_event=None``)
+    et ne modifie jamais la date d’un événement ni le calendrier des concerts.
 
     Retourne ``(proposal, message)``.
     """
@@ -457,16 +550,24 @@ def create_and_launch_chat_poll(
     title = (title or "").strip()
     if not title:
         raise ValueError("Titre requis.")
+    if not options:
+        raise ValueError("Ajoutez au moins une option.")
+
+    if option_kind is None:
+        has_dates = any(
+            isinstance(raw, dict) and (raw.get("starts_at") or raw.get("starts"))
+            for raw in options
+        )
+        option_kind = (
+            DateProposal.OptionKind.DATES
+            if has_dates
+            else DateProposal.OptionKind.TEXT
+        )
+
     if option_kind not in DateProposal.OptionKind.values:
         raise ValueError("Type de sondage invalide.")
     if audience not in DateProposal.Audience.values:
         raise ValueError("Audience invalide.")
-    if not options:
-        raise ValueError("Ajoutez au moins une option.")
-
-    linked_event = None
-    if getattr(room, "event_id", None) and option_kind == DateProposal.OptionKind.DATES:
-        linked_event = room.event
 
     proposal = DateProposal.objects.create(
         title=title,
@@ -476,7 +577,7 @@ def create_and_launch_chat_poll(
         option_kind=option_kind,
         audience=audience,
         source_room=room,
-        linked_event=linked_event,
+        linked_event=None,
         deadline=deadline,
     )
 
@@ -541,32 +642,53 @@ def apply_locked_option_votes_to_participations(
     event,
 ) -> int:
     """
-    Après confirmation d’une date : reporte les votes de l’option retenue
-    sur les participations existantes.
+    Après confirmation d’une date : reporte tous les votes de l’option retenue
+    en créant ou mettant à jour les ``EventParticipation`` des votants.
 
     - oui → confirmed (présent / dispo)
     - non → declined (absent)
     - peut-être → maybe
 
-    Ne crée pas de participations. Les non-votants restent inchangés
-    (souvent « invited ») et peuvent répondre ensuite sur l’événement.
+    Ainsi aucun musicien ayant voté au sondage n’a besoin de répondre une
+    seconde fois après confirmation de la date.
     """
-    votes = {
-        vote.user_id: vote.choice
-        for vote in DateVote.objects.filter(option=option)
-        if vote.choice in RESPOND_MAP
-    }
-    if not votes:
+    vote_objs = list(
+        DateVote.objects.filter(
+            option=option, choice__in=list(RESPOND_MAP.keys())
+        ).select_related("user")
+    )
+    if not vote_objs:
         return 0
 
+    existing_by_user = {
+        p.user_id: p
+        for p in EventParticipation.objects.filter(
+            event=event,
+            user_id__in=[v.user_id for v in vote_objs],
+        ).select_related("status")
+    }
+
     updated = 0
-    participations = EventParticipation.objects.filter(
-        event=event,
-        user_id__in=votes.keys(),
-    ).select_related("status")
-    for part in participations:
-        choice = votes[part.user_id]
+    for vote in vote_objs:
+        choice = vote.choice
         target = RESPOND_MAP[choice]
+        part = existing_by_user.get(vote.user_id)
+        if part is None:
+            if not (
+                getattr(vote.user, "is_musician", False) and vote.user.is_active
+            ):
+                continue
+            try:
+                part, _ = ensure_open_participation(event, vote.user)
+                existing_by_user[vote.user_id] = part
+            except ValueError:
+                logger.warning(
+                    "Création participation depuis vote ignorée event_id=%s user_id=%s",
+                    getattr(event, "pk", None),
+                    vote.user_id,
+                    exc_info=True,
+                )
+                continue
         if part.status_id and part.status.code == target:
             continue
         try:
@@ -1419,6 +1541,7 @@ def open_poll_calendar_markers_for_user(
     )
     qs = (
         DateProposal.objects.filter(status=DateProposal.Status.OPEN)
+        .exclude(source_room__isnull=False, linked_event__isnull=True)
         .prefetch_related(Prefetch("options", queryset=options_qs))
         .select_related(
             "created_by",
@@ -1509,6 +1632,24 @@ def attach_open_poll_info_to_events(events, user) -> list:
     for event in events:
         proposal = by_event.get(event.pk)
         if proposal is None:
+            if (
+                not _is_rehearsal_type(event)
+                and getattr(event, "statut", "") == Event.Statut.TENTATIVE
+            ):
+                summary = dict(getattr(event, "cal_summary", None) or {})
+                prefetched = getattr(event, "from_proposals", None)
+                rel = list(prefetched.all()) if prefetched is not None else []
+                draft = next(
+                    (p for p in rel if p.status == DateProposal.Status.DRAFT),
+                    None,
+                )
+                summary["is_awaiting_staff"] = True
+                summary["kind_label"] = "Proposition · en attente staff"
+                if draft is not None:
+                    summary["has_draft_poll"] = True
+                    summary["draft_poll_id"] = draft.pk
+                    summary["poll_id"] = draft.pk
+                event.cal_summary = summary
             continue
         # Confirmé : le sondage de dates n’a plus sa place sur la fiche jour.
         if (

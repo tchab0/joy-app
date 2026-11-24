@@ -41,6 +41,7 @@ from planning.services.invites import (
     ensure_open_participation,
     invite_musician_to_event,
     propose_event,
+    create_confirmed_event,
 )
 from planning.services.morning_reminders import (
     build_morning_reminder_message,
@@ -62,6 +63,8 @@ from planning.services.polls import (
     launch_availability_poll,
     close_poll,
     cancel_poll,
+    cancel_event,
+    user_can_view_planning_event,
     create_and_launch_chat_poll,
     lock_date_proposal,
     vote_counts_for_option,

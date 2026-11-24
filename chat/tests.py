@@ -2250,6 +2250,9 @@ class PrivateRoomTests(TestCase):
 )
 class RoomPollSummaryTests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
         ensure_participation_statuses()
         self.author = User.objects.create_user(
             username="poll_lea",
@@ -2484,3 +2487,61 @@ class RoomPollSummaryTests(TestCase):
         self.assertEqual(r.status_code, 200)
         labels = [opt["label"] for opt in r.json()["polls"][0]["options"]]
         self.assertEqual(labels, ["Bebop", "Swing"])
+
+    def test_chat_poll_in_event_room_never_links_event_or_calendar(self):
+        from chat.services import ensure_event_room
+        from events.models import Event, EventType, Venue
+        from planning.services import (
+            create_and_launch_chat_poll,
+            open_poll_calendar_markers_for_user,
+        )
+
+        ctype = EventType.objects.create(nom="Concert Chat", is_rehearsal=False)
+        venue = Venue.objects.create(nom="Théâtre", ville="La Roche-sur-Yon")
+        event = Event.objects.create(
+            titre="Concert Salon",
+            type=ctype,
+            venue=venue,
+            date_debut=timezone.now() + timezone.timedelta(days=15),
+            statut=Event.Statut.CONFIRME,
+        )
+        ev_room = ensure_event_room(event)
+        ChatMembership.objects.get_or_create(room=ev_room, user=self.author)
+        ChatMembership.objects.get_or_create(room=ev_room, user=self.voter)
+
+        client = Client()
+        client.login(username="poll_lea", password="pass")
+        created = client.post(
+            reverse("chat:api_poll", args=[ev_room.pk]),
+            {
+                "title": "On covoiture d’où ?",
+                "options": json.dumps(
+                    [{"label": "Parking Nord"}, {"label": "Gare"}]
+                ),
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.content)
+        self.assertTrue(created.json()["ok"])
+        created_poll = DateProposal.objects.get(title="On covoiture d’où ?")
+        self.assertIsNone(created_poll.linked_event_id)
+        self.assertEqual(created_poll.option_kind, DateProposal.OptionKind.TEXT)
+
+        # Même si un sondage de salon porte des dates, il ne pollue pas le calendrier 12 mois.
+        starts = timezone.now() + timezone.timedelta(days=20)
+        date_chat_poll, _ = create_and_launch_chat_poll(
+            room=ev_room,
+            author=self.author,
+            title="Heure covoiturage",
+            options=[{"starts_at": starts.isoformat(), "label": "Départ 18h"}],
+        )
+        self.assertIsNone(date_chat_poll.linked_event_id)
+        today = timezone.localdate()
+        markers = open_poll_calendar_markers_for_user(
+            self.voter,
+            range_start=timezone.make_aware(
+                timezone.datetime.combine(today, timezone.datetime.min.time())
+            ),
+            range_end=starts + timezone.timedelta(days=30),
+        )
+        self.assertEqual([m for m in markers if m.proposal_id == date_chat_poll.pk], [])
+

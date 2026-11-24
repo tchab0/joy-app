@@ -12,16 +12,18 @@
   {% include "planning/_module_nav.html" with active="calendrier" %}
   {% if is_planning_staff %}
   <div class="pl-nav-context pl-nav-context--staff">
-    <a href="{% url 'planning:event_roster' event.pk %}">Effectif staff</a>
-    {% if setlist %}
-    <a href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}">Setlist</a>
-    {% else %}
-    <a href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">Créer setlist</a>
-    {% endif %}
-    {% if roadmap %}
-    <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Feuille de route</a>
-    {% else %}
-    <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Créer feuille de route</a>
+    <a href="{% url 'planning:event_roster' event.pk %}">Effectif & gestion staff</a>
+    {% if event.statut == 'confirme' %}
+      {% if setlist %}
+      <a href="{% url 'repertoire:staff_setlist_edit' setlist.pk %}">Setlist</a>
+      {% else %}
+      <a href="{% url 'repertoire:staff_setlist_create' %}?event={{ event.pk }}">Créer setlist</a>
+      {% endif %}
+      {% if roadmap %}
+      <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Feuille de route</a>
+      {% else %}
+      <a href="{% url 'planning:event_roadmap_edit' event.pk %}">Créer feuille de route</a>
+      {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -37,7 +39,7 @@
       {% if event.is_rehearsal %}
       <span class="pl-badge pl-badge--danger">Répétition</span>
       {% elif event.statut == 'tentative' %}
-      <span class="pl-badge pl-badge--warning">Proposition · à confirmer</span>
+      <span class="pl-badge pl-badge--warning">Proposition · date à confirmer</span>
       {% elif event.statut == 'confirme' %}
       <span class="pl-badge pl-badge--success">Confirmé</span>
       {% elif event.statut == 'annule' %}
@@ -49,15 +51,88 @@
       <span class="pl-accept__venue">{{ event.lieu_affiche }}</span>
       {% endif %}
     </p>
-    {% if participation and participation.poste %}
+    {% if event.statut == 'confirme' and participation and participation.poste %}
     <p class="pl-accept__poste" style="margin:.55rem 0 0;font-size:.95rem;color:var(--text)">
       Votre poste&nbsp;: <strong style="font-weight:600">{{ participation.poste_label }}</strong>
       <span class="pl-row__meta" style="display:inline;margin:0"> — {{ event.date_debut|date:"D d/m/Y H:i" }}</span>
     </p>
     {% endif %}
+    {% if event.statut == 'confirme' %}
     {% include "includes/_weather.html" with weather=event.weather %}
+    {% endif %}
   </header>
 
+  {% if event.statut == 'tentative' %}
+  <section class="pl-section pl-section--panel pl-section--pending" aria-label="Statut de la proposition">
+    {% if open_proposal %}
+    <div class="pl-guide" style="margin-bottom:.85rem">
+      <span class="pl-guide__step">Étape 2 sur 3 · Sondage de disponibilités en cours</span>
+      <p class="pl-guide__title">Cet événement n’est pas encore confirmé.</p>
+      <p class="pl-guide__text">
+        Pour éviter toute confusion, on répond <strong>uniquement dans le sondage de dates</strong>.
+        Dès que le staff retiendra la date définitive, votre vote sera automatiquement converti en présence sur l’événement.
+      </p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.65rem;align-items:center">
+      <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' open_proposal.pk %}" style="min-height:48px">
+        {% if open_poll_answered %}Sondage — vote enregistré (Voir / modifier){% else %}Voter sur le sondage de dates{% endif %}
+      </a>
+      {% if can_cancel_event %}
+      <form method="post" action="{% url 'planning:cancel_event' event.pk %}" style="margin:0"
+            onsubmit="return confirm('Annuler cette proposition et son sondage ? Elle sera retirée du calendrier.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--no" style="min-height:48px">Annuler la proposition</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="pl-guide" style="margin-bottom:.85rem">
+      <span class="pl-guide__step">Étape 1 sur 3 · En attente de validation staff</span>
+      <p class="pl-guide__title">Le sondage n’est pas encore ouvert à l’orchestre.</p>
+      <p class="pl-guide__text">
+        Seuls l’auteur de la proposition et le staff voient cette fiche pour l’instant. Dès que le staff ouvrira le sondage, tout l’orchestre sera invité à voter.
+      </p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.65rem;align-items:center">
+      {% if draft_proposal %}
+      <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' draft_proposal.pk %}" style="min-height:48px">
+        {% if is_planning_staff %}Vérifier et lancer le sondage{% else %}Voir ou modifier ma proposition{% endif %}
+      </a>
+      {% elif is_planning_staff %}
+      <a class="pl-btn pl-btn--primary" href="{% url 'planning:event_roster' event.pk %}" style="min-height:48px">
+        Gérer dans l’espace staff
+      </a>
+      {% endif %}
+      {% if can_cancel_event %}
+      <form method="post" action="{% url 'planning:cancel_event' event.pk %}" style="margin:0"
+            onsubmit="return confirm('Annuler et retirer cette proposition du calendrier ?');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--no" style="min-height:48px">Annuler la proposition</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  {% if chat_link or event.chat_room %}
+  <a class="pl-day-events__salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}" style="margin-top:1rem">
+    <span>Salon « {{ event.titre }} »</span>
+    {% if chat_link.unread %}
+    <span class="pl-day-events__salon-unread">
+      <span class="pl-chat-badge" aria-label="{{ chat_link.unread }} non lus">{{ chat_link.unread }}</span>
+      <span>non lu{{ chat_link.unread|pluralize }}</span>
+    </span>
+    {% endif %}
+  </a>
+  {% endif %}
+
+  {% elif event.statut == 'annule' %}
+  <div class="pl-guide" role="status">
+    <span class="pl-guide__step">Événement annulé</span>
+    <p class="pl-guide__text">Cet événement a été annulé et retiré du calendrier.</p>
+  </div>
+
+  {% else %}
   {% if chat_link or event.chat_room %}
   <a class="pl-day-events__salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
     <span>Salon « {{ event.titre }} »</span>
@@ -140,7 +215,10 @@
   {% endif %}
 
   <section class="pl-accept__response"
-           x-data="respondButtons({% if participation %}{{ participation.pk }}{% else %}null{% endif %}, '{% if participation %}{{ participation.status.code }}{% else %}invited{% endif %}', { eventPk: {{ event.pk }}, eventConfirmed: {% if event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if participation and participation.poste %}{{ participation.poste_label|escapejs }}{% endif %}' })">
+           x-data="respondButtons({% if participation %}{{ participation.pk }}{% else %}null{% endif %}, '{% if participation %}{{ participation.status.code }}{% else %}invited{% endif %}', { eventPk: {{ event.pk }}, eventConfirmed: true, eventDateISO: '{{ event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if participation and participation.poste %}{{ participation.poste_label|escapejs }}{% endif %}' })">
+    <p class="pl-row__meta" style="margin:0 0 .5rem">
+      Date confirmée — indiquez ou mettez à jour votre présence :
+    </p>
     <div class="pl-row__actions pl-accept__actions pl-accept__actions--inline" :class="code === 'confirmed' && 'is-confirmed-rsvp'">
       <span class="pl-badge pl-badge--{% if participation %}{{ participation.status.color_token|default:'neutral' }}{% else %}warning{% endif %}" x-text="label">{% if participation %}{{ participation.status.label }}{% else %}À répondre{% endif %}</span>
       <button type="button" class="pl-btn pl-btn--yes" :class="code === 'confirmed' && 'is-active'" :disabled="busy" @click="respond('yes')">Oui</button>
@@ -257,6 +335,7 @@
       {% include "planning/_equipment_suggest_form.html" with event=event equipment_catalog=equipment_catalog next_url=detail_next id_prefix="detail_suggest" %}
     </div>
   </section>
+  {% endif %}
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>

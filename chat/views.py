@@ -807,7 +807,7 @@ def api_poll(request: HttpRequest, room_id: int) -> JsonResponse:
 
     title = (request.POST.get("title") or "").strip()
     description = (request.POST.get("description") or "").strip()
-    option_kind = (request.POST.get("option_kind") or DateProposal.OptionKind.DATES).strip()
+    option_kind = (request.POST.get("option_kind") or DateProposal.OptionKind.TEXT).strip()
     audience = (request.POST.get("audience") or DateProposal.Audience.ROOM).strip()
     deadline_raw = (request.POST.get("deadline") or "").strip()
     deadline = parse_date(deadline_raw) if deadline_raw else None

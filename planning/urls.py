@@ -132,6 +132,11 @@ urlpatterns = [
         name="cancel_poll",
     ),
     path(
+        "admin/events/<int:pk>/annuler/",
+        views.CancelEventView.as_view(),
+        name="cancel_event",
+    ),
+    path(
         "admin/events/<int:pk>/invite/",
         views.InviteMusicianView.as_view(),
         name="invite_musician",

@@ -33,6 +33,32 @@
     </p>
   </header>
 
+  {% if event.statut == 'tentative' %}
+  <div class="pl-guide joy-staff-ui" role="status">
+    {% if draft_proposal %}
+    <span class="pl-guide__step">Étape 1 sur 3 · Proposition en attente de validation</span>
+    <p class="pl-guide__title">Invisible de l’orchestre tant que vous n’ouvrez pas le sondage.</p>
+    <p class="pl-guide__text">
+      Vérifiez les dates proposées puis lancez le sondage ci-dessous, ou refusez la proposition pour la retirer du calendrier.
+    </p>
+    {% elif open_proposal %}
+    <span class="pl-guide__step">Étape 2 sur 3 · Sondage en cours auprès de l’orchestre</span>
+    <p class="pl-guide__title">Les musiciens votent actuellement dans le sondage.</p>
+    <p class="pl-guide__text">
+      Dès que vous confirmez une date ci-dessous, l’événement passe en confirmé et tous les votes Oui / Peut-être / Non deviennent automatiquement les présences.
+    </p>
+    {% else %}
+    <span class="pl-guide__step">Proposition non confirmée</span>
+    <p class="pl-guide__text">Cet événement est encore en statut « à confirmer ».</p>
+    {% endif %}
+  </div>
+  {% elif event.statut == 'annule' %}
+  <div class="pl-guide" role="status">
+    <span class="pl-guide__step">Événement annulé</span>
+    <p class="pl-guide__text">Cet événement est annulé et masqué du calendrier.</p>
+  </div>
+  {% endif %}
+
   {% if chat_link or event.chat_room %}
   <a class="pl-day-events__salon" href="{% url 'chat:room' chat_link.room_id|default:event.chat_room.pk %}">
     <span>Salon « {{ event.titre }} »</span>
@@ -47,16 +73,30 @@
 
   {% if draft_proposal %}
   <section class="pl-section pl-section--panel pl-section--pending joy-staff-ui">
-    <h2 style="margin-top:0;color:var(--accent)">Sondage en attente</h2>
+    <h2 style="margin-top:0;color:var(--accent)">Ouvrir le sondage de disponibilité</h2>
     <p class="pl-row__meta pl-roster-lead">
-      Choisissez qui reçoit le sondage de disponibilité, puis lancez-le.
+      Choisissez qui reçoit le sondage, puis lancez-le (ou
+      <a href="{% url 'planning:poll_detail' draft_proposal.pk %}#poll-edit" style="color:var(--accent)">ajoutez / modifiez des dates possibles</a>
+      avant l’envoi).
     </p>
     <form method="post" action="{% url 'planning:launch_poll' draft_proposal.pk %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.path }}">
       {% include "planning/_poll_audience_fieldset.html" with selected=draft_proposal.audience|default:"all" for_event=True show_preview=True proposal=draft_proposal id_prefix="roster_aud" %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:44px;margin-top:.75rem">
-        Lancer le sondage de disponibilité
+      <div style="display:flex;flex-wrap:wrap;gap:.65rem;margin-top:.75rem">
+        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:44px">
+          Lancer le sondage de disponibilité
+        </button>
+        <a class="pl-btn" href="{% url 'planning:poll_detail' draft_proposal.pk %}" style="min-height:44px">
+          Voir / modifier les dates
+        </a>
+      </div>
+    </form>
+    <form method="post" action="{% url 'planning:cancel_event' event.pk %}" style="margin-top:.75rem"
+          onsubmit="return confirm('Refuser et annuler cette proposition ? Elle sera retirée du calendrier.');">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--no" style="min-height:44px">
+        Refuser / annuler la proposition
       </button>
     </form>
   </section>
@@ -64,13 +104,20 @@
 
   {% if open_proposal %}
   <section class="pl-section pl-section--panel pl-section--pending joy-staff-ui">
-    <h2 style="margin-top:0;color:var(--accent)">Sondage ouvert — confirmer</h2>
+    <h2 style="margin-top:0;color:var(--accent)">Sondage ouvert — confirmer la date</h2>
     <p class="pl-row__meta pl-roster-lead">
-      Consultez les votes sur
-      <a href="{% url 'planning:poll_detail' open_proposal.pk %}" style="color:var(--accent)">la page du sondage</a>,
-      puis retenez une date pour passer l’événement en confirmé.
+      Consultez le détail des votes sur
+      <a href="{% url 'planning:poll_detail' open_proposal.pk %}" style="color:var(--accent);font-weight:600">la page du sondage</a>,
+      puis retenez la date définitive : les réponses du sondage rempliront automatiquement l’effectif.
     </p>
     {% include "planning/_confirm_poll_form.html" with proposal=open_proposal options=open_proposal.options.all id_prefix="roster" %}
+    <form method="post" action="{% url 'planning:cancel_event' event.pk %}" style="margin-top:.75rem"
+          onsubmit="return confirm('Annuler cette proposition et son sondage ? Elle sera retirée du calendrier.');">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--no" style="min-height:44px">
+        Annuler la proposition
+      </button>
+    </form>
   </section>
   {% endif %}
 
@@ -136,10 +183,24 @@
         </button>
       </div>
     </form>
+    {% if event.statut == 'confirme' %}
+    <form method="post" action="{% url 'planning:cancel_event' event.pk %}" style="margin-top:.85rem;padding-top:.85rem;border-top:1px solid var(--border)"
+          onsubmit="return confirm('Annuler cet événement confirmé ? Il sera dépublié et retiré du calendrier.');">
+      {% csrf_token %}
+      <button type="submit" class="pl-btn pl-btn--no" style="min-height:44px">
+        Annuler cet événement
+      </button>
+    </form>
+    {% endif %}
   </section>
 
   <section class="pl-section">
     <h2>Effectif par pupitre</h2>
+    {% if event.statut == 'tentative' %}
+    <p class="pl-row__meta" style="margin:0 0 .85rem">
+      Tant que la date n’est pas confirmée, les musiciens répondent dans le sondage. À la confirmation, leurs votes Oui / Peut-être / Non rempliront automatiquement cet effectif.
+    </p>
+    {% endif %}
     <div class="pl-stage" aria-label="Disposition scène" data-roster-invite-locks>
       {% for row in roster_rows %}
       <div class="pl-stage__row">

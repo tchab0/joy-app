@@ -181,9 +181,31 @@ class Event(models.Model):
             n += 1
         self.slug = candidate
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        instance._loaded_statut = instance.__dict__.get("statut")
+        return instance
+
     def save(self, *args, **kwargs):
         self.ensure_slug()
+        update_fields = kwargs.get("update_fields")
+        prev_statut = getattr(self, "_loaded_statut", None)
+        if self.statut == self.Statut.ANNULE and self.public:
+            self.public = False
+            if update_fields is not None:
+                kwargs["update_fields"] = list(set(update_fields) | {"public"})
+        elif (
+            prev_statut == self.Statut.TENTATIVE
+            and self.statut == self.Statut.CONFIRME
+            and not self.is_rehearsal
+            and (update_fields is None or "public" not in update_fields)
+        ):
+            self.public = True
+            if update_fields is not None:
+                kwargs["update_fields"] = list(set(update_fields) | {"public"})
         super().save(*args, **kwargs)
+        self._loaded_statut = self.statut
 
     @property
     def is_rehearsal(self) -> bool:

@@ -362,16 +362,17 @@ class BoardRow:
 
 def board_rows_for_user(user, *, limit: int = 40) -> list[BoardRow]:
     """
-    Toutes les dates à venir (confirmées ou non), pour positionnement libre.
+    Dates confirmées (et répétitions) à venir, pour positionnement libre.
 
-    Plus besoin d’avoir été invité : une ligne sans participation = « À répondre ».
+    Les dates encore « tentative » sont gérées séparément via les sondages
+    de disponibilité afin qu’il n’y ait jamais deux endroits concurrents
+    pour répondre.
     """
     now = timezone.now()
     events = list(
-        Event.objects.filter(
-            date_debut__gte=now,
-            statut__in=[Event.Statut.CONFIRME, Event.Statut.TENTATIVE],
-        )
+        Event.objects.filter(date_debut__gte=now)
+        .exclude(statut=Event.Statut.ANNULE)
+        .filter(Q(statut=Event.Statut.CONFIRME) | Q(type__is_rehearsal=True))
         .select_related("venue", "type")
         .order_by("date_debut")[:limit]
     )

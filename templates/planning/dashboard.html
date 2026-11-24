@@ -11,24 +11,53 @@
 <div class="pl" x-data="{ toast: '' }" @pl-toast.window="toast = $event.detail; setTimeout(() => toast = '', 2200)">
   <header class="pl-head">
     {% page_lead "planning.dashboard" class="page-lead--in-head" %}
-      Prochaines dates, réponses et matériel — l’essentiel, rien de plus.
+      Sondages de dates à l’étude, présences sur les dates confirmées et matériel.
     {% endpage_lead %}
   </header>
 
   {% include "planning/_module_nav.html" with active="mes_dates" %}
 
+  {% if open_date_polls %}
+  <section class="pl-section pl-section--panel" aria-label="Sondages de dates en cours">
+    <h2>Sondages en cours · dates à confirmer</h2>
+    <p class="pl-row__meta" style="margin:0 0 .75rem">
+      Ces dates ne sont pas encore bloquées : répondez dans le sondage. Si une date est confirmée, votre vote deviendra automatiquement votre présence.
+    </p>
+    {% for poll in open_date_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title is-proposal" href="{% url 'planning:poll_detail' poll.pk %}">{{ poll.title }}</a>
+        <p class="pl-row__meta">
+          {{ poll.options.all|length }} date{{ poll.options.all|length|pluralize }} proposée{{ poll.options.all|length|pluralize }}
+          {% if poll.linked_event and poll.linked_event.venue %} · {{ poll.linked_event.venue.nom }}{% endif %}
+          {% if poll.deadline %} · répondre avant le {{ poll.deadline|date:"d/m/Y" }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        {% if poll.user_answered %}
+        <span class="pl-badge pl-badge--success">Vote enregistré</span>
+        <a class="pl-btn" href="{% url 'planning:poll_detail' poll.pk %}">Voir / modifier</a>
+        {% else %}
+        <span class="pl-badge pl-badge--warning">À voter</span>
+        <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' poll.pk %}">Voter</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if pending %}
   <section class="pl-section pl-section--panel pl-section--pending" data-tour="rsvp-actions">
-    <h2>À répondre</h2>
+    <h2>À répondre · dates confirmées</h2>
     {% for p in pending %}
-    <div class="pl-row{% if not p.event.is_rehearsal and p.event.statut == 'tentative' %} pl-row--unconfirmed{% endif %}"
-         x-data="respondButtons({{ p.pk|default:'null' }}, '{{ p.status.code }}', { eventPk: {{ p.event.pk }}, eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
+    <div class="pl-row"
+         x-data="respondButtons({{ p.pk|default:'null' }}, '{{ p.status.code }}', { eventPk: {{ p.event.pk }}, eventConfirmed: true, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
          x-show="true"
          x-transition.opacity.duration.200ms>
       <div class="pl-row__main">
-        <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
+        <a class="pl-row__title is-confirmed" href="{% url 'planning:event_detail' p.event.pk %}">{{ p.event.titre }}</a>
         <p class="pl-row__meta">
-          {% if not p.event.is_rehearsal and p.event.statut == 'tentative' %}<span class="pl-row__flag pl-row__flag--unconfirmed">Non confirmé</span>{% endif %}
           {{ p.event.date_debut|date:"D d/m H:i" }}
           {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
           {% if p.poste %} · {{ p.poste_label }}{% endif %}
@@ -51,11 +80,10 @@
   <section class="pl-section">
     <h2>Remplacements proposés</h2>
     {% for s in sub_offers %}
-    <div class="pl-row{% if not s.participation.event.is_rehearsal and s.participation.event.statut == 'tentative' %} pl-row--unconfirmed{% endif %}" x-data="{ busy: false }">
+    <div class="pl-row" x-data="{ busy: false }">
       <div class="pl-row__main">
-        <a class="pl-row__title{% if s.participation.event.is_rehearsal %} is-rehearsal{% elif s.participation.event.statut == 'tentative' %} is-proposal{% elif s.participation.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
+        <a class="pl-row__title{% if s.participation.event.is_rehearsal %} is-rehearsal{% else %} is-confirmed{% endif %}" href="{% url 'planning:event_detail' s.participation.event.pk %}">{{ s.participation.event.titre }}</a>
         <p class="pl-row__meta">
-          {% if not s.participation.event.is_rehearsal and s.participation.event.statut == 'tentative' %}<span class="pl-row__flag pl-row__flag--unconfirmed">Non confirmé</span>{% endif %}
           Remplacer {{ s.participation.user.get_full_name|default:s.participation.user.username }}
           · {{ s.participation.event.date_debut|date:"d/m H:i" }}
           {% if s.participation.poste %} · {{ s.participation.poste_label }}{% endif %}
@@ -77,19 +105,18 @@
   {% endif %}
 
   <section class="pl-section pl-section--panel pl-section--upcoming"{% if not pending %} data-tour="rsvp-actions"{% endif %}>
-    <h2>Prochaines dates</h2>
+    <h2>Prochaines dates confirmées</h2>
     {% if upcoming %}
       {% for p in upcoming %}
-      <div class="pl-row{% if p.status.code == 'invited' or p.status.code == 'maybe' %} pl-row--needs-response{% endif %}{% if not p.event.is_rehearsal and p.event.statut == 'tentative' %} pl-row--unconfirmed{% endif %}"
+      <div class="pl-row{% if p.status.code == 'invited' or p.status.code == 'maybe' %} pl-row--needs-response{% endif %}"
            {% if p.event.is_rehearsal %}
            x-data="rehearsalAbsence('{% url 'repetitions:toggle_absence' p.event.pk %}', {% if p.status.code == 'declined' or p.status.code == 'replacement_needed' %}true{% else %}false{% endif %})"
            {% else %}
-           x-data="respondButtons({{ p.pk|default:'null' }}, '{{ p.status.code }}', { eventPk: {{ p.event.pk }}, eventConfirmed: {% if p.event.statut == 'confirme' %}true{% else %}false{% endif %}, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
+           x-data="respondButtons({{ p.pk|default:'null' }}, '{{ p.status.code }}', { eventPk: {{ p.event.pk }}, eventConfirmed: true, eventDateISO: '{{ p.event.date_debut|date:"Y-m-d" }}', eventDateLabel: '{{ p.event.date_debut|date:"D d/m/Y H:i" }}', posteLabel: '{% if p.poste %}{{ p.poste_label|escapejs }}{% endif %}' })"
            {% endif %}>
         <div class="pl-row__main">
-          <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% elif p.event.statut == 'tentative' %} is-proposal{% elif p.event.statut == 'confirme' %} is-confirmed{% endif %}" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
+          <a class="pl-row__title{% if p.event.is_rehearsal %} is-rehearsal{% else %} is-confirmed{% endif %}" href="{% if p.event.is_rehearsal %}{% url 'repetitions:detail' p.event.pk %}{% else %}{% url 'planning:event_detail' p.event.pk %}{% endif %}">{{ p.event.titre }}</a>
           <p class="pl-row__meta">
-            {% if not p.event.is_rehearsal and p.event.statut == 'tentative' %}<span class="pl-row__flag pl-row__flag--unconfirmed">Non confirmé</span>{% endif %}
             {{ p.event.date_debut|date:"D d/m/Y H:i" }}
             {% if p.event.venue %} · {{ p.event.venue.nom }}{% endif %}
             · {{ p.event.type.nom }}
@@ -117,7 +144,7 @@
       </div>
       {% endfor %}
     {% else %}
-      <p class="pl-empty">Aucune date à venir.</p>
+      <p class="pl-empty">Aucune date confirmée à venir.</p>
     {% endif %}
   </section>
 
@@ -131,14 +158,12 @@
         <p class="pl-row__meta">{{ g.event.titre }} · {{ g.event.date_debut|date:"d/m" }}</p>
       </div>
       <div class="pl-row__actions">
-        <button type="button" class="pl-btn" :class="status === 'ok' && 'pl-btn--yes is-active'" :disabled="busy"
-          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'ok'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='ok'; $dispatch('pl-toast','Noté'); } })">
-          OK
-        </button>
-        <button type="button" class="pl-btn" :class="status === 'missing' && 'pl-btn--no is-active'" :disabled="busy"
-          @click="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status:'missing'})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok){ status='missing'; } })">
-          Manque
-        </button>
+        <select x-model="status" :disabled="busy" style="padding:.4rem;border:1px solid var(--border);border-radius:var(--r);font:inherit"
+          @change="busy=true; fetch('{% url 'planning:equipment_status' g.pk %}', {method:'POST', headers:{'X-CSRFToken':'{{ csrf_token }}','Content-Type':'application/json'}, body: JSON.stringify({status})}).then(r=>r.json()).then(d=>{ busy=false; if(d.ok) $dispatch('pl-toast','Matériel mis à jour'); })">
+          <option value="needed">À prévoir</option>
+          <option value="ok">OK</option>
+          <option value="missing">Manquant</option>
+        </select>
       </div>
     </div>
     {% endfor %}
@@ -147,6 +172,5 @@
 
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
-
 {% include "planning/_respond_buttons_js.html" %}
 {% endblock %}

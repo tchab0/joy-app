@@ -543,58 +543,35 @@
          aria-labelledby="chat-poll-title"
          @click.stop>
       <header class="chat-poll-modal__head">
-        <h2 id="chat-poll-title">Nouveau sondage</h2>
+        <h2 id="chat-poll-title">Sondage rapide dans le salon</h2>
         <button type="button" class="chat-poll-modal__close" @click="closePollComposer()"
                 aria-label="Fermer">×</button>
       </header>
       <div class="chat-poll-modal__body">
+        <p class="chat-poll-modal__hint" style="margin:0 0 .75rem;padding:.6rem .75rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);color:var(--text)">
+          <strong>Question interne au salon</strong> (organisation, covoiturage, idée…) — n’ajoute rien au calendrier.
+          Pour proposer une date de concert ou d’événement, passez par le
+          <a href="{% url 'planning:dashboard' %}" style="color:var(--accent);font-weight:600">Calendrier</a>.
+        </p>
         <p class="chat-poll-modal__error" x-show="pollError" x-text="pollError" x-cloak></p>
         <label class="chat-poll-modal__label" for="chat-poll-q">Question</label>
         <input id="chat-poll-q" type="text" class="chat-poll-modal__input"
                x-model="pollTitle" maxlength="200"
-               placeholder="Ex. Dispo pour le bal ?"
+               placeholder="Ex. Covoiturage depuis La Roche ?"
                autocomplete="off">
         <label class="chat-poll-modal__label" for="chat-poll-desc">Description (optionnel)</label>
         <textarea id="chat-poll-desc" class="chat-poll-modal__textarea" rows="2"
                   x-model="pollDescription"
                   placeholder="Précisions…"></textarea>
 
-        <fieldset class="chat-poll-modal__fieldset">
-          <legend>Type</legend>
-          <label class="chat-poll-modal__choice">
-            <input type="radio" name="chat-poll-kind" value="dates"
-                   :checked="pollKind === 'dates'"
-                   @change="setPollKind('dates')">
-            <span>Dates</span>
-          </label>
-          <label class="chat-poll-modal__choice">
-            <input type="radio" name="chat-poll-kind" value="text"
-                   :checked="pollKind === 'text'"
-                   @change="setPollKind('text')">
-            <span>Texte</span>
-          </label>
-        </fieldset>
-
         <div class="chat-poll-modal__options">
-          <p class="chat-poll-modal__label">Options</p>
+          <p class="chat-poll-modal__label">Choix proposés</p>
           <template x-for="(opt, i) in pollOptions" :key="opt._id">
             <div class="chat-poll-modal__option">
-              <template x-if="pollKind === 'dates'">
-                <div class="chat-poll-modal__option-dates">
-                  <input type="datetime-local" class="chat-poll-modal__input"
-                         x-model="opt.starts_at" :aria-label="'Début option ' + (i + 1)">
-                  <input type="text" class="chat-poll-modal__input"
-                         x-model="opt.label" maxlength="120"
-                         :placeholder="'Libellé (opt.)'"
-                         :aria-label="'Libellé option ' + (i + 1)">
-                </div>
-              </template>
-              <template x-if="pollKind === 'text'">
-                <input type="text" class="chat-poll-modal__input"
-                       x-model="opt.label" maxlength="120"
-                       :placeholder="'Option ' + (i + 1)"
-                       :aria-label="'Option ' + (i + 1)">
-              </template>
+              <input type="text" class="chat-poll-modal__input"
+                     x-model="opt.label" maxlength="120"
+                     :placeholder="'Choix ' + (i + 1)"
+                     :aria-label="'Choix ' + (i + 1)">
               <button type="button" class="chat-poll-modal__remove"
                       @click="removePollOption(i)"
                       :disabled="pollOptions.length <= 2"
@@ -603,7 +580,7 @@
           </template>
           <button type="button" class="chat-poll-modal__add" @click="addPollOption()"
                   :disabled="pollOptions.length >= 12">
-            + Option
+            + Choix
           </button>
         </div>
 

@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 {% if room %}
-<script defer src="{% static 'chat/room.js' %}?v=39"></script>
+<script defer src="{% static 'chat/room.js' %}?v=40"></script>
 {% endif %}
 {% endblock %}
 
@@ -15,7 +15,7 @@
 {% include "chat/_room_styles.html" %}
 {% endif %}
 {% if needs_event_create %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
 {% endif %}
 {% endblock %}
 
@@ -87,272 +87,51 @@
     </p>
   </header>
 
-  {% if can_manage_poll or can_delete_poll %}
-  <section class="pl-section pl-poll-manage" aria-label="Gérer le sondage">
-    <h2 class="pl-poll-manage__title">Gérer ce sondage</h2>
-    {% if can_manage_poll %}
-    <p class="pl-poll-manage__lead">
-      Relancez les personnes qui n’ont pas répondu, modifiez les options,
-      clôturez (archiver) ou supprimez le sondage.
+  {% if proposal.is_draft %}
+  <div class="pl-guide" role="status">
+    <span class="pl-guide__step">Étape 1 sur 3 · En attente du staff</span>
+    <p class="pl-guide__title">Ce sondage n’est pas encore envoyé à l’orchestre.</p>
+    <p class="pl-guide__text">
+      Seuls l’auteur et le staff le voient pour l’instant. Dès que le staff ouvre le sondage, les musiciens sont notifiés et les dates proposées s’affichent en proposition sur le calendrier.
     </p>
-    {% elif proposal.is_draft %}
-    <p class="pl-poll-manage__lead">
-      Ce sondage est encore en brouillon — vous pouvez le supprimer, ou le lancer plus bas.
+  </div>
+  {% elif proposal.is_open and proposal.is_dates_poll %}
+  <div class="pl-guide" role="note">
+    <span class="pl-guide__step">Étape 2 sur 3 · Sondage de disponibilités en cours</span>
+    <p class="pl-guide__title">Indiquez Oui, Peut-être ou Non pour chaque créneau ci-dessous.</p>
+    <p class="pl-guide__text">
+      Cette date n’est pas encore bloquée. Dès que le staff confirmera la date retenue, votre réponse deviendra automatiquement votre présence sur l’événement (sans avoir à répondre une seconde fois).
+    </p>
+  </div>
+  {% elif proposal.is_open and proposal.is_text_poll %}
+  <div class="pl-guide" role="note">
+    <span class="pl-guide__step">Sondage rapide de salon · Ouvert</span>
+    <p class="pl-guide__text">
+      Indiquez votre réponse pour chaque choix ci-dessous. Ce sondage interne au salon ne modifie pas le calendrier des concerts.
+    </p>
+  </div>
+  {% elif proposal.status == 'locked' %}
+  <div class="pl-guide pl-guide--ok" role="status">
+    <span class="pl-guide__step">{% if event %}Étape 3 sur 3 · Date confirmée{% else %}Sondage clôturé{% endif %}</span>
+    {% if event %}
+    <p class="pl-guide__title">
+      La date a été retenue{% if proposal.locked_option and proposal.locked_option.starts_at %} ({{ proposal.locked_option.starts_at|date:"d/m/Y H:i" }}){% endif %} et l’événement est confirmé.
+    </p>
+    <p class="pl-guide__text">
+      Vos réponses au sondage ont été reportées sur l’événement. Pour mettre à jour votre présence, rendez-vous sur
+      <a href="{% url 'planning:event_detail' event.pk %}" style="color:var(--accent);font-weight:600">la fiche de l’événement</a>.
     </p>
     {% else %}
-    <p class="pl-poll-manage__lead">
-      Vous pouvez supprimer ce sondage.
-    </p>
+    <p class="pl-guide__text">Ce sondage est clos — les votes sont figés.</p>
     {% endif %}
-    <div class="pl-poll-manage__actions">
-      {% if can_manage_poll %}
-      <form method="post" action="{% url 'planning:remind_poll' proposal.pk %}" class="pl-poll-manage__form">
-        {% csrf_token %}
-        <button type="submit" class="pl-btn pl-btn--primary pl-poll-manage__btn">
-          Relancer les non-répondants
-        </button>
-      </form>
-      <a class="pl-btn pl-poll-manage__btn" href="#poll-edit">
-        Modifier le sondage
-      </a>
-      <form method="post" action="{% url 'planning:close_poll' proposal.pk %}" class="pl-poll-manage__form"
-            onsubmit="return confirm('Clôturer (archiver) ce sondage ? Les votes seront figés.');">
-        {% csrf_token %}
-        <button type="submit" class="pl-btn pl-poll-manage__btn">
-          Clôturer (archiver)
-        </button>
-      </form>
-      {% endif %}
-      {% if can_delete_poll %}
-      <form method="post" action="{% url 'planning:cancel_poll' proposal.pk %}" class="pl-poll-manage__form"
-            onsubmit="return confirm('Supprimer définitivement ce sondage ? Les réponses seront perdues.');">
-        {% csrf_token %}
-        <button type="submit" class="pl-btn pl-btn--no pl-poll-manage__btn">
-          Supprimer
-        </button>
-      </form>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {% if sibling_polls %}
-  <section class="pl-section pl-poll-siblings" aria-label="Autres sondages du salon">
-    <h2 class="pl-poll-siblings__title">
-      {% if sibling_polls|length == 1 %}
-      Autre sondage du même salon
-      {% else %}
-      Autres sondages du même salon
-      {% endif %}
-    </h2>
-    <p class="pl-poll-siblings__lead">
-      {% if proposal.source_room %}
-      Dans le salon « {{ proposal.source_room.title }} »,
-      {% else %}
-      Dans ce salon,
-      {% endif %}
-      {{ sibling_polls|length }} autre{{ sibling_polls|length|pluralize }}
-      sondage{{ sibling_polls|length|pluralize }}
-      {% if sibling_polls|length == 1 %}est accessible{% else %}sont accessibles{% endif %}.
-    </p>
-    <ul class="pl-poll-siblings__list">
-      {% for sibling in sibling_polls %}
-      <li>
-        <a class="pl-poll-siblings__link" href="{% url 'planning:poll_detail' sibling.pk %}">
-          <span class="pl-poll-siblings__name">{{ sibling.title }}</span>
-          <span class="pl-poll-siblings__status">
-            {% if sibling.is_open %}Ouvert{% elif sibling.status == 'locked' %}Clôturé{% elif sibling.is_draft %}Brouillon{% else %}{{ sibling.get_status_display }}{% endif %}
-            {% if sibling.deadline and sibling.is_open %} · avant le {{ sibling.deadline|date:"d/m" }}{% endif %}
-          </span>
-        </a>
-      </li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
-
-  {% if proposal.status == 'locked' and event %}
-  <section class="pl-section" aria-label="Sondage clôturé">
-    <p class="pl-row__meta" style="margin:0">
-      La date a été retenue
-      {% if proposal.locked_option %}
-      ({{ proposal.locked_option.starts_at|date:"d/m/Y H:i" }})
-      {% endif %}
-      et l’événement est confirmé.
-      {% if event %}
-      Pour indiquer votre disponibilité, répondez sur
-      <a href="{% url 'planning:event_detail' event.pk %}" style="color:var(--accent)">la fiche de l’événement</a>.
-      {% endif %}
-    </p>
-  </section>
-  {% endif %}
-
-  {% if can_edit_meta or can_edit_deadline or can_edit_options %}
-  <div id="poll-edit" class="pl-poll-edit-anchor" tabindex="-1"></div>
-  {% endif %}
-
-  {% if can_edit_meta %}
-  <section class="pl-section" aria-label="Modifier le sondage">
-    <h2>Question et audience</h2>
-    <form class="pl-form" method="post" action="{% url 'planning:update_poll_meta' proposal.pk %}">
-      {% csrf_token %}
-      <div>
-        <label for="poll_title">Question / titre</label>
-        <input type="text" name="title" id="poll_title" required maxlength="200"
-               value="{{ proposal.title }}">
-      </div>
-      <div style="margin-top:.75rem">
-        <label for="poll_description">Description (optionnel)</label>
-        <textarea name="description" id="poll_description" rows="3"
-                  style="width:100%;min-height:4.5rem;box-sizing:border-box">{{ proposal.description }}</textarea>
-      </div>
-      {% if proposal.source_room_id or proposal.linked_event_id %}
-      {% include "planning/_poll_audience_fieldset.html" with selected=proposal.audience for_event=proposal.linked_event_id show_preview=True proposal=proposal id_prefix="meta_aud" %}
-      {% else %}
-      <input type="hidden" name="audience" value="all">
-      <p class="pl-row__meta" style="margin:.75rem 0 0">
-        Audience : tout l’orchestre (sondage sans salon lié).
-      </p>
-      {% endif %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;margin-top:1rem">
-        Enregistrer
-      </button>
-    </form>
-  </section>
-  {% endif %}
-
-  {% if can_edit_deadline %}
-  <section class="pl-section">
-    <h2>Date limite de réponse</h2>
-    <form class="pl-form" method="post" action="{% url 'planning:update_poll_deadline' proposal.pk %}"
-          style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-      {% csrf_token %}
-      <div style="flex:1 1 12rem;min-width:0">
-        <label for="poll_deadline">Deadline (optionnel)</label>
-        <input type="date" name="deadline" id="poll_deadline"
-               value="{% if proposal.deadline %}{{ proposal.deadline|date:'Y-m-d' }}{% endif %}">
-      </div>
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
-        Enregistrer
-      </button>
-    </form>
-  </section>
-  {% endif %}
-
-  {% if can_edit_options %}
-  <section class="pl-section" aria-label="Modifier les options du sondage">
-    {% if proposal.is_text_poll %}
-    <h2>Options texte</h2>
-    <p class="pl-row__meta" style="margin:0 0 1rem">
-      Modifiez les propositions. Les votes déjà enregistrés restent liés à chaque option.
-    </p>
-    <form class="pl-form" method="post" action="{% url 'planning:update_poll_options' proposal.pk %}"
-          x-data="{ extra: 0 }">
-      {% csrf_token %}
-      {% for opt in proposal.options.all %}
-      <div style="padding:.75rem 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-        <div style="flex:1 1 12rem;min-width:0">
-          <label for="opt_label_{{ opt.pk }}">Option {{ forloop.counter }}</label>
-          <input type="text" name="option_label_{{ opt.pk }}" id="opt_label_{{ opt.pk }}"
-                 required maxlength="120" value="{{ opt.label }}">
-        </div>
-        <label class="pl-check" for="opt_delete_{{ opt.pk }}"
-               style="min-height:48px;align-items:center;margin:0">
-          <input type="checkbox" name="option_delete_{{ opt.pk }}"
-                 id="opt_delete_{{ opt.pk }}" value="1">
-          <span>Retirer</span>
-        </label>
-      </div>
-      {% endfor %}
-      <template x-for="i in Array.from({length: extra}, (_, k) => k)" :key="'newtxt'+i">
-        <div style="padding:.75rem 0;border-top:1px solid var(--border)">
-          <label :for="'new_label_'+i">Nouvelle option</label>
-          <input type="text" :name="'new_option_label_'+i" :id="'new_label_'+i"
-                 maxlength="120" placeholder="ex. Bebop">
-        </div>
-      </template>
-      <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.75rem">
-        <button type="button" class="pl-btn" style="min-height:48px" @click="extra++">
-          + Option
-        </button>
-        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
-          Enregistrer les options
-        </button>
-      </div>
-    </form>
-    {% else %}
-    <h2>Dates et heures proposées</h2>
-    <p class="pl-row__meta" style="margin:0 0 1rem">
-      Modifiez les créneaux du sondage. Les votes déjà enregistrés restent liés à chaque option.
-      {% if event and event.statut == 'tentative' %}
-      S’il ne reste qu’une date, l’événement lié est mis à jour automatiquement.
-      {% endif %}
-    </p>
-    <form class="pl-form" method="post" action="{% url 'planning:update_poll_options' proposal.pk %}"
-          x-data="{ extra: 0 }">
-      {% csrf_token %}
-      {% for opt in proposal.options.all %}
-      <div class="pl-form__row pl-form__row--2"
-           style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
-        <div>
-          <label for="opt_starts_{{ opt.pk }}">Option {{ forloop.counter }} — début</label>
-          <input type="datetime-local" name="option_starts_{{ opt.pk }}"
-                 id="opt_starts_{{ opt.pk }}" required
-                 value="{% if opt.starts_at %}{{ opt.starts_at|date:'Y-m-d\TH:i' }}{% endif %}">
-        </div>
-        <div>
-          <label for="opt_label_{{ opt.pk }}">Libellé (optionnel)</label>
-          <input type="text" name="option_label_{{ opt.pk }}" id="opt_label_{{ opt.pk }}"
-                 value="{{ opt.label }}" placeholder="ex. soirée">
-        </div>
-        <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-          <div style="flex:1 1 10rem;min-width:0">
-            <label for="opt_ends_{{ opt.pk }}">Fin (optionnel)</label>
-            <input type="datetime-local" name="option_ends_{{ opt.pk }}"
-                   id="opt_ends_{{ opt.pk }}"
-                   value="{% if opt.ends_at %}{{ opt.ends_at|date:'Y-m-d\TH:i' }}{% endif %}">
-          </div>
-          <label class="pl-check" for="opt_delete_{{ opt.pk }}"
-                 style="min-height:48px;align-items:center;margin:0">
-            <input type="checkbox" name="option_delete_{{ opt.pk }}"
-                   id="opt_delete_{{ opt.pk }}" value="1">
-            <span>Retirer</span>
-          </label>
-        </div>
-      </div>
-      {% endfor %}
-      <template x-for="i in Array.from({length: extra}, (_, k) => k)" :key="'new'+i">
-        <div class="pl-form__row pl-form__row--2"
-             style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
-          <div>
-            <label :for="'new_starts_'+i">Nouvelle option — début</label>
-            <input type="datetime-local" :name="'new_option_starts_'+i" :id="'new_starts_'+i">
-          </div>
-          <div>
-            <label :for="'new_label_'+i">Libellé (optionnel)</label>
-            <input type="text" :name="'new_option_label_'+i" :id="'new_label_'+i"
-                   placeholder="ex. matin">
-          </div>
-        </div>
-      </template>
-      <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.75rem">
-        <button type="button" class="pl-btn" style="min-height:48px" @click="extra++">
-          + Option
-        </button>
-        <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
-          Enregistrer les dates
-        </button>
-      </div>
-    </form>
-    {% endif %}
-  </section>
+  </div>
   {% endif %}
 
   {% if is_planning_staff and proposal.is_draft %}
-  <section class="pl-section pl-accept__staff">
-    <h2>Lancer le sondage</h2>
+  <section class="pl-section pl-accept__staff pl-section--pending" aria-label="Lancer le sondage">
+    <h2 style="margin-top:0;color:var(--accent)">Ouvrir le sondage à l’orchestre</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
-      Choisissez qui reçoit le sondage, puis lancez : les destinataires sont notifiés.
+      Vérifiez qui reçoit le sondage, puis ouvrez-le : les destinataires reçoivent une notification et les dates apparaissent en proposition sur le calendrier.
     </p>
     <form method="post" action="{% url 'planning:launch_poll' proposal.pk %}">
       {% csrf_token %}
@@ -363,22 +142,6 @@
       {% endif %}
       <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;margin-top:.75rem">
         Lancer le sondage de disponibilité
-      </button>
-    </form>
-  </section>
-  {% endif %}
-
-  {% if is_planning_staff and proposal.is_open %}
-  <section class="pl-section pl-accept__staff">
-    <h2>Notifications</h2>
-    <p class="pl-row__meta" style="margin-bottom:1rem">
-      Renvoie le push / e-mail selon l’audience actuelle
-      ({{ proposal.audience|audience_label }}).
-    </p>
-    <form method="post" action="{% url 'planning:resend_poll_notifications' proposal.pk %}">
-      {% csrf_token %}
-      <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
-        Renvoyer les notifications
       </button>
     </form>
   </section>
@@ -395,18 +158,15 @@
   <section class="pl-section pl-accept__staff pl-section--pending"
            aria-label="Confirmer l’événement"
            {% if needs_event_create %}x-data="{ venueMode: 'existing', parentMode: 'none', typeLabel: '' }"{% endif %}>
-    <h2 style="margin-top:0;color:var(--accent)">Confirmer l’événement</h2>
+    <h2 style="margin-top:0;color:var(--accent)">Étape finale staff · Confirmer l’événement</h2>
     <p class="pl-row__meta" style="margin-bottom:1rem">
       {% if event %}
-      Après le sondage, retenez une date : l’événement passe en
-      <strong style="color:var(--ok)">confirmé</strong>,
-      les votes Oui / Non / Peut-être sont reportés sur les participations
-      (modifiables ensuite), et le sondage est clôturé.
+      Retenez la date définitive : l’événement passe en <strong style="color:var(--ok)">confirmé</strong>,
+      tous les votes Oui / Peut-être / Non de cette date créent automatiquement les présences des musiciens,
+      et les autres créneaux disparaissent du calendrier.
       {% else %}
-      Ce sondage n’a pas encore d’événement. Choisissez la date, le type et le lieu
-      pour créer l’événement en
-      <strong style="color:var(--ok)">confirmé</strong>
-      et clôturer le sondage.
+      Ce sondage n’a pas encore d’événement lié : choisissez la date, le type et le lieu pour créer l’événement en <strong style="color:var(--ok)">confirmé</strong>,
+      reporter automatiquement les votes en présences et clôturer le sondage.
       {% endif %}
     </p>
     {% if needs_event_create %}
@@ -453,6 +213,267 @@
   </section>
   {% endif %}
 
+  {% if sibling_polls %}
+  <section class="pl-section pl-poll-siblings" aria-label="Autres sondages du salon">
+    <h2 class="pl-poll-siblings__title">
+      {% if sibling_polls|length == 1 %}
+      Autre sondage du même salon
+      {% else %}
+      Autres sondages du même salon
+      {% endif %}
+    </h2>
+    <p class="pl-poll-siblings__lead">
+      {% if proposal.source_room %}
+      Dans le salon « {{ proposal.source_room.title }} »,
+      {% else %}
+      Dans ce salon,
+      {% endif %}
+      {{ sibling_polls|length }} autre{{ sibling_polls|length|pluralize }}
+      sondage{{ sibling_polls|length|pluralize }}
+      {% if sibling_polls|length == 1 %}est accessible{% else %}sont accessibles{% endif %}.
+    </p>
+    <ul class="pl-poll-siblings__list">
+      {% for sibling in sibling_polls %}
+      <li>
+        <a class="pl-poll-siblings__link" href="{% url 'planning:poll_detail' sibling.pk %}">
+          <span class="pl-poll-siblings__name">{{ sibling.title }}</span>
+          <span class="pl-poll-siblings__status">
+            {% if sibling.is_open %}Ouvert{% elif sibling.status == 'locked' %}Clôturé{% elif sibling.is_draft %}Brouillon{% else %}{{ sibling.get_status_display }}{% endif %}
+            {% if sibling.deadline and sibling.is_open %} · avant le {{ sibling.deadline|date:"d/m" }}{% endif %}
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if can_manage_poll or can_delete_poll or can_edit_meta or can_edit_deadline or can_edit_options %}
+  <section class="pl-section pl-poll-manage" aria-label="Gérer le sondage">
+    <h2 class="pl-poll-manage__title">Gérer ce sondage</h2>
+    <p class="pl-poll-manage__lead">
+      {% if proposal.is_open and event and event.statut == 'tentative' %}
+      Relancez ceux qui n’ont pas encore voté, ajustez les créneaux proposés, ou annulez la proposition si elle n’a plus lieu d’être.
+      {% elif proposal.is_draft %}
+      Tant que le sondage est encore en brouillon, vous pouvez ajuster ses créneaux ou supprimer / annuler la proposition.
+      {% else %}
+      Relancez les non-répondants, modifiez les options ou clôturez ce sondage.
+      {% endif %}
+    </p>
+    <div class="pl-poll-manage__actions">
+      {% if can_manage_poll %}
+      <form method="post" action="{% url 'planning:remind_poll' proposal.pk %}" class="pl-poll-manage__form">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--primary pl-poll-manage__btn">
+          Relancer les non-répondants
+        </button>
+      </form>
+      {% if is_planning_staff %}
+      <form method="post" action="{% url 'planning:resend_poll_notifications' proposal.pk %}" class="pl-poll-manage__form">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-poll-manage__btn">
+          Renvoyer à tous
+        </button>
+      </form>
+      {% endif %}
+      {% if proposal.is_text_poll or not event %}
+      <form method="post" action="{% url 'planning:close_poll' proposal.pk %}" class="pl-poll-manage__form"
+            onsubmit="return confirm('Clôturer ce sondage sans créer d’événement ? Les votes seront figés.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-poll-manage__btn">
+          Clôturer le sondage
+        </button>
+      </form>
+      {% endif %}
+      {% endif %}
+      {% if can_delete_poll %}
+      {% if event and event.statut == 'tentative' %}
+      <form method="post" action="{% url 'planning:cancel_poll' proposal.pk %}" class="pl-poll-manage__form"
+            onsubmit="return confirm('Annuler cette proposition et son sondage ? L’événement proposé sera retiré du calendrier.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--no pl-poll-manage__btn">
+          Annuler la proposition
+        </button>
+      </form>
+      {% else %}
+      <form method="post" action="{% url 'planning:cancel_poll' proposal.pk %}" class="pl-poll-manage__form"
+            onsubmit="return confirm('Supprimer ce sondage ? Les réponses seront perdues.');">
+        {% csrf_token %}
+        <button type="submit" class="pl-btn pl-btn--no pl-poll-manage__btn">
+          Supprimer le sondage
+        </button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
+
+    {% if can_edit_meta or can_edit_deadline or can_edit_options %}
+    <details id="poll-edit" class="pl-accordion" style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.75rem">
+      <summary class="pl-accordion__summary" style="cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center">
+        Modifier le sondage (titre, date limite, créneaux)
+      </summary>
+
+      {% if can_edit_meta %}
+      <div style="margin-top:1rem">
+        <h3 style="font-size:1rem;margin:0 0 .5rem">Question et audience</h3>
+        <form class="pl-form" method="post" action="{% url 'planning:update_poll_meta' proposal.pk %}">
+          {% csrf_token %}
+          <div>
+            <label for="poll_title">Question / titre</label>
+            <input type="text" name="title" id="poll_title" required maxlength="200"
+                   value="{{ proposal.title }}">
+          </div>
+          <div style="margin-top:.75rem">
+            <label for="poll_description">Description (optionnel)</label>
+            <textarea name="description" id="poll_description" rows="3"
+                      style="width:100%;min-height:4.5rem;box-sizing:border-box">{{ proposal.description }}</textarea>
+          </div>
+          {% if proposal.source_room_id or proposal.linked_event_id %}
+          {% include "planning/_poll_audience_fieldset.html" with selected=proposal.audience for_event=proposal.linked_event_id show_preview=True proposal=proposal id_prefix="meta_aud" %}
+          {% else %}
+          <input type="hidden" name="audience" value="all">
+          <p class="pl-row__meta" style="margin:.75rem 0 0">
+            Audience : tout l’orchestre (sondage sans salon lié).
+          </p>
+          {% endif %}
+          <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px;margin-top:1rem">
+            Enregistrer
+          </button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if can_edit_deadline %}
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <h3 style="font-size:1rem;margin:0 0 .5rem">Date limite de réponse</h3>
+        <form class="pl-form" method="post" action="{% url 'planning:update_poll_deadline' proposal.pk %}"
+              style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+          {% csrf_token %}
+          <div style="flex:1 1 12rem;min-width:0">
+            <label for="poll_deadline">Deadline (optionnel)</label>
+            <input type="date" name="deadline" id="poll_deadline"
+                   value="{% if proposal.deadline %}{{ proposal.deadline|date:'Y-m-d' }}{% endif %}">
+          </div>
+          <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+            Enregistrer
+          </button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if can_edit_options %}
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)">
+        {% if proposal.is_text_poll %}
+        <h3 style="font-size:1rem;margin:0 0 .35rem">Options texte</h3>
+        <p class="pl-row__meta" style="margin:0 0 .75rem">
+          Modifiez les propositions. Les votes déjà enregistrés restent liés à chaque option.
+        </p>
+        <form class="pl-form" method="post" action="{% url 'planning:update_poll_options' proposal.pk %}"
+              x-data="{ extra: 0 }">
+          {% csrf_token %}
+          {% for opt in proposal.options.all %}
+          <div style="padding:.75rem 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+            <div style="flex:1 1 12rem;min-width:0">
+              <label for="opt_label_{{ opt.pk }}">Option {{ forloop.counter }}</label>
+              <input type="text" name="option_label_{{ opt.pk }}" id="opt_label_{{ opt.pk }}"
+                     required maxlength="120" value="{{ opt.label }}">
+            </div>
+            <label class="pl-check" for="opt_delete_{{ opt.pk }}"
+                   style="min-height:48px;align-items:center;margin:0">
+              <input type="checkbox" name="option_delete_{{ opt.pk }}"
+                     id="opt_delete_{{ opt.pk }}" value="1">
+              <span>Retirer</span>
+            </label>
+          </div>
+          {% endfor %}
+          <template x-for="i in Array.from({length: extra}, (_, k) => k)" :key="'newtxt'+i">
+            <div style="padding:.75rem 0;border-top:1px solid var(--border)">
+              <label :for="'new_label_'+i">Nouvelle option</label>
+              <input type="text" :name="'new_option_label_'+i" :id="'new_label_'+i"
+                     maxlength="120" placeholder="ex. Bebop">
+            </div>
+          </template>
+          <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.75rem">
+            <button type="button" class="pl-btn" style="min-height:48px" @click="extra++">
+              + Option
+            </button>
+            <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+              Enregistrer les options
+            </button>
+          </div>
+        </form>
+        {% else %}
+        <h3 style="font-size:1rem;margin:0 0 .35rem">Dates et heures proposées</h3>
+        <p class="pl-row__meta" style="margin:0 0 .75rem">
+          Modifiez ou ajoutez des créneaux. Les votes déjà enregistrés restent liés à chaque option.
+          {% if event and event.statut == 'tentative' %}
+          S’il ne reste qu’une date, l’événement lié est mis à jour automatiquement.
+          {% endif %}
+        </p>
+        <form class="pl-form" method="post" action="{% url 'planning:update_poll_options' proposal.pk %}"
+              x-data="{ extra: 0 }">
+          {% csrf_token %}
+          {% for opt in proposal.options.all %}
+          <div class="pl-form__row pl-form__row--2"
+               style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
+            <div>
+              <label for="opt_starts_{{ opt.pk }}">Option {{ forloop.counter }} — début</label>
+              <input type="datetime-local" name="option_starts_{{ opt.pk }}"
+                     id="opt_starts_{{ opt.pk }}" required
+                     value="{% if opt.starts_at %}{{ opt.starts_at|date:'Y-m-d\TH:i' }}{% endif %}">
+            </div>
+            <div>
+              <label for="opt_label_{{ opt.pk }}">Libellé (optionnel)</label>
+              <input type="text" name="option_label_{{ opt.pk }}" id="opt_label_{{ opt.pk }}"
+                     value="{{ opt.label }}" placeholder="ex. soirée">
+            </div>
+            <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+              <div style="flex:1 1 10rem;min-width:0">
+                <label for="opt_ends_{{ opt.pk }}">Fin (optionnel)</label>
+                <input type="datetime-local" name="option_ends_{{ opt.pk }}"
+                       id="opt_ends_{{ opt.pk }}"
+                       value="{% if opt.ends_at %}{{ opt.ends_at|date:'Y-m-d\TH:i' }}{% endif %}">
+              </div>
+              <label class="pl-check" for="opt_delete_{{ opt.pk }}"
+                     style="min-height:48px;align-items:center;margin:0">
+                <input type="checkbox" name="option_delete_{{ opt.pk }}"
+                       id="opt_delete_{{ opt.pk }}" value="1">
+                <span>Retirer</span>
+              </label>
+            </div>
+          </div>
+          {% endfor %}
+          <template x-for="i in Array.from({length: extra}, (_, k) => k)" :key="'new'+i">
+            <div class="pl-form__row pl-form__row--2"
+                 style="padding:.75rem 0;border-top:1px solid var(--border);gap:.75rem">
+              <div>
+                <label :for="'new_starts_'+i">Nouvelle option — début</label>
+                <input type="datetime-local" :name="'new_option_starts_'+i" :id="'new_starts_'+i">
+              </div>
+              <div>
+                <label :for="'new_label_'+i">Libellé (optionnel)</label>
+                <input type="text" :name="'new_option_label_'+i" :id="'new_label_'+i"
+                       placeholder="ex. matin">
+              </div>
+            </div>
+          </template>
+          <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.75rem">
+            <button type="button" class="pl-btn" style="min-height:48px" @click="extra++">
+              + Option
+            </button>
+            <button type="submit" class="pl-btn pl-btn--primary" style="min-height:48px">
+              Enregistrer les dates
+            </button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if room %}
   {% include "chat/_room_embed.html" %}
   {% endif %}
@@ -464,11 +485,19 @@
   <div class="pl-toast" x-show="toast" x-cloak x-transition.opacity x-text="toast"></div>
 </div>
 {% include "planning/_poll_votes_js.html" %}
+<script>
+(function () {
+  if (location.hash === '#poll-edit') {
+    var d = document.getElementById('poll-edit');
+    if (d) d.open = true;
+  }
+})();
+</script>
 {% endblock %}
 
 {% block extra_js %}
 {% if needs_event_create %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script src="{% static 'planning/venue_map.js' %}?v=2"></script>
 <script src="{% static 'planning/organisme_typeahead.js' %}"></script>
 {% endif %}

@@ -38,10 +38,14 @@ User = get_user_model()
 
 class PlanningBaseTestCase(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
         planning_services._constants._STATUS_CACHE = None
         self.statuses = ensure_participation_statuses(force=True)
-        self.section = OrchestraSection.objects.create(
-            code="trompette", name="Trompettes", sort_order=10
+        self.section, _ = OrchestraSection.objects.get_or_create(
+            code="trompettes",
+            defaults={"name": "Trompettes & clarinette", "sort_order": 20},
         )
         self.venue = Venue.objects.create(nom="Salle Test", ville="La Roche-sur-Yon")
         self.event_type = EventType.objects.create(nom="Répétition", is_rehearsal=True)
@@ -169,13 +173,21 @@ class DashboardTests(PlanningBaseTestCase):
         self.assertNotIn("Répète 4", upcoming_titles)
 
     def test_my_board_lists_events_without_invitation(self):
-        """Mes dates liste toutes les dates, même sans participation."""
+        """Mes dates liste toutes les dates confirmées (même sans participation), pas les brouillons."""
         concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
         orphan = Event.objects.create(
             titre="Concert orphelin",
             type=concert_type,
             venue=self.venue,
             date_debut=timezone.now() + timedelta(days=10),
+            statut=Event.Statut.CONFIRME,
+            public=False,
+        )
+        tentative_draft = Event.objects.create(
+            titre="Proposition non confirmée",
+            type=concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=11),
             statut=Event.Statut.TENTATIVE,
             public=False,
         )
@@ -193,6 +205,8 @@ class DashboardTests(PlanningBaseTestCase):
         upcoming_titles = [row.event.titre for row in r.context["upcoming"]]
         self.assertIn("Concert orphelin", pending_titles)
         self.assertNotIn("Concert orphelin", upcoming_titles)
+        self.assertNotIn(tentative_draft.titre, pending_titles)
+        self.assertNotIn(tentative_draft.titre, upcoming_titles)
 
     def test_respond_event_without_prior_invitation(self):
         concert_type = EventType.objects.create(nom="Concert free", is_rehearsal=False)
@@ -2067,6 +2081,8 @@ class CalendarSummaryTests(PlanningBaseTestCase):
         self.assertContains(r_staff, "Pas encore de morceaux")
 
     def test_calendar_distinguishes_proposal_from_confirmed(self):
+        from planning.services import launch_availability_poll
+
         concert_type = EventType.objects.create(nom="Concert distingué")
         proposal = Event.objects.create(
             titre="Proposition bal",
@@ -2075,6 +2091,18 @@ class CalendarSummaryTests(PlanningBaseTestCase):
             date_debut=timezone.now() + timedelta(days=30),
             statut=Event.Statut.TENTATIVE,
         )
+        poll = DateProposal.objects.create(
+            title="Proposition bal",
+            status=DateProposal.Status.DRAFT,
+            linked_event=proposal,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ALL,
+        )
+        DateOption.objects.create(
+            proposal=poll,
+            starts_at=proposal.date_debut,
+        )
+        launch_availability_poll(poll, launched_by=self.staff)
         confirmed = Event.objects.create(
             titre="Concert validé",
             type=concert_type,
@@ -3827,3 +3855,298 @@ class CalendarPresenceDotsAndBlinkTests(PlanningBaseTestCase):
         self.assertEqual(day2["presence_status"], "absent")
         self.assertTrue(day2["is_absent"])
         self.assertFalse(day2["needs_response"])
+
+
+class UnifiedProposalAndPollWorkflowTests(PlanningBaseTestCase):
+    """Tests du cycle unifié en 3 étapes : Proposition -> Sondage -> Événement confirmé."""
+
+    def setUp(self):
+        super().setUp()
+        self.concert_type = EventType.objects.create(nom="Concert", is_rehearsal=False)
+        self.other_musician = User.objects.create_user(
+            username="musi2",
+            password="pass12345",
+            is_musician=True,
+            first_name="Miles",
+            last_name="Davis",
+        )
+        other_profile = self.other_musician.musician_profile
+        other_profile.section = self.section
+        other_profile.poste_titulaire = MusicianProfile.Poste.TROMPETTE_2
+        other_profile.save()
+
+    def test_musician_proposes_multi_date_event_restricted_until_launched(self):
+        day1 = (timezone.localdate() + timedelta(days=20)).isoformat()
+        day2 = (timezone.localdate() + timedelta(days=27)).isoformat()
+        deadline = (timezone.localdate() + timedelta(days=10)).isoformat()
+
+        self.client.login(username="musi", password="pass12345")
+        r = self.client.post(
+            reverse("planning:propose_event"),
+            {
+                "titre": "Festival Jazz Vendée",
+                "type_id": self.concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "date": day1,
+                "time": "20:30",
+                "date_label": "Soirée ouverture",
+                "extra_date_0": day2,
+                "extra_time_0": "18:00",
+                "extra_label_0": "Clôture dimanche",
+                "deadline": deadline,
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        event = Event.objects.get(titre="Festival Jazz Vendée")
+        self.assertEqual(event.statut, Event.Statut.TENTATIVE)
+        self.assertFalse(event.public)
+        proposal = DateProposal.objects.get(linked_event=event)
+        self.assertEqual(proposal.status, DateProposal.Status.DRAFT)
+        self.assertEqual(proposal.options.count(), 2)
+        self.assertEqual(
+            r.url, reverse("planning:poll_detail", args=[proposal.pk])
+        )
+
+        # Tant que le sondage est en brouillon : visible par l’auteur et le staff,
+        # mais invisible des autres musiciens sur le calendrier et la fiche événement.
+        today = timezone.localdate()
+        d1 = datetime.fromisoformat(day1).date()
+        window_year = d1.year if d1.month >= today.month else d1.year - 1
+
+        cal_author = self.client.get(
+            reverse("planning:dashboard"), {"year": window_year}
+        )
+        self.assertContains(cal_author, "Festival Jazz Vendée")
+        self.assertContains(cal_author, "En attente du staff")
+        detail_author = self.client.get(
+            reverse("planning:event_detail", args=[event.pk])
+        )
+        self.assertEqual(detail_author.status_code, 200)
+        self.assertNotContains(detail_author, 'x-data="respondButtons(')
+
+        self.client.login(username="musi2", password="pass12345")
+        cal_other = self.client.get(
+            reverse("planning:dashboard"), {"year": window_year}
+        )
+        self.assertNotContains(cal_other, "Festival Jazz Vendée")
+        detail_other = self.client.get(
+            reverse("planning:event_detail", args=[event.pk])
+        )
+        self.assertEqual(detail_other.status_code, 403)
+
+        self.client.login(username="staff1", password="pass12345")
+        cal_staff = self.client.get(
+            reverse("planning:dashboard"), {"year": window_year}
+        )
+        self.assertContains(cal_staff, "Festival Jazz Vendée")
+
+    def test_staff_can_create_confirmed_event_directly_or_launch_poll_immediately(self):
+        day_confirmed = (timezone.localdate() + timedelta(days=18)).isoformat()
+        self.client.login(username="staff1", password="pass12345")
+
+        r_conf = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "creation_mode": "confirmed",
+                "titre": "Concert Ferme Mairie",
+                "type_id": self.concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "date": day_confirmed,
+                "time": "21:00",
+            },
+        )
+        self.assertEqual(r_conf.status_code, 302)
+        ev_conf = Event.objects.get(titre="Concert Ferme Mairie")
+        self.assertEqual(ev_conf.statut, Event.Statut.CONFIRME)
+        self.assertTrue(ev_conf.public)
+        self.assertFalse(DateProposal.objects.filter(linked_event=ev_conf).exists())
+        self.assertEqual(
+            r_conf.url, reverse("planning:event_roster", args=[ev_conf.pk])
+        )
+
+        day_poll_1 = (timezone.localdate() + timedelta(days=25)).isoformat()
+        day_poll_2 = (timezone.localdate() + timedelta(days=26)).isoformat()
+        r_poll = self.client.post(
+            reverse("planning:create_event"),
+            {
+                "creation_mode": "poll",
+                "titre": "Gala Automne",
+                "type_id": self.concert_type.pk,
+                "venue_mode": "existing",
+                "venue_id": self.venue.pk,
+                "date": day_poll_1,
+                "time": "20:00",
+                "extra_date_0": day_poll_2,
+                "extra_time_0": "20:30",
+                "deadline": (timezone.localdate() + timedelta(days=10)).isoformat(),
+            },
+        )
+        self.assertEqual(r_poll.status_code, 302)
+        ev_poll = Event.objects.get(titre="Gala Automne")
+        self.assertEqual(ev_poll.statut, Event.Statut.TENTATIVE)
+        poll = DateProposal.objects.get(linked_event=ev_poll)
+        self.assertEqual(poll.status, DateProposal.Status.OPEN)
+        self.assertEqual(poll.options.count(), 2)
+        self.assertEqual(
+            r_poll.url, reverse("planning:poll_detail", args=[poll.pk])
+        )
+
+    def test_single_response_path_and_votes_carried_over_on_lock(self):
+        from planning.models import DateVote
+        from planning.services import cast_date_vote, launch_availability_poll
+
+        event = Event.objects.create(
+            titre="Soirée Swing",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=22),
+            statut=Event.Statut.TENTATIVE,
+            proposed_by=self.staff,
+        )
+        poll = DateProposal.objects.create(
+            title="Soirée Swing",
+            status=DateProposal.Status.DRAFT,
+            linked_event=event,
+            created_by=self.staff,
+            audience=DateProposal.Audience.ALL,
+        )
+        opt1 = DateOption.objects.create(
+            proposal=poll,
+            starts_at=event.date_debut,
+            sort_order=0,
+        )
+        opt2 = DateOption.objects.create(
+            proposal=poll,
+            starts_at=event.date_debut + timedelta(days=1),
+            sort_order=1,
+        )
+        launch_availability_poll(poll, launched_by=self.staff)
+
+        # Tant que l’événement est tentative, la réponse directe RSVP est bloquée.
+        self.client.login(username="musi", password="pass12345")
+        r_direct = self.client.post(
+            reverse("planning:respond_event", args=[event.pk]),
+            data='{"response":"yes"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r_direct.status_code, 400)
+        self.assertFalse(r_direct.json()["ok"])
+        self.assertIn("sondage", r_direct.json()["error"].lower())
+
+        # « Mes dates » affiche le sondage à répondre, pas l’événement tentative dans pending.
+        board = self.client.get(reverse("planning:my_board"))
+        self.assertIn(poll, list(board.context["open_date_polls"]))
+        self.assertNotIn(event.pk, [r.event.pk for r in board.context["pending"]])
+
+        # Votes sur le créneau 2 (sans EventParticipation préexistante).
+        cast_date_vote(opt2, self.musician, DateVote.Choice.YES)
+        cast_date_vote(opt2, self.other_musician, DateVote.Choice.MAYBE)
+        cast_date_vote(opt2, self.sub, DateVote.Choice.NO)
+
+        self.client.login(username="staff1", password="pass12345")
+        r_lock = self.client.post(
+            reverse("planning:lock_poll", args=[poll.pk]),
+            {"option_id": opt2.pk},
+        )
+        self.assertEqual(r_lock.status_code, 302)
+        event.refresh_from_db()
+        poll.refresh_from_db()
+        self.assertEqual(event.statut, Event.Statut.CONFIRME)
+        self.assertTrue(event.public)
+        self.assertEqual(event.date_debut, opt2.starts_at)
+        self.assertEqual(poll.status, DateProposal.Status.LOCKED)
+
+        # Les votes ont créé automatiquement les EventParticipation correspondantes.
+        p_yes = EventParticipation.objects.get(event=event, user=self.musician)
+        p_maybe = EventParticipation.objects.get(event=event, user=self.other_musician)
+        p_no = EventParticipation.objects.get(event=event, user=self.sub)
+        self.assertEqual(p_yes.status.code, "confirmed")
+        self.assertEqual(p_yes.poste, MusicianProfile.Poste.TROMPETTE_1)
+        self.assertEqual(p_maybe.status.code, "maybe")
+        self.assertEqual(p_no.status.code, "declined")
+
+    def test_cancelling_poll_or_event_synchronizes_and_hides_from_calendar(self):
+        from planning.services import launch_availability_poll
+
+        # 1) Annuler le sondage d’une proposition tentative annule aussi l’événement.
+        ev1 = Event.objects.create(
+            titre="Proposition Annulée Via Sondage",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=16),
+            statut=Event.Statut.TENTATIVE,
+            proposed_by=self.musician,
+        )
+        poll1 = DateProposal.objects.create(
+            title=ev1.titre,
+            status=DateProposal.Status.DRAFT,
+            linked_event=ev1,
+            created_by=self.musician,
+            audience=DateProposal.Audience.ALL,
+        )
+        DateOption.objects.create(proposal=poll1, starts_at=ev1.date_debut)
+        launch_availability_poll(poll1, launched_by=self.staff)
+
+        self.client.login(username="musi", password="pass12345")
+        r_cancel_poll = self.client.post(
+            reverse("planning:cancel_poll", args=[poll1.pk])
+        )
+        self.assertEqual(r_cancel_poll.status_code, 302)
+        poll1.refresh_from_db()
+        ev1.refresh_from_db()
+        self.assertEqual(poll1.status, DateProposal.Status.CANCELLED)
+        self.assertEqual(ev1.statut, Event.Statut.ANNULE)
+        self.assertFalse(ev1.public)
+
+        today = timezone.localdate()
+        d1 = timezone.localtime(ev1.date_debut).date()
+        window_year = d1.year if d1.month >= today.month else d1.year - 1
+        cal = self.client.get(
+            reverse("planning:dashboard"), {"year": window_year}
+        )
+        cal_event_ids = {
+            e.pk
+            for m in cal.context["months"]
+            for w in m["weeks"]
+            for day in w
+            if day
+            for e in day["events"]
+        }
+        self.assertNotIn(ev1.pk, cal_event_ids)
+
+        # 2) CancelEventView annule un événement et tous ses sondages ouverts.
+        ev2 = Event.objects.create(
+            titre="Concert Annulé Par Staff",
+            type=self.concert_type,
+            venue=self.venue,
+            date_debut=timezone.now() + timedelta(days=19),
+            statut=Event.Statut.CONFIRME,
+            public=True,
+        )
+        poll2 = DateProposal.objects.create(
+            title="Sondage rattaché",
+            status=DateProposal.Status.OPEN,
+            linked_event=ev2,
+            created_by=self.staff,
+            launched_at=timezone.now(),
+        )
+        # Un simple musicien ne peut pas annuler un événement confirmé.
+        self.assertEqual(
+            self.client.post(
+                reverse("planning:cancel_event", args=[ev2.pk])
+            ).status_code,
+            403,
+        )
+        self.client.login(username="staff1", password="pass12345")
+        r_cancel_ev = self.client.post(
+            reverse("planning:cancel_event", args=[ev2.pk])
+        )
+        self.assertEqual(r_cancel_ev.status_code, 302)
+        ev2.refresh_from_db()
+        poll2.refresh_from_db()
+        self.assertEqual(ev2.statut, Event.Statut.ANNULE)
+        self.assertFalse(ev2.public)
+        self.assertEqual(poll2.status, DateProposal.Status.CANCELLED)
+

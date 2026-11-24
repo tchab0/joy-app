@@ -460,6 +460,8 @@ def propose_event(
     venue,
     date_debut,
     date_fin=None,
+    date_label: str = "",
+    extra_options: list[tuple] | None = None,
     description: str = "",
     organisme: str = "",
     parent=None,
@@ -471,7 +473,7 @@ def propose_event(
     audience: str = DateProposal.Audience.ALL,
 ):
     """
-    Proposition d’événement par un musicien / adhérent / staff.
+    Proposition d’événement par un musicien / adhérent / staff (1 ou N dates).
 
     Crée l’Event (tentative), un sondage brouillon lié, et laisse le signal
     chat créer un salon staff-only (pas de convocation auto des titulaires).
@@ -517,13 +519,82 @@ def propose_event(
         deadline=deadline,
         audience=cleaned_audience,
     )
-    DateOption.objects.create(
-        proposal=proposal,
-        starts_at=date_debut,
-        ends_at=date_fin,
-        label="",
-        sort_order=0,
-    )
+    slots: list[tuple] = [(date_debut, date_fin, (date_label or "").strip())]
+    for raw_slot in extra_options or []:
+        if not raw_slot or raw_slot[0] is None:
+            continue
+        s_start = raw_slot[0]
+        s_end = raw_slot[1] if len(raw_slot) > 1 else None
+        s_label = (raw_slot[2] if len(raw_slot) > 2 else "") or ""
+        slots.append((s_start, s_end, s_label.strip()))
+
+    seen_keys: set[tuple] = set()
+    sort_idx = 0
+    for s_start, s_end, s_label in slots:
+        dedupe_slot = (s_start, s_label.casefold())
+        if dedupe_slot in seen_keys:
+            continue
+        seen_keys.add(dedupe_slot)
+        DateOption.objects.create(
+            proposal=proposal,
+            starts_at=s_start,
+            ends_at=s_end,
+            label=s_label[:120],
+            sort_order=sort_idx,
+        )
+        sort_idx += 1
     return event, proposal
+
+
+@transaction.atomic
+def create_confirmed_event(
+    *,
+    creator,
+    titre: str,
+    event_type,
+    venue,
+    date_debut,
+    date_fin=None,
+    description: str = "",
+    organisme: str = "",
+    parent=None,
+    contact_nom: str = "",
+    contact_telephone: str = "",
+    contact_email: str = "",
+):
+    """
+    Création directe par le staff d’un événement déjà confirmé (date ferme),
+    sans sondage intermédiaire. Publié automatiquement hors répétition.
+    """
+    from events.models import Event
+
+    titre = (titre or "").strip()
+    if not titre:
+        raise ValueError("Titre requis")
+
+    is_rehearsal = bool(getattr(event_type, "is_rehearsal", False))
+    if not is_rehearsal:
+        nom = (getattr(event_type, "nom", None) or "").strip().lower()
+        is_rehearsal = "répétition" in nom or "repetition" in nom
+
+    event = Event(
+        titre=titre,
+        type=event_type,
+        venue=venue,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        description=(description or "").strip(),
+        statut=Event.Statut.CONFIRME,
+        public=not is_rehearsal,
+        parent=parent,
+        organisme=(organisme or "").strip(),
+        contact_nom=(contact_nom or "").strip(),
+        contact_telephone=(contact_telephone or "").strip(),
+        contact_email=(contact_email or "").strip(),
+        proposed_by=creator,
+    )
+    event._skip_titulaire_invite = True
+    event.save()
+    return event
 
 

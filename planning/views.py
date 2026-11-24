@@ -70,6 +70,8 @@ from planning.services import (
     update_poll_meta,
     close_poll,
     cancel_poll,
+    cancel_event,
+    user_can_view_planning_event,
     notify_poll_non_responders,
     lock_date_proposal,
     notify_roadmap,
@@ -80,6 +82,7 @@ from planning.services import (
     poll_launch_success_message,
     poll_recipient_count,
     propose_event,
+    create_confirmed_event,
     propose_substitute,
     respond_substitute_request,
     roster_by_stage,
@@ -87,6 +90,7 @@ from planning.services import (
     suggest_event_equipment,
     sync_known_fields,
     user_can_access_poll,
+    user_has_answered_poll,
     sibling_polls_for_user,
     poll_embed_room,
     user_can_view_roadmap,
@@ -416,12 +420,29 @@ class PlanningDashboardView(MusicianRequiredMixin, TemplateView):
                 assigned_to=user,
                 event__date_debut__gte=now,
             )
+            .exclude(event__statut=Event.Statut.ANNULE)
             .select_related("event", "item")
             .order_by("event__date_debut")[:15]
         )
 
+        # Sondages de dates d'événements encore ouverts (à voter ou déjà votés).
+        open_polls_qs = (
+            DateProposal.objects.filter(status=DateProposal.Status.OPEN)
+            .exclude(source_room__isnull=False, linked_event__isnull=True)
+            .select_related("linked_event", "linked_event__venue")
+            .prefetch_related("options__votes")
+            .order_by("-launched_at", "-created_at")
+        )
+        open_date_polls = []
+        for poll in open_polls_qs:
+            if not user_can_access_poll(user, poll):
+                continue
+            poll.user_answered = user_has_answered_poll(user, poll)
+            open_date_polls.append(poll)
+
         context.update(
             {
+                "open_date_polls": open_date_polls,
                 "pending": pending,
                 "upcoming": upcoming,
                 "sub_offers": sub_offers,
@@ -458,8 +479,9 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
         range_end = timezone.make_aware(
             datetime.combine(date(end_year, end_month, last_day), time.max), tz
         )
-        events = list(
+        raw_events = list(
             Event.objects.filter(date_debut__gte=range_start, date_debut__lte=range_end)
+            .exclude(statut=Event.Statut.ANNULE)
             .select_related("type", "venue", "chat_room", "proposed_by")
             .prefetch_related(
                 Prefetch(
@@ -469,6 +491,9 @@ class PlanningYearCalendarView(MusicianRequiredMixin, TemplateView):
             )
             .order_by("date_debut", "titre")
         )
+        events = [
+            e for e in raw_events if user_can_view_planning_event(user, e)
+        ]
         attach_calendar_summaries(events)
         attach_open_poll_info_to_events(events, user)
         attach_calendar_chat_links(events, user)
@@ -609,6 +634,7 @@ class ProposeEventView(CanProposeEventMixin, View):
         type_id = request.POST.get("type_id")
         day_raw = (request.POST.get("date") or "").strip()
         time_raw = (request.POST.get("time") or "20:00").strip() or "20:00"
+        date_label = (request.POST.get("date_label") or "").strip()
 
         def _fail(msg: str):
             messages.error(request, msg)
@@ -619,10 +645,16 @@ class ProposeEventView(CanProposeEventMixin, View):
         if not titre or not type_id or not day_raw:
             return _fail("Titre, date et type sont requis.")
 
-        deadline_raw = (request.POST.get("deadline") or "").strip()
-        deadline = parse_date(deadline_raw) if deadline_raw else None
-        if deadline is None:
-            return _fail("Indiquez une date limite de réponse.")
+        is_staff_user = bool(request.user.is_staff or request.user.is_superuser)
+        creation_mode = (request.POST.get("creation_mode") or "").strip().lower()
+        confirmed_direct = is_staff_user and creation_mode == "confirmed"
+
+        deadline = None
+        if not confirmed_direct:
+            deadline_raw = (request.POST.get("deadline") or "").strip()
+            deadline = parse_date(deadline_raw) if deadline_raw else None
+            if deadline is None and not is_staff_user:
+                return _fail("Indiquez une date limite de réponse.")
 
         try:
             day = date.fromisoformat(day_raw)
@@ -635,11 +667,34 @@ class ProposeEventView(CanProposeEventMixin, View):
         except (ValueError, TypeError):
             return _fail("Heure invalide.")
 
+        extra_options: list[tuple] = []
+        if not confirmed_direct:
+            for i in range(20):
+                ex_day_raw = (request.POST.get(f"extra_date_{i}") or "").strip()
+                if not ex_day_raw:
+                    continue
+                ex_time_raw = (
+                    request.POST.get(f"extra_time_{i}") or "20:00"
+                ).strip() or "20:00"
+                ex_label = (request.POST.get(f"extra_label_{i}") or "").strip()
+                try:
+                    ex_day = date.fromisoformat(ex_day_raw)
+                except ValueError:
+                    return _fail(f"Date supplémentaire #{i + 2} invalide.")
+                try:
+                    ex_h, ex_m = (int(x) for x in ex_time_raw.split(":")[:2])
+                    ex_starts = timezone.make_aware(
+                        datetime.combine(ex_day, time(ex_h, ex_m))
+                    )
+                except (ValueError, TypeError):
+                    return _fail(f"Heure supplémentaire #{i + 2} invalide.")
+                extra_options.append((ex_starts, None, ex_label))
+
         event_type = get_object_or_404(EventType, pk=type_id)
         try:
             venue = _resolve_or_create_venue(request.POST)
             parent = None
-            if request.user.is_staff or request.user.is_superuser:
+            if is_staff_user:
                 parent = _resolve_or_create_parent_event(
                     request.POST,
                     venue=venue,
@@ -649,11 +704,11 @@ class ProposeEventView(CanProposeEventMixin, View):
         except ValueError as exc:
             return _fail(str(exc))
 
-        public = False
-
         from core.ratelimit import claim_once
 
-        dedupe_key = f"{request.user.pk}:{titre.casefold()}:{starts.isoformat()}"
+        dedupe_key = (
+            f"{request.user.pk}:{creation_mode}:{titre.casefold()}:{starts.isoformat()}"
+        )
         if not claim_once("propose_event", dedupe_key, 45):
             existing = (
                 Event.objects.filter(
@@ -669,7 +724,6 @@ class ProposeEventView(CanProposeEventMixin, View):
                 request,
                 "Cette proposition vient d’être enregistrée (double envoi évité).",
             )
-            is_staff_user = request.user.is_staff or request.user.is_superuser
             if existing and is_staff_user:
                 return redirect("planning:event_roster", pk=existing.pk)
             if existing and user_can_access_planning(request.user):
@@ -677,6 +731,37 @@ class ProposeEventView(CanProposeEventMixin, View):
             if user_can_access_planning(request.user):
                 return redirect(_calendar_url(day_raw))
             return redirect("account_member_area")
+
+        organisme = _remember_organisme(
+            request.POST.get("organisme") or "",
+            request.POST.get("organisme_url") or "",
+        )
+        description = (request.POST.get("description") or "").strip()
+        contact_nom = (request.POST.get("contact_nom") or "").strip()
+        contact_telephone = (request.POST.get("contact_telephone") or "").strip()
+        contact_email = (request.POST.get("contact_email") or "").strip()
+
+        if confirmed_direct:
+            event = create_confirmed_event(
+                creator=request.user,
+                titre=titre,
+                event_type=event_type,
+                venue=venue,
+                date_debut=starts,
+                description=description,
+                organisme=organisme,
+                parent=parent,
+                contact_nom=contact_nom,
+                contact_telephone=contact_telephone,
+                contact_email=contact_email,
+            )
+            messages.success(
+                request,
+                f"Événement « {event.titre} » confirmé "
+                f"({starts.strftime('%d/%m/%Y %H:%M')}). "
+                f"Convoquez maintenant l’effectif depuis cette page.",
+            )
+            return redirect("planning:event_roster", pk=event.pk)
 
         poll_audience = parse_poll_audience(
             request.POST.get("audience"),
@@ -688,24 +773,37 @@ class ProposeEventView(CanProposeEventMixin, View):
             event_type=event_type,
             venue=venue,
             date_debut=starts,
-            description=(request.POST.get("description") or "").strip(),
-            organisme=_remember_organisme(
-                request.POST.get("organisme") or "",
-                request.POST.get("organisme_url") or "",
-            ),
+            date_label=date_label,
+            extra_options=extra_options,
+            description=description,
+            organisme=organisme,
             parent=parent,
-            public=public,
-            contact_nom=(request.POST.get("contact_nom") or "").strip(),
-            contact_telephone=(request.POST.get("contact_telephone") or "").strip(),
-            contact_email=(request.POST.get("contact_email") or "").strip(),
+            public=False,
+            contact_nom=contact_nom,
+            contact_telephone=contact_telephone,
+            contact_email=contact_email,
             deadline=deadline,
             audience=poll_audience,
         )
 
-        is_staff_user = request.user.is_staff or request.user.is_superuser
-        launch_now = is_staff_user and str(
-            request.POST.get("launch_poll") or ""
-        ).strip().lower() in ("1", "on", "true", "yes")
+        keep_draft = str(request.POST.get("keep_draft") or "").strip().lower() in (
+            "1",
+            "on",
+            "true",
+            "yes",
+        )
+        if is_staff_user:
+            if creation_mode == "poll":
+                launch_now = not keep_draft
+            elif creation_mode == "draft":
+                launch_now = False
+            else:
+                launch_now = str(
+                    request.POST.get("launch_poll") or ""
+                ).strip().lower() in ("1", "on", "true", "yes")
+        else:
+            launch_now = False
+
         if launch_now:
             try:
                 launch_availability_poll(
@@ -732,19 +830,20 @@ class ProposeEventView(CanProposeEventMixin, View):
             else:
                 messages.success(
                     request,
-                    f"Événement « {event.titre} » créé — salon staff ouvert. "
-                    f"Sondage en brouillon ({poll_audience_label(poll_audience)}). "
-                    f"Lancez-le quand vous êtes prêt.",
+                    f"Proposition « {event.titre} » enregistrée en brouillon staff "
+                    f"(invisible de l’orchestre tant que vous ne lancez pas le sondage).",
                 )
+            if launch_now or creation_mode in ("poll", "draft"):
+                return redirect("planning:poll_detail", pk=proposal.pk)
             return redirect("planning:event_roster", pk=event.pk)
 
         messages.success(
             request,
-            f"Proposition « {event.titre} » envoyée. "
-            f"Le staff ouvrira le salon et lancera le sondage de disponibilité.",
+            f"Proposition « {event.titre} » envoyée au staff. "
+            f"Elle apparaîtra au calendrier de l’orchestre dès que le staff ouvrira le sondage.",
         )
         if user_can_access_planning(request.user):
-            return redirect("planning:event_detail", pk=event.pk)
+            return redirect("planning:poll_detail", pk=proposal.pk)
         return redirect("account_member_area")
 
 
@@ -759,19 +858,33 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
     template_name = "planning/event_detail.html"
 
     def dispatch(self, request, *args, **kwargs):
-        event = get_object_or_404(Event.objects.select_related("type"), pk=kwargs["pk"])
+        event = get_object_or_404(
+            Event.objects.select_related("type", "proposed_by"), pk=kwargs["pk"]
+        )
         if event.is_rehearsal:
             return redirect("repetitions:detail", pk=event.pk)
-        return super().dispatch(request, *args, **kwargs)
+        res = super().dispatch(request, *args, **kwargs)
+        return res
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         event = get_object_or_404(
-            Event.objects.select_related("venue", "type", "parent", "chat_room"),
+            Event.objects.select_related(
+                "venue", "type", "parent", "chat_room", "proposed_by"
+            ),
             pk=kwargs["pk"],
         )
-        attach_weather([event], concerts_only=True)
         user = self.request.user
+        if (
+            event.statut == Event.Statut.TENTATIVE
+            and not user_can_view_planning_event(user, event)
+        ):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Cette proposition est en attente de validation par le staff."
+            )
+        attach_weather([event], concerts_only=True)
         participation = get_participation_for(event, user)
         chat_link = chat_link_for_event(event, user)
 
@@ -864,11 +977,29 @@ class EventDetailView(MusicianRequiredMixin, TemplateView):
         setlist_items = list(setlist.items.all()) if setlist else []
         roadmap = get_roadmap(event)
         attach_calendar_summaries([event])
+        draft_proposal = draft_proposal_for_event(event)
+        open_proposal = open_proposal_for_event(event)
+        open_poll_answered = (
+            user_has_answered_poll(user, open_proposal)
+            if open_proposal is not None
+            else False
+        )
+        can_cancel_event = bool(
+            is_staff
+            or (
+                event.statut == Event.Statut.TENTATIVE
+                and event.proposed_by_id == user.pk
+            )
+        )
 
         context.update(
             {
                 "event": event,
                 "participation": participation,
+                "draft_proposal": draft_proposal,
+                "open_proposal": open_proposal,
+                "open_poll_answered": open_poll_answered,
+                "can_cancel_event": can_cancel_event,
                 "counts": counts,
                 "by_section": by_section,
                 "cal_summary": getattr(event, "cal_summary", None) or {},
@@ -1094,10 +1225,17 @@ class PollDetailView(MusicianRequiredMixin, TemplateView):
 class RespondParticipationView(MusicianRequiredMixin, View):
     def post(self, request, pk):
         participation = get_object_or_404(
-            EventParticipation.objects.select_related("status", "event"),
+            EventParticipation.objects.select_related("status", "event", "event__type"),
             pk=pk,
             user=request.user,
         )
+        event = participation.event
+        if event.statut == Event.Statut.ANNULE:
+            return _json_error("Cet événement est annulé.")
+        if not event.is_rehearsal and event.statut == Event.Statut.TENTATIVE:
+            return _json_error(
+                "Cette date n’est pas encore confirmée : votez d’abord sur le sondage de disponibilité."
+            )
         return _respond_participation(request, participation)
 
 
@@ -1114,6 +1252,10 @@ class RespondEventView(MusicianRequiredMixin, View):
         if event.is_rehearsal:
             return _json_error(
                 "Pour une répétition, utilisez le signalement d’absence."
+            )
+        if event.statut == Event.Statut.TENTATIVE:
+            return _json_error(
+                "Cette date n’est pas encore confirmée : votez d’abord sur le sondage de disponibilité."
             )
         try:
             participation, _ = ensure_open_participation(event, request.user)
@@ -1278,7 +1420,8 @@ class PlanningAdminView(PlanningStaffRequiredMixin, TemplateView):
         now = timezone.now()
         events = (
             Event.objects.filter(date_debut__gte=now)
-            .select_related("venue", "type")
+            .exclude(statut=Event.Statut.ANNULE)
+            .select_related("venue", "type", "proposed_by")
             .annotate(
                 n_confirmed=Count(
                     "participations",
@@ -1308,12 +1451,17 @@ class PlanningAdminView(PlanningStaffRequiredMixin, TemplateView):
             )
             .order_by("date_debut")[:30]
         )
-        open_polls = DateProposal.objects.filter(
-            status=DateProposal.Status.OPEN
-        ).annotate(n_options=Count("options"))
-        draft_polls = DateProposal.objects.filter(
-            status=DateProposal.Status.DRAFT
-        ).annotate(n_options=Count("options"))
+        open_polls = (
+            DateProposal.objects.filter(status=DateProposal.Status.OPEN)
+            .exclude(source_room__isnull=False, linked_event__isnull=True)
+            .select_related("linked_event", "linked_event__venue", "created_by")
+            .annotate(n_options=Count("options"))
+        )
+        draft_polls = (
+            DateProposal.objects.filter(status=DateProposal.Status.DRAFT)
+            .select_related("linked_event", "linked_event__venue", "created_by")
+            .annotate(n_options=Count("options"))
+        )
         sections = OrchestraSection.objects.filter(is_active=True)
         equipment = ensure_default_equipment()
         context.update(
@@ -1673,10 +1821,9 @@ class LaunchPollView(PlanningStaffRequiredMixin, View):
             if raw_audience
             else None
         )
-        # Sondage lié à un événement : défaut orchestre si pas encore précisé.
+        # Sondage sans salon source : défaut orchestre si pas encore précisé.
         if (
             audience is None
-            and proposal.linked_event_id
             and proposal.audience == DateProposal.Audience.ROOM
             and not proposal.source_room_id
         ):
@@ -1832,7 +1979,11 @@ class LockPollView(PlanningStaffRequiredMixin, View):
             messages.error(request, str(exc))
             return redirect("planning:poll_detail", pk=pk)
 
-        public = False
+        is_rehearsal = bool(getattr(event_type, "is_rehearsal", False)) or (
+            "répétition" in (event_type.nom or "").lower()
+            or "repetition" in (event_type.nom or "").lower()
+        )
+        public = not is_rehearsal
         organisme = _remember_organisme(
             request.POST.get("organisme") or "",
             request.POST.get("organisme_url") or "",
@@ -1895,7 +2046,9 @@ class CancelPollView(MusicianRequiredMixin, View):
     """Auteur ou staff : supprimer / annuler un sondage ouvert ou brouillon."""
 
     def post(self, request, pk):
-        proposal = get_object_or_404(DateProposal, pk=pk)
+        proposal = get_object_or_404(
+            DateProposal.objects.select_related("linked_event"), pk=pk
+        )
         if not user_can_edit_poll_deadline(request.user, proposal):
             from django.core.exceptions import PermissionDenied
 
@@ -1903,17 +2056,67 @@ class CancelPollView(MusicianRequiredMixin, View):
                 "Seul l’auteur ou le staff peut supprimer ce sondage."
             )
         room_id = proposal.source_room_id
-        event_id = proposal.linked_event_id
+        linked = proposal.linked_event
+        was_tentative_event = bool(
+            linked is not None and linked.statut == Event.Statut.TENTATIVE
+        )
         try:
             cancel_poll(proposal)
         except ValueError as exc:
             messages.error(request, str(exc))
             return redirect("planning:poll_detail", pk=pk)
-        messages.success(request, "Sondage supprimé.")
+        if was_tentative_event:
+            messages.success(
+                request,
+                f"Proposition « {linked.titre} » et sondage annulés — retirés du calendrier.",
+            )
+        else:
+            messages.success(request, "Sondage supprimé.")
+        next_url = (request.POST.get("next") or "").strip()
+        if is_safe_local_path(next_url, request):
+            return redirect(next_url)
         if room_id:
             return redirect("chat:room", room_id=room_id)
-        if event_id:
-            return redirect("planning:event_detail", pk=event_id)
+        if linked is not None and not was_tentative_event:
+            return redirect("planning:event_detail", pk=linked.pk)
+        if request.user.is_staff or request.user.is_superuser:
+            return redirect("planning:admin")
+        return redirect("planning:dashboard")
+
+
+class CancelEventView(MusicianRequiredMixin, View):
+    """Staff (tout événement) ou auteur (proposition encore tentative) : annuler l’événement."""
+
+    def post(self, request, pk):
+        event = get_object_or_404(Event, pk=pk)
+        is_staff = bool(request.user.is_staff or request.user.is_superuser)
+        is_tentative_author = (
+            event.statut == Event.Statut.TENTATIVE
+            and event.proposed_by_id == request.user.pk
+        )
+        if not (is_staff or is_tentative_author):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "Seul le staff (ou l’auteur d’une proposition non confirmée) peut annuler cet événement."
+            )
+        was_tentative = event.statut == Event.Statut.TENTATIVE
+        cancel_event(event)
+        if was_tentative:
+            messages.success(
+                request,
+                f"Proposition « {event.titre} » annulée et retirée du calendrier.",
+            )
+        else:
+            messages.success(
+                request,
+                f"Événement « {event.titre} » annulé et retiré du calendrier.",
+            )
+        next_url = (request.POST.get("next") or "").strip()
+        if is_safe_local_path(next_url, request):
+            return redirect(next_url)
+        if is_staff:
+            return redirect("planning:admin")
         return redirect("planning:dashboard")
 
 

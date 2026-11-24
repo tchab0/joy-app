@@ -78,7 +78,7 @@ function chatRoom(cfg) {
     pollError: '',
     pollTitle: '',
     pollDescription: '',
-    pollKind: 'dates',
+    pollKind: 'text',
     pollAudience: 'room',
     pollDeadline: '',
     pollOptions: [],
@@ -2316,7 +2316,7 @@ function chatRoom(cfg) {
       this.pollBusy = false;
       this.pollTitle = '';
       this.pollDescription = '';
-      this.pollKind = 'dates';
+      this.pollKind = 'text';
       this.pollAudience = 'room';
       this.pollDeadline = '';
       this.pollOptions = [

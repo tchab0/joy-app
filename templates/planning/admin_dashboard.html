@@ -14,68 +14,102 @@
   <header class="pl-head" data-tour="staff-admin">
     <h1>Admin planning</h1>
     {% page_lead "planning.admin_dashboard" class="page-lead--in-head" %}
-      Effectifs, sondages et matériel.
+      Propositions à valider, sondages en cours, effectifs et matériel.
     {% endpage_lead %}
   </header>
 
   <section class="pl-section">
-    <h2>Nouveau sondage de dates</h2>
-    <form class="pl-form" method="post" action="{% url 'planning:create_poll' %}"
-          x-data="{ n: 2, submitting: false }"
-          @submit="if (submitting) { $event.preventDefault(); return } submitting = true">
-      {% csrf_token %}
-      <div>
-        <label for="title">Titre</label>
-        <input type="text" name="title" id="title" required placeholder="ex. Répétition générale mars">
-      </div>
-      <div>
-        <label for="description">Description</label>
-        <textarea name="description" id="description" rows="2"></textarea>
-      </div>
-      <div>
-        <label for="deadline">Date limite de réponse</label>
-        <input type="date" name="deadline" id="deadline" required>
-      </div>
-      <input type="hidden" name="audience" value="all">
-      <p class="pl-poll-audience" style="margin:.75rem 0 0;padding:.75rem;border:1px solid var(--border);border-radius:var(--r)">
-        <strong style="color:var(--text)">Qui reçoit ce sondage ?</strong>
-        <span style="display:block;margin-top:.35rem;color:var(--text);font-weight:600">Tout l’orchestre</span>
-        <span class="pl-row__meta" style="display:block;margin-top:.35rem">
-          Sondage autonome (sans salon) : tous les musiciens actifs seront notifiés au lancement.
-        </span>
-      </p>
-      <template x-for="i in Array.from({length: n}, (_, k) => k)" :key="i">
-        <div class="pl-form__row pl-form__row--2" style="padding:.5rem 0;border-top:1px solid var(--border)">
-          <div>
-            <label :for="'starts_'+i">Option <span x-text="i+1"></span> — début</label>
-            <input type="datetime-local" :name="'option_starts_'+i" :id="'starts_'+i"
-                   :required="i === 0">
-          </div>
-          <div>
-            <label :for="'label_'+i">Libellé (optionnel)</label>
-            <input type="text" :name="'option_label_'+i" :id="'label_'+i" placeholder="ex. soirée">
-          </div>
-        </div>
-      </template>
-      <button type="button" class="pl-btn" @click="n++" style="align-self:flex-start">+ Option</button>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start"
-              :disabled="submitting">
-        <span x-text="submitting ? 'Création…' : 'Créer le sondage'">Créer le sondage</span>
-      </button>
-    </form>
+    <h2>Ajouter au calendrier</h2>
+    <p class="pl-row__meta" style="margin:0 0 .85rem">
+      Tout passe par un seul formulaire : vous pouvez soit <strong>sonder l’orchestre sur une ou plusieurs dates</strong>, soit créer directement un <strong>événement déjà confirmé</strong>.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:.65rem">
+      <a class="pl-btn pl-btn--primary" href="{% url 'planning:dashboard' %}?create=1" style="min-height:44px">
+        + Événement ou sondage de dates
+      </a>
+      <a class="pl-btn pl-btn--staff" href="{% url 'repetitions:staff_create' %}" style="min-height:44px">
+        + Répétition
+      </a>
+    </div>
   </section>
 
+  {% if draft_polls %}
+  <section class="pl-section pl-section--panel pl-section--pending">
+    <h2 style="margin-top:0;color:var(--accent)">1. Propositions en attente de validation ({{ draft_polls|length }})</h2>
+    <p class="pl-row__meta" style="margin:0 0 .75rem">
+      Invisibles de l’orchestre tant que vous n’ouvrez pas le sondage de disponibilité.
+    </p>
+    {% for p in draft_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}" style="color:var(--accent)">{{ p.title }}</a>
+        <p class="pl-row__meta">
+          {{ p.n_options }} date{{ p.n_options|pluralize }} proposée{{ p.n_options|pluralize }}
+          {% if p.linked_event and p.linked_event.venue %} · {{ p.linked_event.venue.nom }}{% endif %}
+          {% if p.created_by %} · par {{ p.created_by.get_full_name|default:p.created_by.username }}{% endif %}
+          {% if p.deadline %} · réponse souhaitée avant le {{ p.deadline|date:"d/m/Y" }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions" style="flex-wrap:wrap;gap:.5rem">
+        <form method="post" action="{% url 'planning:launch_poll' p.pk %}" style="margin:0">
+          {% csrf_token %}
+          <input type="hidden" name="audience" value="{{ p.audience|default:'all' }}">
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <button type="submit" class="pl-btn pl-btn--primary">Ouvrir à l’orchestre</button>
+        </form>
+        <a class="pl-btn" href="{% url 'planning:poll_detail' p.pk %}">Voir / modifier</a>
+        <form method="post" action="{% url 'planning:cancel_poll' p.pk %}" style="margin:0"
+              onsubmit="return confirm('Refuser et supprimer cette proposition ?');">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <button type="submit" class="pl-btn pl-btn--no">Refuser</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if open_polls %}
   <section class="pl-section">
-    <h2>Prochains événements</h2>
+    <h2>2. Sondages en cours · date à confirmer ({{ open_polls|length }})</h2>
+    <p class="pl-row__meta" style="margin:0 0 .75rem">
+      L’orchestre vote actuellement. Ouvrez le sondage pour consulter les résultats et confirmer la date retenue.
+    </p>
+    {% for p in open_polls %}
+    <div class="pl-row">
+      <div class="pl-row__main">
+        <a class="pl-row__title is-proposal" href="{% url 'planning:poll_detail' p.pk %}">{{ p.title }}</a>
+        <p class="pl-row__meta">
+          {{ p.n_options }} option{{ p.n_options|pluralize }}
+          {% if p.linked_event and p.linked_event.venue %} · {{ p.linked_event.venue.nom }}{% endif %}
+          {% if p.deadline %} · clôture souhaitée le {{ p.deadline|date:"d/m/Y" }}{% endif %}
+        </p>
+      </div>
+      <div class="pl-row__actions">
+        <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' p.pk %}">Choisir la date et confirmer</a>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="pl-section">
+    <h2>3. Prochains événements</h2>
     {% for e in events %}
     <div class="pl-row">
       <div class="pl-row__main">
         <a class="pl-row__title{% if e.is_rehearsal %} is-rehearsal{% elif e.statut == 'tentative' %} is-proposal{% elif e.statut == 'confirme' %} is-confirmed{% endif %}" href="{% url 'planning:event_roster' e.pk %}">{{ e.titre }}</a>
         <p class="pl-row__meta">
+          {% if not e.is_rehearsal and e.statut == 'tentative' %}
+          <span class="pl-badge pl-badge--warning">À confirmer</span> ·
+          {% endif %}
           {{ e.date_debut|date:"d/m/Y H:i" }}
           {% if e.venue %} · {{ e.venue.nom }}{% endif %}
+          {% if e.statut == 'confirme' or e.is_rehearsal %}
           · {{ e.n_confirmed }} oui · {{ e.n_invited }} attente
           {% if e.n_holes %} · <strong>{{ e.n_holes }} trou{{ e.n_holes|pluralize }}</strong>{% endif %}
+          {% endif %}
         </p>
       </div>
       <div class="pl-row__actions">
@@ -86,41 +120,6 @@
     <p class="pl-empty">Aucun événement à venir.</p>
     {% endfor %}
   </section>
-
-  {% if draft_polls %}
-  <section class="pl-section">
-    <h2>Sondages à lancer</h2>
-    {% for p in draft_polls %}
-    <div class="pl-row">
-      <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}" style="color:var(--accent)">{{ p.title }}</a>
-        <p class="pl-row__meta">{{ p.n_options }} option{{ p.n_options|pluralize }} · brouillon</p>
-      </div>
-      <form method="post" action="{% url 'planning:launch_poll' p.pk %}"
-            style="display:flex;flex-direction:column;gap:.5rem;align-items:stretch;min-width:12rem">
-        {% csrf_token %}
-        <input type="hidden" name="audience" value="{% if p.source_room_id or p.linked_event_id %}{{ p.audience|default:'all' }}{% else %}all{% endif %}">
-        <button type="submit" class="pl-btn pl-btn--primary">Lancer</button>
-      </form>
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
-
-  {% if open_polls %}
-  <section class="pl-section">
-    <h2>Sondages ouverts</h2>
-    {% for p in open_polls %}
-    <div class="pl-row">
-      <div class="pl-row__main">
-        <a class="pl-row__title" href="{% url 'planning:poll_detail' p.pk %}">{{ p.title }}</a>
-        <p class="pl-row__meta">{{ p.n_options }} option{{ p.n_options|pluralize }} · à confirmer</p>
-      </div>
-      <a class="pl-btn pl-btn--primary" href="{% url 'planning:poll_detail' p.pk %}">Confirmer</a>
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
 
   <details class="pl-section pl-accordion">
     <summary class="pl-accordion__summary">Catalogue matériel</summary>
@@ -138,20 +137,20 @@
       {% csrf_token %}
       <div class="pl-form__row pl-form__row--2">
         <div>
-          <label for="eq_name">Nouveau matériel</label>
-          <input type="text" name="name" id="eq_name" required>
+          <label for="eq_name">Nom</label>
+          <input type="text" name="name" id="eq_name" required placeholder="ex. Rallonge 20m">
         </div>
         <div>
           <label for="eq_cat">Catégorie</label>
-          <select name="category" id="eq_cat" required>
-            <option value="">— Choisir… —</option>
+          <select name="category" id="eq_cat">
+            <option value="">—</option>
             {% for cat in equipment_categories %}
             <option value="{{ cat }}">{{ cat }}</option>
             {% endfor %}
           </select>
         </div>
       </div>
-      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter</button>
+      <button type="submit" class="pl-btn pl-btn--primary" style="align-self:flex-start">Ajouter au catalogue</button>
     </form>
   </details>
 </div>
